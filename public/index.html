@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BAND 추천주 분석</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">Band Stock Analyzer</p>
+        <h1>추천 종목을 클릭해서 차트와 재무를 바로 확인하세요</h1>
+        <p class="hero-copy">
+          왼쪽에서 종목을 누르면 추천일 기준 차트, 거래량, 재무지표가 오른쪽에 바로 표시됩니다.
+        </p>
+      </header>
+
+      <main class="layout">
+        <section class="panel input-panel">
+          <div class="panel-head">
+            <h2>추천 종목</h2>
+            <button id="openAddStockBtn" class="ghost-button" type="button">종목 추가</button>
+          </div>
+          <p class="field-help">종목 카드를 한 번 누르면 바로 해당 종목 분석을 시작합니다.</p>
+          <div class="selector-toolbar">
+            <label class="page-size-label" for="pageSizeSelect">표시 개수</label>
+            <select id="pageSizeSelect" class="page-size-select">
+              <option value="5">5개</option>
+              <option value="10" selected>10개</option>
+              <option value="999">전체</option>
+            </select>
+          </div>
+          <div id="stockSelector" class="stock-selector"></div>
+          <div class="pagination-bar">
+            <button id="prevPageBtn" class="ghost-button small-button" type="button">이전</button>
+            <span id="pageStatus" class="page-status">1 / 1</span>
+            <button id="nextPageBtn" class="ghost-button small-button" type="button">다음</button>
+          </div>
+        </section>
+
+        <section class="panel output-panel">
+          <div class="panel-head">
+            <h2>분석 결과</h2>
+            <span id="statusBadge" class="status-badge idle">대기 중</span>
+          </div>
+
+          <div id="summaryBar" class="summary-bar hidden"></div>
+          <div id="errorBox" class="error-box hidden"></div>
+          <div id="results" class="results empty">
+            <div class="empty-state">
+              <p>왼쪽에서 종목 하나를 클릭하면 결과가 여기에 표시됩니다.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="stockModal" class="modal-backdrop hidden">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="stockModalTitle">
+        <div class="modal-head">
+          <h3 id="stockModalTitle">종목 추가</h3>
+          <button id="closeStockModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+        <form id="stockForm" class="modal-form">
+          <label class="modal-label" for="stockNameInput">종목명</label>
+          <input id="stockNameInput" name="name" class="modal-input" type="text" required />
+
+          <label class="modal-label" for="stockSymbolInput">종목코드</label>
+          <input id="stockSymbolInput" name="symbol" class="modal-input" type="text" inputmode="numeric" required />
+
+          <label class="modal-label" for="stockPriceInput">추천가</label>
+          <input id="stockPriceInput" name="recommendedPrice" class="modal-input" type="number" min="0" step="1" required />
+
+          <label class="modal-label" for="stockDateInput">추천 기준일</label>
+          <input id="stockDateInput" name="anchorDate" class="modal-input" type="date" required />
+
+          <label class="modal-label" for="stockNoteInput">메모</label>
+          <textarea id="stockNoteInput" name="note" class="modal-textarea" rows="3" placeholder="선택 입력"></textarea>
+
+          <div class="modal-actions">
+            <button class="ghost-button" type="button" id="cancelStockModalBtn">취소</button>
+            <button class="primary-button" type="submit">추가</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+  </html>
