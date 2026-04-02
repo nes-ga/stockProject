@@ -10,11 +10,47 @@
     <div class="page-shell">
       <header class="hero">
         <p class="eyebrow">Band Stock Analyzer</p>
-        <h1>추천 종목을 클릭해서 차트와 재무를 바로 확인하세요</h1>
+        <h1>추천 종목을 클릭해서 차트와 지표를 바로 확인하세요</h1>
         <p class="hero-copy">
-          왼쪽에서 종목을 누르면 추천일 기준 차트, 거래량, 재무지표가 오른쪽에 바로 표시됩니다.
+          왼쪽에서 종목을 고르면 추천 기준일 기준 차트, 거래량, 재무지표를 오른쪽에서 바로 볼 수 있습니다.
         </p>
       </header>
+
+      <section class="panel band-panel">
+        <div class="panel-head">
+          <div>
+            <h2>BAND에서 바로 읽기</h2>
+            <p class="field-help">.env 설정 후 로그인하면 내 밴드와 게시글을 바로 불러와 분석할 수 있습니다.</p>
+          </div>
+          <span id="bandConnectionStatus" class="status-badge idle">준비 중</span>
+        </div>
+
+        <div id="bandSetupNotice" class="setup-notice"></div>
+
+        <div class="band-actions">
+          <button id="bandLoginBtn" class="primary-button" type="button">BAND 로그인</button>
+          <button id="bandRefreshBandsBtn" class="ghost-button" type="button">밴드 새로고침</button>
+          <button id="bandLogoutBtn" class="ghost-button" type="button">연결 해제</button>
+        </div>
+
+        <div class="band-grid">
+          <section class="band-column">
+            <div class="section-head">
+              <h3>1. 내 밴드</h3>
+              <span id="bandCountLabel" class="section-meta">0개</span>
+            </div>
+            <div id="bandList" class="band-list"></div>
+          </section>
+
+          <section class="band-column">
+            <div class="section-head">
+              <h3>2. 게시글</h3>
+              <span id="postCountLabel" class="section-meta">0개</span>
+            </div>
+            <div id="postList" class="post-list"></div>
+          </section>
+        </div>
+      </section>
 
       <main class="layout">
         <section class="panel input-panel">
@@ -22,12 +58,16 @@
             <h2>추천 종목</h2>
             <button id="openAddStockBtn" class="ghost-button" type="button">종목 추가</button>
           </div>
-          <p class="field-help">종목 카드를 한 번 누르면 바로 해당 종목 분석을 시작합니다.</p>
+          <div class="category-tabs" id="stockCategoryTabs">
+            <button class="category-tab active" type="button" data-category="longTerm">중장기</button>
+            <button class="category-tab" type="button" data-category="swing">스윙</button>
+          </div>
+          <p class="field-help">종목 카드를 누르면 바로 해당 종목 분석이 시작됩니다.</p>
           <div class="selector-toolbar">
             <label class="page-size-label" for="pageSizeSelect">표시 개수</label>
             <select id="pageSizeSelect" class="page-size-select">
-              <option value="5">5개</option>
-              <option value="10" selected>10개</option>
+              <option value="5" selected>5개</option>
+              <option value="10">10개</option>
               <option value="999">전체</option>
             </select>
           </div>
@@ -49,7 +89,7 @@
           <div id="errorBox" class="error-box hidden"></div>
           <div id="results" class="results empty">
             <div class="empty-state">
-              <p>왼쪽에서 종목 하나를 클릭하면 결과가 여기에 표시됩니다.</p>
+              <p>왼쪽에서 종목 하나를 누르면 결과가 여기에 표시됩니다.</p>
             </div>
           </div>
         </section>
@@ -75,6 +115,12 @@
           <label class="modal-label" for="stockDateInput">추천 기준일</label>
           <input id="stockDateInput" name="anchorDate" class="modal-input" type="date" required />
 
+          <label class="modal-label" for="stockCategorySelect">탭 분류</label>
+          <select id="stockCategorySelect" name="category" class="modal-input">
+            <option value="longTerm">중장기</option>
+            <option value="swing">스윙</option>
+          </select>
+
           <label class="modal-label" for="stockNoteInput">메모</label>
           <textarea id="stockNoteInput" name="note" class="modal-textarea" rows="3" placeholder="선택 입력"></textarea>
 
@@ -88,4 +134,4 @@
 
     <script type="module" src="/app.js"></script>
   </body>
-  </html>
+</html>

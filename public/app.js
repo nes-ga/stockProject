@@ -1,4 +1,4 @@
-import {
+﻿import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
@@ -8,139 +8,30 @@ import {
   createChart
 } from "/vendor/lightweight-charts/lightweight-charts.standalone.production.mjs";
 
-const STORAGE_KEY = "band-stock-recommendations-v1";
+const STORAGE_KEY = "band-stock-recommendations-v2";
+const BAND_ACCESS_TOKEN_KEY = "band-access-token-v1";
 const PAGE_SIZE_ALL = 999;
+const DEFAULT_CATEGORY = "longTerm";
 
 const defaultRecommendationCatalog = [
-  {
-    key: "엔씨소프트",
-    name: "엔씨소프트",
-    symbol: "036570",
-    anchorDate: "2024-03-22",
-    note: "215000원 이하 1차매수"
-  },
-  {
-    key: "TIGER 미국30년국채커버드콜액티브(H)",
-    name: "TIGER 미국30년국채커버드콜액티브(H)",
-    symbol: "476550",
-    anchorDate: "2024-03-12",
-    note: "7445원 1차매수"
-  },
-  {
-    key: "포스코DX",
-    name: "포스코DX",
-    symbol: "022100",
-    anchorDate: "2024-03-02",
-    latestMentionDate: "2024-03-12",
-    note: "초기 추천일 기준"
-  },
-  {
-    key: "CJ대한통운",
-    name: "CJ대한통운",
-    symbol: "000120",
-    anchorDate: "2024-03-05",
-    note: "112800원 이하 1차매수"
-  },
-  {
-    key: "제우스",
-    name: "제우스",
-    symbol: "079370",
-    anchorDate: "2024-03-02",
-    latestMentionDate: "2024-03-05",
-    note: "17600원 아래 분할매수"
-  },
-  {
-    key: "나무가",
-    name: "나무가",
-    symbol: "190510",
-    anchorDate: "2024-02-27",
-    latestMentionDate: "2024-03-05",
-    note: "22500원 이하 1차매수"
-  },
-  {
-    key: "OCI",
-    name: "OCI",
-    symbol: "456040",
-    anchorDate: "2025-07-28",
-    note: "AS 글에서 삭제 전 목록"
-  },
-  {
-    key: "아모레퍼시픽",
-    name: "아모레퍼시픽",
-    symbol: "090430",
-    anchorDate: "2025-07-28",
-    note: "AS 글에서 삭제 전 목록"
-  },
-  {
-    key: "KODEX 2차전지산업레버리지",
-    name: "KODEX 2차전지산업레버리지",
-    symbol: "462330",
-    anchorDate: "2025-07-28",
-    note: "AS 글에서 삭제 전 목록"
-  },
-  {
-    key: "셀트리온제약",
-    name: "셀트리온제약",
-    symbol: "068760",
-    anchorDate: "2025-07-24",
-    note: "53700원 이하 또는 다음날 시가 이하"
-  },
-  {
-    key: "엘앤에프",
-    name: "엘앤에프",
-    symbol: "066970",
-    anchorDate: "2025-07-25",
-    note: "64500원 이하 1차매수"
-  },
-  {
-    key: "에코프로비엠",
-    name: "에코프로비엠",
-    symbol: "247540",
-    anchorDate: "2025-07-24",
-    note: "112000원 이하 1차매수"
-  },
-  {
-    key: "네오위즈",
-    name: "네오위즈",
-    symbol: "095660",
-    anchorDate: "2025-07-14",
-    note: "최근추천 이후 AS 글 언급"
-  },
-  {
-    key: "BGF리테일",
-    name: "BGF리테일",
-    symbol: "282330",
-    anchorDate: "2025-07-28",
-    note: "112500원 이하 1차매수"
-  },
-  {
-    key: "LG생활건강",
-    name: "LG생활건강",
-    symbol: "051900",
-    anchorDate: "2025-07-11",
-    note: "330000원 이하부터 손절가 구간까지"
-  },
-  {
-    key: "삼성전자",
-    name: "삼성전자",
-    symbol: "005930",
-    anchorDate: "2024-10-31",
-    note: "59000원 이하 중기 1차매수"
-  },
-  {
-    key: "오리온홀딩스",
-    name: "오리온홀딩스",
-    symbol: "001800",
-    anchorDate: "2025-05-29",
-    note: "박스권 저항대 돌파 여부 관찰"
-  },
-  {
-    key: "컴투스",
-    name: "컴투스",
-    symbol: "078340",
-    anchorDate: "2024-08-29",
-    note: "40050원 이하부터 손절가 구간 분할매수"
-  }
+  { key: "엔씨소프트", name: "엔씨소프트", symbol: "036570", anchorDate: "2026-03-22", note: "215000원 이하 1차매수" },
+  { key: "TIGER 미국30년국채커버드콜액티브(H)", name: "TIGER 미국30년국채커버드콜액티브(H)", symbol: "476550", anchorDate: "2026-03-12", note: "7445원 1차매수" },
+  { key: "포스코DX", name: "포스코DX", symbol: "022100", anchorDate: "2026-03-12", latestMentionDate: "2026-03-12", note: "31550원 이하 1차매수" },
+  { key: "CJ대한통운", name: "CJ대한통운", symbol: "000120", anchorDate: "2026-03-05", note: "112800원 이하 1차매수" },
+  { key: "제우스", name: "제우스", symbol: "079370", anchorDate: "2026-03-02", latestMentionDate: "2026-03-05", note: "17600원 아래 분할매수" },
+  { key: "나무가", name: "나무가", symbol: "190510", anchorDate: "2026-02-27", latestMentionDate: "2026-03-05", note: "22500원 이하 1차매수" },
+  { key: "OCI", name: "OCI", symbol: "456040", anchorDate: "2025-07-28", note: "AS 글에서 삭제 전 목록" },
+  { key: "아모레퍼시픽", name: "아모레퍼시픽", symbol: "090430", anchorDate: "2025-07-28", note: "AS 글에서 삭제 전 목록" },
+  { key: "KODEX 2차전지산업레버리지", name: "KODEX 2차전지산업레버리지", symbol: "462330", anchorDate: "2025-07-28", note: "AS 글에서 삭제 전 목록" },
+  { key: "셀트리온제약", name: "셀트리온제약", symbol: "068760", anchorDate: "2025-07-25", note: "53700원 이하 또는 다음날 시가 이하" },
+  { key: "엘앤에프", name: "엘앤에프", symbol: "066970", anchorDate: "2025-07-25", note: "64500원 이하 1차매수" },
+  { key: "에코프로비엠", name: "에코프로비엠", symbol: "247540", anchorDate: "2025-07-24", note: "112000원 이하 1차매수" },
+  { key: "네오위즈", name: "네오위즈", symbol: "095660", anchorDate: "2025-07-14", note: "최근추천 이후 AS 글 언급" },
+  { key: "BGF리테일", name: "BGF리테일", symbol: "282330", anchorDate: "2025-07-28", note: "112500원 이하 1차매수" },
+  { key: "LG생활건강", name: "LG생활건강", symbol: "051900", anchorDate: "2025-07-15", note: "330000원 이하부터 손절가 구간까지" },
+  { key: "삼성전자", name: "삼성전자", symbol: "005930", anchorDate: "2024-11-01", note: "59000원 이하 중기 1차매수" },
+  { key: "오리온홀딩스", name: "오리온홀딩스", symbol: "001800", anchorDate: "2025-05-29", note: "박스권 저항대 돌파 여부 관찰" },
+  { key: "컴투스", name: "컴투스", symbol: "078340", anchorDate: "2024-08-29", note: "40050원 이하부터 손절가 구간 분할매수" }
 ];
 
 const timeframes = ["daily", "weekly", "monthly"];
@@ -151,12 +42,18 @@ const timeframeLabels = {
 };
 
 let recommendationCatalog = loadCatalog();
+let currentCategory = DEFAULT_CATEGORY;
 let currentAnalysis = null;
-let selectedKey = recommendationCatalog[0]?.key ?? null;
+let selectedKey = getFilteredInitialKey();
 let activeChart = null;
 let resizeObserver = null;
-let itemsPerPage = 10;
+let itemsPerPage = 5;
 let currentPage = 1;
+let bandConfig = null;
+let bandAccessToken = loadBandAccessToken();
+let bandItems = [];
+let postItems = [];
+let selectedBandKey = null;
 
 const stockSelector = document.querySelector("#stockSelector");
 const results = document.querySelector("#results");
@@ -176,12 +73,20 @@ const stockNameInput = document.querySelector("#stockNameInput");
 const stockSymbolInput = document.querySelector("#stockSymbolInput");
 const stockPriceInput = document.querySelector("#stockPriceInput");
 const stockDateInput = document.querySelector("#stockDateInput");
+const stockCategoryTabs = document.querySelector("#stockCategoryTabs");
+const stockCategorySelect = document.querySelector("#stockCategorySelect");
 const stockNoteInput = document.querySelector("#stockNoteInput");
+const bandConnectionStatus = document.querySelector("#bandConnectionStatus");
+const bandSetupNotice = document.querySelector("#bandSetupNotice");
+const bandLoginBtn = document.querySelector("#bandLoginBtn");
+const bandRefreshBandsBtn = document.querySelector("#bandRefreshBandsBtn");
+const bandLogoutBtn = document.querySelector("#bandLogoutBtn");
+const bandList = document.querySelector("#bandList");
+const postList = document.querySelector("#postList");
+const bandCountLabel = document.querySelector("#bandCountLabel");
+const postCountLabel = document.querySelector("#postCountLabel");
 
-renderSelector();
-if (selectedKey) {
-  runAnalysisByKey(selectedKey);
-}
+initializeApp();
 
 stockSelector.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest("[data-delete-key]");
@@ -212,6 +117,35 @@ pageSizeSelect.addEventListener("change", () => {
   itemsPerPage = Number(pageSizeSelect.value) || 10;
   currentPage = 1;
   renderSelector();
+});
+
+stockCategoryTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-category]");
+  if (!button) {
+    return;
+  }
+
+  const category = button.dataset.category;
+  if (!category || category === currentCategory) {
+    return;
+  }
+
+  currentCategory = category;
+  currentPage = 1;
+  selectedKey = getFilteredCatalog()[0]?.key ?? null;
+  renderCategoryTabs();
+  renderSelector();
+  if (selectedKey) {
+    void runAnalysisByKey(selectedKey);
+    return;
+  }
+
+  currentAnalysis = null;
+  cleanupChart();
+  showSummary("");
+  showError("");
+  results.classList.add("empty");
+  results.innerHTML = `<div class="empty-state"><p>${category === "swing" ? "스윙" : "중장기"} 탭에 종목을 추가하면 결과가 여기에 표시됩니다.</p></div>`;
 });
 
 prevPageBtn.addEventListener("click", () => {
@@ -251,12 +185,56 @@ stockForm.addEventListener("submit", async (event) => {
   }
 
   recommendationCatalog = [...recommendationCatalog, item];
+  currentCategory = item.category ?? DEFAULT_CATEGORY;
   selectedKey = item.key;
   currentPage = getTotalPagesForCount(recommendationCatalog.length);
   saveCatalog();
   closeStockModal();
+  renderCategoryTabs();
   renderSelector();
   await runAnalysisByKey(item.key);
+});
+
+bandLoginBtn?.addEventListener("click", async () => {
+  await startBandLogin();
+});
+
+bandRefreshBandsBtn?.addEventListener("click", async () => {
+  await refreshBandsAndPosts();
+});
+
+bandLogoutBtn?.addEventListener("click", () => {
+  disconnectBand();
+});
+
+bandList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-band-key]");
+  if (!button) {
+    return;
+  }
+
+  const bandKey = button.dataset.bandKey;
+  if (!bandKey || bandKey === selectedBandKey) {
+    return;
+  }
+
+  selectedBandKey = bandKey;
+  renderBandList();
+  await loadPostsForSelectedBand();
+});
+
+postList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-post-key]");
+  if (!button) {
+    return;
+  }
+
+  const postKey = button.dataset.postKey;
+  if (!postKey) {
+    return;
+  }
+
+  await runBandPostAnalysis(postKey);
 });
 
 results.addEventListener("click", (event) => {
@@ -273,6 +251,448 @@ results.addEventListener("click", (event) => {
   currentAnalysis.activeTimeframe = timeframe;
   updateChartView(timeframe);
 });
+
+async function initializeApp() {
+  renderCategoryTabs();
+  renderSelector();
+  renderBandList();
+  renderPostList();
+  renderBandSetupNotice(
+    "info",
+    '먼저 <code>.env</code>에 BAND 앱 정보를 넣고, 서버를 다시 시작한 뒤 <code>BAND 로그인</code> 버튼을 누르세요.'
+  );
+  setBandConnectionBadge("idle", "준비 중");
+
+  if (selectedKey) {
+    void runAnalysisByKey(selectedKey);
+  }
+
+  await loadBandConfig();
+  await handleBandOAuthRedirect();
+
+  if (bandAccessToken) {
+    await refreshBandsAndPosts();
+  } else {
+    renderBandSetupState();
+  }
+}
+
+function loadBandAccessToken() {
+  try {
+    return localStorage.getItem(BAND_ACCESS_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveBandAccessToken(token) {
+  bandAccessToken = token;
+  localStorage.setItem(BAND_ACCESS_TOKEN_KEY, token);
+}
+
+function clearBandAccessToken() {
+  bandAccessToken = null;
+  localStorage.removeItem(BAND_ACCESS_TOKEN_KEY);
+}
+
+async function loadBandConfig() {
+  try {
+    const response = await fetch("/auth/band/config");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "BAND 설정 정보를 불러오지 못했습니다.");
+    }
+
+    bandConfig = payload;
+  } catch (error) {
+    bandConfig = {
+      isConfigured: false,
+      redirectUri: null
+    };
+    renderBandSetupNotice(
+      "error",
+      error instanceof Error ? error.message : "BAND 설정 상태를 확인하지 못했습니다."
+    );
+  }
+
+  renderBandSetupState();
+}
+
+function renderBandSetupState() {
+  if (!bandConfig?.isConfigured) {
+    setBandConnectionBadge("error", "설정 필요");
+    renderBandSetupNotice(
+      "error",
+      '프로젝트 루트의 <code>.env</code> 파일에 <code>BAND_CLIENT_ID</code>, <code>BAND_CLIENT_SECRET</code>, <code>BAND_REDIRECT_URI</code>를 채워주세요. 기본 Redirect URI는 <code>http://localhost:3000/auth/band/callback</code> 입니다.'
+    );
+    return;
+  }
+
+  if (bandAccessToken) {
+    setBandConnectionBadge("done", "연결됨");
+    renderBandSetupNotice(
+      "success",
+      "BAND 계정 연결이 준비되었습니다. 밴드 목록을 읽고 원하는 게시글을 눌러 바로 분석할 수 있습니다."
+    );
+    return;
+  }
+
+  setBandConnectionBadge("idle", "로그인 대기");
+  renderBandSetupNotice(
+    "info",
+    `이제 <code>BAND 로그인</code> 버튼을 누르세요.${bandConfig.redirectUri ? ` Redirect URI: <code>${escapeHtml(bandConfig.redirectUri)}</code>` : ""}`
+  );
+}
+
+function setBandConnectionBadge(kind, text) {
+  if (!bandConnectionStatus) {
+    return;
+  }
+
+  bandConnectionStatus.className = `status-badge ${kind}`;
+  bandConnectionStatus.textContent = text;
+}
+
+function renderBandSetupNotice(kind, html) {
+  if (!bandSetupNotice) {
+    return;
+  }
+
+  bandSetupNotice.className = `setup-notice ${kind}`;
+  bandSetupNotice.innerHTML = html;
+}
+
+async function startBandLogin() {
+  if (!bandConfig?.isConfigured) {
+    renderBandSetupState();
+    return;
+  }
+
+  setBandConnectionBadge("loading", "로그인 이동 중");
+  renderBandSetupNotice(
+    "info",
+    "잠시 후 BAND 로그인 화면으로 이동합니다. 로그인과 권한 동의를 마치면 다시 이 화면으로 돌아옵니다."
+  );
+
+  try {
+    const response = await fetch("/auth/band/url");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "BAND 로그인 URL을 만들지 못했습니다.");
+    }
+
+    window.location.href = payload.authorizeUrl;
+  } catch (error) {
+    setBandConnectionBadge("error", "로그인 실패");
+    renderBandSetupNotice(
+      "error",
+      error instanceof Error ? error.message : "BAND 로그인 URL을 만들지 못했습니다."
+    );
+  }
+}
+
+async function handleBandOAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("band_code");
+  if (!code) {
+    return;
+  }
+
+  setBandConnectionBadge("loading", "토큰 교환 중");
+  renderBandSetupNotice("info", "BAND 로그인은 완료되었습니다. 접근 토큰을 발급받는 중입니다.");
+
+  try {
+    const response = await fetch("/auth/band/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ code })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "BAND 토큰 발급에 실패했습니다.");
+    }
+
+    saveBandAccessToken(payload.access_token);
+    params.delete("band_code");
+    params.delete("state");
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+    renderBandSetupState();
+  } catch (error) {
+    clearBandAccessToken();
+    setBandConnectionBadge("error", "토큰 실패");
+    renderBandSetupNotice(
+      "error",
+      error instanceof Error ? error.message : "BAND 토큰 발급에 실패했습니다."
+    );
+  }
+}
+
+async function refreshBandsAndPosts() {
+  if (!bandAccessToken) {
+    renderBandSetupState();
+    return;
+  }
+
+  setBandConnectionBadge("loading", "밴드 조회 중");
+  renderBandSetupNotice("info", "내 BAND 목록을 불러오는 중입니다.");
+
+  try {
+    const response = await fetch(`/band/bands?accessToken=${encodeURIComponent(bandAccessToken)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "밴드 목록을 불러오지 못했습니다.");
+    }
+
+    bandItems = Array.isArray(payload.items) ? payload.items : [];
+    if (!bandItems.length) {
+      selectedBandKey = null;
+      postItems = [];
+      renderBandList();
+      renderPostList();
+      setBandConnectionBadge("done", "연결됨");
+      renderBandSetupNotice("info", "접근 가능한 밴드는 읽었지만 목록이 비어 있습니다.");
+      return;
+    }
+
+    if (!bandItems.some((item) => item.band_key === selectedBandKey)) {
+      selectedBandKey = bandItems[0].band_key;
+    }
+
+    renderBandList();
+    await loadPostsForSelectedBand();
+  } catch (error) {
+    setBandConnectionBadge("error", "조회 실패");
+    renderBandSetupNotice(
+      "error",
+      error instanceof Error ? error.message : "밴드 목록을 불러오지 못했습니다."
+    );
+  }
+}
+
+async function loadPostsForSelectedBand() {
+  if (!bandAccessToken || !selectedBandKey) {
+    postItems = [];
+    renderPostList();
+    return;
+  }
+
+  setBandConnectionBadge("loading", "게시글 조회 중");
+  renderBandSetupNotice("info", "선택한 밴드의 게시글을 불러오는 중입니다.");
+
+  try {
+    const response = await fetch(
+      `/band/posts?accessToken=${encodeURIComponent(bandAccessToken)}&bandKey=${encodeURIComponent(selectedBandKey)}&limit=15`
+    );
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "게시글 목록을 불러오지 못했습니다.");
+    }
+
+    postItems = Array.isArray(payload.items) ? payload.items : [];
+    renderPostList();
+    setBandConnectionBadge("done", "연결됨");
+    renderBandSetupNotice("success", "밴드와 게시글을 읽었습니다. 분석할 게시글을 눌러주세요.");
+  } catch (error) {
+    postItems = [];
+    renderPostList();
+    setBandConnectionBadge("error", "게시글 실패");
+    renderBandSetupNotice(
+      "error",
+      error instanceof Error ? error.message : "게시글 목록을 불러오지 못했습니다."
+    );
+  }
+}
+
+function disconnectBand() {
+  clearBandAccessToken();
+  bandItems = [];
+  postItems = [];
+  selectedBandKey = null;
+  renderBandList();
+  renderPostList();
+  renderBandSetupState();
+}
+
+function renderBandList() {
+  if (!bandList || !bandCountLabel) {
+    return;
+  }
+
+  bandCountLabel.textContent = `${bandItems.length}개`;
+  if (!bandItems.length) {
+    bandList.innerHTML = `<div class="empty-state"><p>로그인 후 밴드 목록을 불러오면 여기에 표시됩니다.</p></div>`;
+    return;
+  }
+
+  bandList.innerHTML = bandItems
+    .map((item) => {
+      const selected = item.band_key === selectedBandKey;
+      return `
+        <button class="band-item ${selected ? "selected" : ""}" type="button" data-band-key="${escapeHtml(item.band_key)}">
+          <span class="band-item-name">${escapeHtml(item.name ?? item.band_key)}</span>
+          <span class="band-item-meta">band_key: ${escapeHtml(item.band_key)}</span>
+          <span class="band-item-meta">멤버 ${formatNumber(item.member_count)}명</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderPostList() {
+  if (!postList || !postCountLabel) {
+    return;
+  }
+
+  postCountLabel.textContent = `${postItems.length}개`;
+  if (!postItems.length) {
+    postList.innerHTML = `<div class="empty-state"><p>밴드를 선택하면 최근 게시글을 여기에 보여드립니다.</p></div>`;
+    return;
+  }
+
+  postList.innerHTML = postItems
+    .map((item) => `
+      <button class="post-item" type="button" data-post-key="${escapeHtml(item.postKey ?? "")}">
+        <span class="post-item-title">${escapeHtml(item.author || "작성자 미상")}</span>
+        <span class="post-item-meta">${escapeHtml(formatBandPostDate(item.createdAt))}</span>
+        <span class="post-item-preview">${escapeHtml(buildPostPreview(item.content))}</span>
+      </button>
+    `)
+    .join("");
+}
+
+function buildPostPreview(content) {
+  if (!content) {
+    return "내용이 없는 게시글입니다.";
+  }
+
+  return content.length > 140 ? `${content.slice(0, 140)}...` : content;
+}
+
+function formatBandPostDate(value) {
+  if (!value) {
+    return "작성 시각 없음";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+async function runBandPostAnalysis(postKey) {
+  if (!bandAccessToken || !selectedBandKey) {
+    renderBandSetupState();
+    return;
+  }
+
+  setStatus("loading", "게시글 분석 중");
+  showSummary("");
+  showError("");
+  results.classList.remove("empty");
+  results.innerHTML = `<div class="empty-state"><p>BAND 寃뚯떆湲??遺꾩꽍?섎뒗 以묒엯?덈떎...</p></div>`;
+
+  try {
+    const response = await fetch("/analysis/from-post", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        accessToken: bandAccessToken,
+        bandKey: selectedBandKey,
+        postKey
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "게시글 분석에 실패했습니다.");
+    }
+
+    currentAnalysis = null;
+    cleanupChart();
+    results.innerHTML = renderBandPostAnalysis(payload);
+    showSummary(`게시글에서 종목 ${payload.symbols?.length ?? 0}개를 추출해 분석했습니다.`);
+    setStatus("done", "분석 완료");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "게시글 분석 중 오류가 발생했습니다.";
+    setStatus("error", "분석 실패");
+    showError(message);
+    results.classList.add("empty");
+    results.innerHTML = `<div class="empty-state"><p>게시글 분석에 실패했습니다. 다시 시도해주세요.</p></div>`;
+  }
+}
+
+function renderBandPostAnalysis(payload) {
+  const symbols = Array.isArray(payload.symbols) ? payload.symbols : [];
+  const analyses = Array.isArray(payload.analyses) ? payload.analyses : [];
+  const post = payload.post ?? {};
+
+  return `
+    <article class="result-card">
+      <div class="post-analysis-header">
+        <h3>BAND 게시글 분석</h3>
+        <div class="meta-line">${escapeHtml(post.author || "작성자 미상")} / ${escapeHtml(formatBandPostDate(post.createdAt))}</div>
+      </div>
+      <div class="post-analysis-body">
+        <div class="post-content-box">${escapeHtml(post.content || "게시글 본문이 없습니다.")}</div>
+        <div class="symbol-chip-row">
+          ${symbols.length ? symbols.map((symbol) => `<span class="symbol-chip">${escapeHtml(symbol)}</span>`).join("") : '<span class="symbol-chip">추출된 종목 없음</span>'}
+        </div>
+        <div class="symbol-analysis-list">
+          ${analyses.map((analysis) => renderSymbolAnalysisCard(analysis)).join("")}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderSymbolAnalysisCard(analysis) {
+  const trendClass =
+    analysis.trend === "bullish" ? "positive" : analysis.trend === "bearish" ? "negative" : "neutral";
+
+  return `
+    <article class="symbol-analysis-card">
+      <div class="symbol-analysis-head">
+        <div>
+          <h4>${escapeHtml(analysis.shortName || analysis.symbol)}</h4>
+          <div class="symbol-analysis-meta">${escapeHtml(analysis.symbol)} / ${escapeHtml(analysis.exchangeName || analysis.resolvedSymbol || "-")}</div>
+        </div>
+        <div class="return-pill ${trendClass}">${escapeHtml(analysis.trend)}</div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <span class="metric-label">현재가</span>
+          <span class="metric-value">${formatNumber(analysis.price)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">1일 변동</span>
+          <span class="metric-value">${formatPercent(analysis.changePercent1d)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">20일 변동</span>
+          <span class="metric-value">${formatPercent(analysis.changePercent20d)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">RSI 14</span>
+          <span class="metric-value">${analysis.rsi14 == null ? "-" : analysis.rsi14.toFixed(1)}</span>
+        </div>
+      </div>
+      <div class="symbol-analysis-summary">${escapeHtml(analysis.summary || "")}</div>
+    </article>
+  `;
+}
 
 function renderSelector() {
   const pagedItems = getPagedItems();
@@ -296,27 +716,38 @@ function renderSelector() {
     .join("");
 
   if (!pagedItems.length) {
-    stockSelector.innerHTML = `<div class="empty-state"><p>등록된 종목이 없습니다. 종목 추가로 시작해보세요.</p></div>`;
+    const categoryLabel = currentCategory === "swing" ? "스윙" : "중장기";
+    stockSelector.innerHTML = `<div class="empty-state"><p>${categoryLabel}  탭에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.</p></div>`;
   }
 
   updatePaginationUi();
+}
+
+function renderCategoryTabs() {
+  if (!stockCategoryTabs) {
+    return;
+  }
+
+  for (const tab of stockCategoryTabs.querySelectorAll("[data-category]")) {
+    tab.classList.toggle("active", tab.dataset.category === currentCategory);
+  }
 }
 
 function loadCatalog() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return [...defaultRecommendationCatalog];
+      return defaultRecommendationCatalog.map(normalizeRecommendation);
     }
 
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || !parsed.length) {
-      return [...defaultRecommendationCatalog];
+      return defaultRecommendationCatalog.map(normalizeRecommendation);
     }
 
-    return parsed.filter(isValidRecommendation);
+    return parsed.filter(isValidRecommendation).map(normalizeRecommendation);
   } catch {
-    return [...defaultRecommendationCatalog];
+    return defaultRecommendationCatalog.map(normalizeRecommendation);
   }
 }
 
@@ -334,17 +765,33 @@ function isValidRecommendation(item) {
   );
 }
 
+function normalizeRecommendation(item) {
+  return {
+    ...item,
+    category: item?.category === "swing" ? "swing" : DEFAULT_CATEGORY
+  };
+}
+
+function getFilteredInitialKey() {
+  return recommendationCatalog.find((item) => (item.category ?? DEFAULT_CATEGORY) === currentCategory)?.key ?? null;
+}
+
+function getFilteredCatalog() {
+  return recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === currentCategory);
+}
+
 function getPagedItems() {
+  const filteredCatalog = getFilteredCatalog();
   if (itemsPerPage === PAGE_SIZE_ALL) {
-    return recommendationCatalog;
+    return filteredCatalog;
   }
 
   const start = (currentPage - 1) * itemsPerPage;
-  return recommendationCatalog.slice(start, start + itemsPerPage);
+  return filteredCatalog.slice(start, start + itemsPerPage);
 }
 
 function getTotalPages() {
-  return getTotalPagesForCount(recommendationCatalog.length);
+  return getTotalPagesForCount(getFilteredCatalog().length);
 }
 
 function getTotalPagesForCount(count) {
@@ -383,17 +830,22 @@ function removeStock(key) {
   }
 
   if (selectedKey === key) {
-    selectedKey = recommendationCatalog[0].key;
+    selectedKey = getFilteredCatalog()[0]?.key ?? recommendationCatalog[0]?.key ?? null;
   }
 
-  currentPage = Math.min(currentPage, getTotalPagesForCount(recommendationCatalog.length));
+  currentPage = Math.min(currentPage, getTotalPages());
   saveCatalog();
   renderSelector();
-  runAnalysisByKey(selectedKey);
+  if (selectedKey) {
+    runAnalysisByKey(selectedKey);
+  }
 }
 
 function openStockModal() {
   stockForm.reset();
+  if (stockCategorySelect) {
+    stockCategorySelect.value = currentCategory;
+  }
   showError("");
   stockModal.classList.remove("hidden");
   stockNameInput.focus();
@@ -407,6 +859,7 @@ function buildStockFromForm() {
   const name = stockNameInput.value.trim();
   const symbol = stockSymbolInput.value.trim();
   const anchorDate = stockDateInput.value;
+  const category = stockCategorySelect?.value === "swing" ? "swing" : DEFAULT_CATEGORY;
   const recommendedPrice = Number(stockPriceInput.value);
   const extraNote = stockNoteInput.value.trim();
 
@@ -425,6 +878,7 @@ function buildStockFromForm() {
     key,
     name,
     symbol,
+    category,
     anchorDate,
     note: [formatNumber(recommendedPrice) + "원 기준", extraNote].filter(Boolean).join(" / ")
   };
@@ -444,7 +898,7 @@ async function runAnalysisByKey(key) {
   showSummary("");
   showError("");
   results.classList.remove("empty");
-  results.innerHTML = `<div class="empty-state"><p>${escapeHtml(item.name)} 데이터를 불러오는 중입니다...</p></div>`;
+  results.innerHTML = `<div class="empty-state"><p>${escapeHtml(item.name)}  데이터를 불러오는 중입니다...</p></div>`;
 
   try {
     const response = await fetch("/analysis/recommendations", {
@@ -470,7 +924,7 @@ async function runAnalysisByKey(key) {
     results.innerHTML = renderCard(currentAnalysis);
     mountInteractiveChart(currentAnalysis.chartSets[currentAnalysis.activeTimeframe], currentAnalysis.tradingAnchorDate);
     setStatus("done", "완료");
-    showSummary(`${item.name} 분석이 완료되었습니다. 휠 확대/축소, 드래그 이동, 툴팁이 지원됩니다.`);
+    showSummary(`${item.name} 분석이 완료되었습니다. 확대/축소, 드래그 이동, 툴팁을 지원합니다.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     setStatus("error", "오류");
@@ -599,7 +1053,7 @@ function renderCard(item) {
           <span class="metric-value">${formatPercent(item.maxGainPercent)}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">최대 낙폭</span>
+          <span class="metric-label">최대 하락</span>
           <span class="metric-value">${formatPercent(item.maxDrawdownPercent)}</span>
         </div>
         <div class="metric">
@@ -615,7 +1069,7 @@ function renderCard(item) {
           <span class="metric-value">${formatMultiplier(item.anchorVolumeVs20dBefore)}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">최신 거래량 배수</span>
+          <span class="metric-label">최근 거래량 배수</span>
           <span class="metric-value">${formatMultiplier(item.latestVolumeVs20d)}</span>
         </div>
       </div>
@@ -633,7 +1087,7 @@ function renderCard(item) {
             .join("")}
         </div>
         <div class="chart-box interactive-chart-box">
-          <div class="chart-hint">마우스 휠 확대/축소, 드래그 이동, 십자선 툴팁</div>
+          <div class="chart-hint">마우스 휠로 확대/축소, 드래그로 이동, 십자선 툴팁을 지원합니다.</div>
           <div class="chart-legend">
             <span class="legend-item"><span class="legend-line ma5"></span>5일선</span>
             <span class="legend-item"><span class="legend-line ma20"></span>20일선</span>
@@ -690,7 +1144,12 @@ function mountInteractiveChart(points, anchorDate) {
     },
     crosshair: {
       mode: CrosshairMode.Normal,
-      vertLine: { color: "rgba(159,62,25,0.45)", width: 1, style: LineStyle.Dashed },
+      vertLine: {
+        color: "rgba(159,62,25,0.45)",
+        width: 1,
+        style: LineStyle.Dashed,
+        labelVisible: false
+      },
       horzLine: { color: "rgba(159,62,25,0.25)", width: 1, style: LineStyle.Dashed }
     },
     rightPriceScale: {
@@ -809,7 +1268,7 @@ function mountInteractiveChart(points, anchorDate) {
     tooltip.style.top = `${top}px`;
     tooltip.classList.remove("hidden");
     tooltip.innerHTML = `
-      <div class="tooltip-date">${escapeHtml(String(param.time))}</div>
+      <div class="tooltip-date">${escapeHtml(formatKoreanChartDate(String(param.time)))}</div>
       <div>시가 ${formatNumber(candleData.open)}</div>
       <div>고가 ${formatNumber(candleData.high)}</div>
       <div>저가 ${formatNumber(candleData.low)}</div>
@@ -871,7 +1330,7 @@ function renderFundamentals(fundamentals) {
     return `
       <section class="fundamentals-panel empty-fundamentals">
         <h4>재무지표</h4>
-        <p>이 종목은 재무 데이터를 찾지 못했거나 ETF라서 표시할 재무제표가 없습니다.</p>
+        <p>이 종목은 재무 데이터를 찾지 못했거나 ETF여서 표시할 재무지표가 없습니다.</p>
       </section>
     `;
   }
@@ -950,6 +1409,25 @@ function formatMultiplier(value) {
   return `${value.toFixed(2)}x`;
 }
 
+function formatKoreanChartDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    timeZone: "UTC"
+  }).format(date);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -958,3 +1436,10 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+
+
+
+
+
+
