@@ -1,6 +1,17 @@
 import { config } from "../config.js";
 import { readJson } from "../lib/http.js";
-import type { ChartPoint, RecommendationAnalysis, RecommendationRequest, StockAnalysis } from "../types.js";
+import type {
+  ChartPoint,
+  RecommendationAnalysis,
+  RecommendationPatternAnalysis,
+  RecommendationPatternFilters,
+  RecommendationPatternMatch,
+  RecommendationRequest,
+  SmartMoneyPatternAnalysis,
+  SmartMoneyPatternFilters,
+  SmartMoneyPatternMatch,
+  StockAnalysis
+} from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
 
@@ -61,6 +72,7 @@ function average(values: number[]): number | undefined {
   if (!values.length) {
     return undefined;
   }
+
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
@@ -95,6 +107,7 @@ function percentChange(current: number, previous?: number): number | undefined {
   if (!previous || previous === 0) {
     return undefined;
   }
+
   return ((current - previous) / previous) * 100;
 }
 
@@ -113,6 +126,7 @@ function averageDefined(values: Array<number | undefined>, count?: number): numb
   if (count != null) {
     return average(filtered.slice(-count));
   }
+
   return average(filtered);
 }
 
@@ -120,7 +134,12 @@ function ratio(value?: number, base?: number): number | undefined {
   if (value == null || base == null || base === 0) {
     return undefined;
   }
+
   return value / base;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
@@ -136,12 +155,12 @@ function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
     }
 
     points.push({
-        date: toIsoDate(new Date(timestamp * 1000)),
-        open: quote?.open?.[index] ?? undefined,
-        high: quote?.high?.[index] ?? undefined,
-        low: quote?.low?.[index] ?? undefined,
-        close,
-        volume: quote?.volume?.[index] ?? undefined
+      date: toIsoDate(new Date(timestamp * 1000)),
+      open: quote?.open?.[index] ?? undefined,
+      high: quote?.high?.[index] ?? undefined,
+      low: quote?.low?.[index] ?? undefined,
+      close,
+      volume: quote?.volume?.[index] ?? undefined
     });
   }
 
@@ -280,6 +299,7 @@ function describeTrend(params: {
         summary: "상승 추세지만 RSI가 높아 단기 과열 가능성이 있습니다."
       };
     }
+
     return {
       trend: "bullish",
       summary: "단기 평균이 중기 평균보다 높고 가격도 그 위에 있어 상승 흐름으로 해석됩니다."
@@ -293,6 +313,7 @@ function describeTrend(params: {
         summary: "하락 추세이며 RSI가 낮아 단기 반등 가능성도 함께 봐야 합니다."
       };
     }
+
     return {
       trend: "bearish",
       summary: "단기 평균이 중기 평균 아래에 있어 약세 흐름으로 해석됩니다."
@@ -301,7 +322,7 @@ function describeTrend(params: {
 
   return {
     trend: "neutral",
-    summary: "이동평균과 가격 위치가 엇갈려 있어 방향성이 뚜렷하지 않습니다."
+    summary: "이동평균과 가격 위치가 엇갈려 있어 방향성이 선명하지 않습니다."
   };
 }
 
@@ -310,7 +331,7 @@ export async function analyzeSymbol(rawSymbol: string): Promise<StockAnalysis> {
   const { quote, points } = await fetchQuoteAndChart(symbol, { range: "3mo" });
   const closes = points.map((point) => point.close);
 
-  if (!quote || !closes?.length || typeof quote.regularMarketPrice !== "number") {
+  if (!quote || !closes.length || typeof quote.regularMarketPrice !== "number") {
     throw new Error(`No price data available for ${symbol}`);
   }
 
@@ -357,6 +378,592 @@ function getQuoteSummary(quote: QuoteSummary | undefined, points: ChartPoint[]) 
   };
 }
 
+const defaultRecommendationPatternFilters: RecommendationPatternFilters = {
+  lookbackTradingDays: 10,
+  minPriceChangePercent: 7,
+  minVolumeRatio: 3,
+  minSignalScore: 50,
+  breakoutWindowDays: 20,
+  requireBreakout: false,
+  closeNearHighRatio: 0.985
+};
+
+const defaultSmartMoneyPatternFilters: SmartMoneyPatternFilters = {
+  lookbackTradingDays: 35,
+  breakoutLookbackDays: 20,
+  minLeadInPriceChangePercent: 4,
+  minLeadInVolumeRatio: 2.5,
+  minBreakoutPriceChangePercent: 8,
+  minBreakoutVolumeRatio: 3.5,
+  minPullbackSessions: 1,
+  maxPullbackSessions: 30,
+  maxPullbackDrawdownPercent: 6.5,
+  maxPullbackAvgVolumeRatio: 0.65,
+  minPatternScore: 60,
+  minSetupPatternScore: 55,
+  minBreakoutPatternScore: 68,
+  closeNearHighRatio: 0.985,
+  recentSignalSessions: 2
+};
+
+function averageNumberSeries(values: Array<number | undefined>): number | undefined {
+  return average(values.filter((value): value is number => typeof value === "number"));
+}
+
+function getAverageVolumeBefore(points: ChartPoint[], index: number, period = 20): number | undefined {
+  return averageNumberSeries(points.slice(Math.max(0, index - period), index).map((point) => point.volume));
+}
+
+function getHighestCloseBefore(points: ChartPoint[], index: number, period: number): number | undefined {
+  const closes = points.slice(Math.max(0, index - period), index).map((point) => point.close);
+  return closes.length ? Math.max(...closes) : undefined;
+}
+
+function toSignal(score: number): SmartMoneyPatternMatch["signal"] {
+  if (score >= 85) {
+    return "explosive";
+  }
+  if (score >= 65) {
+    return "strong";
+  }
+  return "watch";
+}
+
+function buildEmptyPattern(windowPoints: ChartPoint[]): RecommendationPatternMatch {
+  return {
+    matched: false,
+    windowStartDate: windowPoints[0]?.date,
+    windowEndDate: windowPoints.at(-1)?.date,
+    signalDate: undefined,
+    signalScore: 0,
+    signal: "watch",
+    sessionsBeforeAnchor: undefined,
+    close: undefined,
+    previousClose: undefined,
+    priceChangePercent: undefined,
+    volume: undefined,
+    avgVolume20: undefined,
+    volumeRatio20d: undefined,
+    breakout10d: false,
+    breakout20d: false,
+    closedNearHigh: false,
+    reasons: ["No qualifying momentum signal was found in the pre-anchor window."],
+    summary: "No qualifying momentum signal was found in the pre-anchor window."
+  };
+}
+
+function evaluatePreAnchorMomentumWindow(
+  points: ChartPoint[],
+  anchorIndex: number,
+  filters: RecommendationPatternFilters
+): RecommendationPatternMatch {
+  const windowStartIndex = Math.max(0, anchorIndex - filters.lookbackTradingDays);
+  const windowPoints = points.slice(windowStartIndex, anchorIndex);
+
+  if (!windowPoints.length) {
+    return buildEmptyPattern(windowPoints);
+  }
+
+  let bestMatch = buildEmptyPattern(windowPoints);
+
+  for (let index = windowStartIndex; index < anchorIndex; index += 1) {
+    const point = points[index];
+    const previousPoint = points[index - 1];
+    if (!point || !previousPoint) {
+      continue;
+    }
+
+    const trailingVolumes20 = points
+      .slice(Math.max(0, index - 20), index)
+      .map((candidate) => candidate.volume);
+    const avgVolume20 = averageNumberSeries(trailingVolumes20);
+    const volumeRatio20d = ratio(point.volume, avgVolume20);
+
+    const trailingCloses10 = points.slice(Math.max(0, index - 10), index).map((candidate) => candidate.close);
+    const trailingCloses20 = points.slice(Math.max(0, index - 20), index).map((candidate) => candidate.close);
+    const highestClose10 = trailingCloses10.length ? Math.max(...trailingCloses10) : undefined;
+    const highestClose20 = trailingCloses20.length ? Math.max(...trailingCloses20) : undefined;
+    const breakout10d = highestClose10 != null ? point.close >= highestClose10 : false;
+    const breakout20d = highestClose20 != null ? point.close >= highestClose20 : false;
+    const closedNearHigh = point.high != null ? point.close >= point.high * filters.closeNearHighRatio : false;
+    const priceChangePercent = percentChange(point.close, previousPoint.close);
+
+    let signalScore = 0;
+    const reasons: string[] = [];
+
+    if (priceChangePercent != null && priceChangePercent >= 20) {
+      signalScore += 35;
+      reasons.push(`Price rose ${priceChangePercent.toFixed(1)}% in one session.`);
+    } else if (priceChangePercent != null && priceChangePercent >= 12) {
+      signalScore += 25;
+      reasons.push(`Price rose ${priceChangePercent.toFixed(1)}% in one session.`);
+    } else if (priceChangePercent != null && priceChangePercent >= filters.minPriceChangePercent) {
+      signalScore += 15;
+      reasons.push(`Price rose ${priceChangePercent.toFixed(1)}% in one session.`);
+    }
+
+    if (volumeRatio20d != null && volumeRatio20d >= Math.max(filters.minVolumeRatio, 6)) {
+      signalScore += 35;
+      reasons.push(`Volume reached ${volumeRatio20d.toFixed(1)}x the 20-day average.`);
+    } else if (volumeRatio20d != null && volumeRatio20d >= Math.max(filters.minVolumeRatio, 3)) {
+      signalScore += 25;
+      reasons.push(`Volume reached ${volumeRatio20d.toFixed(1)}x the 20-day average.`);
+    } else if (volumeRatio20d != null && volumeRatio20d >= filters.minVolumeRatio) {
+      signalScore += 15;
+      reasons.push(`Volume reached ${volumeRatio20d.toFixed(1)}x the 20-day average.`);
+    }
+
+    if (breakout20d) {
+      signalScore += 20;
+      reasons.push("Closed at a 20-day closing-price breakout.");
+    } else if (breakout10d) {
+      signalScore += 12;
+      reasons.push("Closed at a 10-day closing-price breakout.");
+    }
+
+    if (closedNearHigh) {
+      signalScore += 10;
+      reasons.push("Finished near the session high.");
+    }
+
+    signalScore = clamp(signalScore, 0, 100);
+
+    let signal: RecommendationPatternMatch["signal"] = "watch";
+    if (signalScore >= 80) {
+      signal = "explosive";
+    } else if (signalScore >= 55) {
+      signal = "strong";
+    }
+
+    const matched =
+      signalScore >= filters.minSignalScore &&
+      (priceChangePercent ?? -Infinity) >= filters.minPriceChangePercent &&
+      (volumeRatio20d ?? -Infinity) >= filters.minVolumeRatio &&
+      (!filters.requireBreakout || breakout10d || breakout20d);
+
+    const candidate: RecommendationPatternMatch = {
+      matched,
+      windowStartDate: windowPoints[0]?.date,
+      windowEndDate: windowPoints.at(-1)?.date,
+      signalDate: point.date,
+      signalScore,
+      signal,
+      sessionsBeforeAnchor: anchorIndex - index,
+      close: point.close,
+      previousClose: previousPoint.close,
+      priceChangePercent,
+      volume: point.volume,
+      avgVolume20,
+      volumeRatio20d,
+      breakout10d,
+      breakout20d,
+      closedNearHigh,
+      reasons,
+      summary: reasons.length ? reasons.join(" ") : "Momentum expanded, but not enough to clear the configured thresholds."
+    };
+
+    if (candidate.signalScore > bestMatch.signalScore || (candidate.matched && !bestMatch.matched)) {
+      bestMatch = candidate;
+    }
+  }
+
+  return bestMatch;
+}
+
+function buildEmptySmartMoneyPattern(referenceDate: string, windowPoints: ChartPoint[]): SmartMoneyPatternMatch {
+  return {
+    matched: false,
+    actionable: false,
+    stage: "none",
+    signal: "watch",
+    patternScore: 0,
+    referenceDate,
+    windowStartDate: windowPoints[0]?.date,
+    windowEndDate: windowPoints.at(-1)?.date,
+    leadInDate: undefined,
+    sessionsSinceLeadIn: undefined,
+    leadInPriceChangePercent: undefined,
+    pullbackStartDate: undefined,
+    pullbackEndDate: undefined,
+    breakoutDate: undefined,
+    sessionsSinceBreakout: undefined,
+    leadInClose: undefined,
+    leadInVolume: undefined,
+    leadInVolumeRatio20d: undefined,
+    pullbackVolumeRatioToLeadIn: undefined,
+    breakoutClose: undefined,
+    breakoutPriceChangePercent: undefined,
+    breakoutVolume: undefined,
+    breakoutVolumeRatio20d: undefined,
+    breakoutCloseVsLeadInPercent: undefined,
+    referenceClose: undefined,
+    referenceCloseVsLeadInPercent: undefined,
+    pullbackSessions: 0,
+    pullbackMaxDrawdownPercent: undefined,
+    breakout20d: false,
+    closedNearHigh: false,
+    reasons: ["No smart-money entry pattern was found in the selected window."],
+    summary: "No smart-money entry pattern was found in the selected window."
+  };
+}
+
+function resolveReferenceIndex(points: ChartPoint[], referenceDate?: string): number {
+  if (!points.length) {
+    return -1;
+  }
+
+  if (!referenceDate) {
+    return points.length - 1;
+  }
+
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    if (points[index].date <= referenceDate) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function getSmartMoneyStageRank(stage: SmartMoneyPatternMatch["stage"]): number {
+  if (stage === "breakout") {
+    return 2;
+  }
+  if (stage === "setup") {
+    return 1;
+  }
+  return 0;
+}
+
+function isBetterSmartMoneyCandidate(candidate: SmartMoneyPatternMatch, bestMatch: SmartMoneyPatternMatch): boolean {
+  if (candidate.actionable !== bestMatch.actionable) {
+    return candidate.actionable;
+  }
+
+  const candidateStageRank = getSmartMoneyStageRank(candidate.stage);
+  const bestStageRank = getSmartMoneyStageRank(bestMatch.stage);
+  if (candidateStageRank !== bestStageRank) {
+    return candidateStageRank > bestStageRank;
+  }
+
+  if (candidate.patternScore !== bestMatch.patternScore) {
+    return candidate.patternScore > bestMatch.patternScore;
+  }
+
+  if (candidate.breakoutDate && bestMatch.breakoutDate) {
+    return candidate.breakoutDate > bestMatch.breakoutDate;
+  }
+
+  if (candidate.leadInDate && bestMatch.leadInDate) {
+    return candidate.leadInDate > bestMatch.leadInDate;
+  }
+
+  return false;
+}
+
+function evaluateSmartMoneyPatternWindow(
+  points: ChartPoint[],
+  referenceIndex: number,
+  filters: SmartMoneyPatternFilters
+): SmartMoneyPatternMatch {
+  const windowStartIndex = Math.max(1, referenceIndex - filters.lookbackTradingDays + 1);
+  const windowPoints = points.slice(windowStartIndex, referenceIndex + 1);
+  const referenceDate = points[referenceIndex]?.date ?? "";
+
+  if (!windowPoints.length) {
+    return buildEmptySmartMoneyPattern(referenceDate, windowPoints);
+  }
+
+  let bestMatch = buildEmptySmartMoneyPattern(referenceDate, windowPoints);
+  const referencePoint = points[referenceIndex];
+
+  for (let leadInIndex = windowStartIndex; leadInIndex <= referenceIndex - filters.minPullbackSessions; leadInIndex += 1) {
+    const leadInPoint = points[leadInIndex];
+    const leadInPrevious = points[leadInIndex - 1];
+    if (!leadInPoint || !leadInPrevious || !referencePoint) {
+      continue;
+    }
+
+    const leadInPriceChangePercent = percentChange(leadInPoint.close, leadInPrevious.close);
+    const leadInAvgVolume20 = getAverageVolumeBefore(points, leadInIndex, 20);
+    const leadInVolumeRatio20d = ratio(leadInPoint.volume, leadInAvgVolume20);
+
+    if (
+      leadInPriceChangePercent == null ||
+      leadInPriceChangePercent < filters.minLeadInPriceChangePercent ||
+      leadInVolumeRatio20d == null ||
+      leadInVolumeRatio20d < filters.minLeadInVolumeRatio
+    ) {
+      continue;
+    }
+
+    const pullbackPoints = points.slice(leadInIndex + 1, referenceIndex + 1);
+    if (
+      pullbackPoints.length < filters.minPullbackSessions ||
+      pullbackPoints.length > filters.maxPullbackSessions
+    ) {
+      continue;
+    }
+
+    const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
+    const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, leadInPoint.volume);
+    const pullbackLowestClose = Math.min(...pullbackPoints.map((point) => point.close));
+    const pullbackMaxDrawdownPercent = Math.abs(percentChange(pullbackLowestClose, leadInPoint.close) ?? 0);
+
+    if (
+      pullbackVolumeRatioToLeadIn == null ||
+      pullbackVolumeRatioToLeadIn > filters.maxPullbackAvgVolumeRatio ||
+      pullbackMaxDrawdownPercent > filters.maxPullbackDrawdownPercent
+    ) {
+      continue;
+    }
+
+    const referenceCloseVsLeadInPercent = percentChange(referencePoint.close, leadInPoint.close);
+    if (referenceCloseVsLeadInPercent == null) {
+      continue;
+    }
+
+    let patternScore = 0;
+    const reasons: string[] = [];
+
+    if (leadInPriceChangePercent >= 10) {
+      patternScore += 22;
+    } else if (leadInPriceChangePercent >= 7) {
+      patternScore += 18;
+    } else {
+      patternScore += 14;
+    }
+    reasons.push(`Lead-in day on ${leadInPoint.date} rose ${leadInPriceChangePercent.toFixed(1)}% with volume ${leadInVolumeRatio20d.toFixed(1)}x.`);
+
+    if (pullbackVolumeRatioToLeadIn <= 0.35) {
+      patternScore += 24;
+    } else if (pullbackVolumeRatioToLeadIn <= 0.5) {
+      patternScore += 20;
+    } else {
+      patternScore += 14;
+    }
+
+    if (pullbackMaxDrawdownPercent <= 3) {
+      patternScore += 20;
+    } else if (pullbackMaxDrawdownPercent <= 5) {
+      patternScore += 14;
+    } else {
+      patternScore += 10;
+    }
+    reasons.push(
+      `Since then volume contracted to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% of the lead-in day while the pullback held within ${pullbackMaxDrawdownPercent.toFixed(1)}% for ${pullbackPoints.length} sessions.`
+    );
+
+    if (referenceCloseVsLeadInPercent >= -1) {
+      patternScore += 18;
+    } else if (referenceCloseVsLeadInPercent >= -3) {
+      patternScore += 14;
+    } else {
+      patternScore += 8;
+    }
+
+    const sessionsSinceLeadIn = referenceIndex - leadInIndex;
+    if (sessionsSinceLeadIn <= 10) {
+      patternScore += 12;
+    } else if (sessionsSinceLeadIn <= 20) {
+      patternScore += 8;
+    } else {
+      patternScore += 4;
+    }
+    reasons.push(
+      `The current close is ${referenceCloseVsLeadInPercent.toFixed(1)}% versus the lead-in close, so the post-surge pullback still looks like an active setup.`
+    );
+
+    patternScore = clamp(patternScore, 0, 100);
+    const matched = patternScore >= filters.minSetupPatternScore;
+
+    const candidate: SmartMoneyPatternMatch = {
+      matched,
+      actionable: matched,
+      stage: "setup",
+      signal: toSignal(patternScore),
+      patternScore,
+      referenceDate,
+      windowStartDate: windowPoints[0]?.date,
+      windowEndDate: windowPoints.at(-1)?.date,
+      leadInDate: leadInPoint.date,
+      sessionsSinceLeadIn,
+      leadInPriceChangePercent,
+      pullbackStartDate: pullbackPoints[0]?.date,
+      pullbackEndDate: pullbackPoints.at(-1)?.date,
+      breakoutDate: undefined,
+      sessionsSinceBreakout: undefined,
+      leadInClose: leadInPoint.close,
+      leadInVolume: leadInPoint.volume,
+      leadInVolumeRatio20d,
+      pullbackVolumeRatioToLeadIn,
+      breakoutClose: undefined,
+      breakoutPriceChangePercent: undefined,
+      breakoutVolume: undefined,
+      breakoutVolumeRatio20d: undefined,
+      breakoutCloseVsLeadInPercent: undefined,
+      referenceClose: referencePoint.close,
+      referenceCloseVsLeadInPercent,
+      pullbackSessions: pullbackPoints.length,
+      pullbackMaxDrawdownPercent,
+      breakout20d: false,
+      closedNearHigh: false,
+      reasons,
+      summary: reasons.join(" ")
+    };
+
+    if (isBetterSmartMoneyCandidate(candidate, bestMatch)) {
+      bestMatch = candidate;
+    }
+  }
+
+  for (let breakoutIndex = windowStartIndex + filters.minPullbackSessions + 1; breakoutIndex <= referenceIndex; breakoutIndex += 1) {
+    const breakoutPoint = points[breakoutIndex];
+    const breakoutPrevious = points[breakoutIndex - 1];
+    if (!breakoutPoint || !breakoutPrevious) {
+      continue;
+    }
+
+    const breakoutPriceChangePercent = percentChange(breakoutPoint.close, breakoutPrevious.close);
+    const breakoutAvgVolume20 = getAverageVolumeBefore(points, breakoutIndex, 20);
+    const breakoutVolumeRatio20d = ratio(breakoutPoint.volume, breakoutAvgVolume20);
+    const highestClose20 = getHighestCloseBefore(points, breakoutIndex, filters.breakoutLookbackDays);
+    const breakout20d = highestClose20 != null ? breakoutPoint.close >= highestClose20 : false;
+    const closedNearHigh = breakoutPoint.high != null ? breakoutPoint.close >= breakoutPoint.high * filters.closeNearHighRatio : false;
+
+    if (
+      breakoutPriceChangePercent == null ||
+      breakoutPriceChangePercent < filters.minBreakoutPriceChangePercent ||
+      breakoutVolumeRatio20d == null ||
+      breakoutVolumeRatio20d < filters.minBreakoutVolumeRatio ||
+      !breakout20d ||
+      !closedNearHigh
+    ) {
+      continue;
+    }
+
+    const leadInStartIndex = Math.max(windowStartIndex, breakoutIndex - (filters.maxPullbackSessions + 3));
+    for (let leadInIndex = leadInStartIndex; leadInIndex <= breakoutIndex - filters.minPullbackSessions - 1; leadInIndex += 1) {
+      const leadInPoint = points[leadInIndex];
+      const leadInPrevious = points[leadInIndex - 1];
+      if (!leadInPoint || !leadInPrevious) {
+        continue;
+      }
+
+      const leadInPriceChangePercent = percentChange(leadInPoint.close, leadInPrevious.close);
+      const leadInAvgVolume20 = getAverageVolumeBefore(points, leadInIndex, 20);
+      const leadInVolumeRatio20d = ratio(leadInPoint.volume, leadInAvgVolume20);
+
+      if (
+        leadInPriceChangePercent == null ||
+        leadInPriceChangePercent < filters.minLeadInPriceChangePercent ||
+        leadInVolumeRatio20d == null ||
+        leadInVolumeRatio20d < filters.minLeadInVolumeRatio
+      ) {
+        continue;
+      }
+
+      const pullbackPoints = points.slice(leadInIndex + 1, breakoutIndex);
+      if (
+        pullbackPoints.length < filters.minPullbackSessions ||
+        pullbackPoints.length > filters.maxPullbackSessions
+      ) {
+        continue;
+      }
+
+      const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
+      const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, leadInPoint.volume);
+      const pullbackLowestClose = Math.min(...pullbackPoints.map((point) => point.close));
+      const pullbackMaxDrawdownPercent = Math.abs(percentChange(pullbackLowestClose, leadInPoint.close) ?? 0);
+
+      if (
+        pullbackVolumeRatioToLeadIn == null ||
+        pullbackVolumeRatioToLeadIn > filters.maxPullbackAvgVolumeRatio ||
+        pullbackMaxDrawdownPercent > filters.maxPullbackDrawdownPercent
+      ) {
+        continue;
+      }
+
+      const breakoutCloseVsLeadInPercent = percentChange(breakoutPoint.close, leadInPoint.close);
+      let patternScore = 0;
+      const reasons: string[] = [];
+
+      if (leadInPriceChangePercent >= 10) {
+        patternScore += 20;
+      } else {
+        patternScore += 14;
+      }
+      reasons.push(`Lead-in day on ${leadInPoint.date} rose ${leadInPriceChangePercent.toFixed(1)}% with volume ${leadInVolumeRatio20d.toFixed(1)}x.`);
+
+      if (pullbackVolumeRatioToLeadIn <= 0.45) {
+        patternScore += 22;
+      } else {
+        patternScore += 16;
+      }
+      reasons.push(
+        `Pullback held for ${pullbackPoints.length} sessions with max drawdown ${pullbackMaxDrawdownPercent.toFixed(1)}% and volume contraction to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% of the lead-in day.`
+      );
+
+      if (breakoutPriceChangePercent >= 20) {
+        patternScore += 34;
+      } else if (breakoutPriceChangePercent >= 12) {
+        patternScore += 28;
+      } else {
+        patternScore += 22;
+      }
+      reasons.push(
+        `Breakout day on ${breakoutPoint.date} rose ${breakoutPriceChangePercent.toFixed(1)}% with volume ${breakoutVolumeRatio20d.toFixed(1)}x, cleared the ${filters.breakoutLookbackDays}-day close breakout, and finished near the high.`
+      );
+
+      patternScore = clamp(patternScore, 0, 100);
+      const sessionsSinceBreakout = referenceIndex - breakoutIndex;
+      const actionable = sessionsSinceBreakout <= filters.recentSignalSessions;
+      const matched = patternScore >= filters.minBreakoutPatternScore;
+
+      const candidate: SmartMoneyPatternMatch = {
+        matched,
+        actionable: matched && actionable,
+        stage: "breakout",
+        signal: toSignal(patternScore),
+        patternScore,
+        referenceDate,
+        windowStartDate: windowPoints[0]?.date,
+        windowEndDate: windowPoints.at(-1)?.date,
+        leadInDate: leadInPoint.date,
+        sessionsSinceLeadIn: referenceIndex - leadInIndex,
+        leadInPriceChangePercent,
+        pullbackStartDate: pullbackPoints[0]?.date,
+        pullbackEndDate: pullbackPoints.at(-1)?.date,
+        breakoutDate: breakoutPoint.date,
+        sessionsSinceBreakout,
+        leadInClose: leadInPoint.close,
+        leadInVolume: leadInPoint.volume,
+        leadInVolumeRatio20d,
+        pullbackVolumeRatioToLeadIn,
+        breakoutClose: breakoutPoint.close,
+        breakoutPriceChangePercent,
+        breakoutVolume: breakoutPoint.volume,
+        breakoutVolumeRatio20d,
+        breakoutCloseVsLeadInPercent,
+        referenceClose: referencePoint?.close,
+        referenceCloseVsLeadInPercent: referencePoint ? percentChange(referencePoint.close, leadInPoint.close) : undefined,
+        pullbackSessions: pullbackPoints.length,
+        pullbackMaxDrawdownPercent,
+        breakout20d,
+        closedNearHigh,
+        reasons,
+        summary: reasons.join(" ")
+      };
+
+      if (isBetterSmartMoneyCandidate(candidate, bestMatch)) {
+        bestMatch = candidate;
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
 export async function analyzeRecommendation(input: RecommendationRequest): Promise<RecommendationAnalysis> {
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
   const period1 = addDays(input.anchorDate, -40);
@@ -382,7 +989,6 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
   }
 
   const afterAnchorPoints = points.slice(anchorIndex);
-  const closesAfterAnchor = afterAnchorPoints.map((point) => point.close);
   const volumesBeforeAnchor = points.slice(Math.max(0, anchorIndex - 20), anchorIndex).map((point) => point.volume);
   const volumesAfterAnchor = afterAnchorPoints.slice(0, 20).map((point) => point.volume);
   const volumesLatest = points.slice(-20).map((point) => point.volume);
@@ -446,4 +1052,92 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
 
 export async function analyzeRecommendations(inputs: RecommendationRequest[]) {
   return Promise.all(inputs.map((input) => analyzeRecommendation(input)));
+}
+
+export async function analyzeRecommendationPattern(
+  input: RecommendationRequest,
+  overrides?: Partial<RecommendationPatternFilters>
+): Promise<RecommendationPatternAnalysis> {
+  const filters: RecommendationPatternFilters = {
+    ...defaultRecommendationPatternFilters,
+    ...overrides
+  };
+  const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+  const historyLookback = Math.max(90, filters.breakoutWindowDays + filters.lookbackTradingDays + 25);
+  const period1 = addDays(input.anchorDate, -historyLookback);
+  const { points } = await fetchQuoteAndChart(symbol, { period1 });
+
+  if (!points.length) {
+    throw new Error(`No chart data available for ${symbol}`);
+  }
+
+  const anchorIndex = points.findIndex((point) => point.date >= input.anchorDate);
+  if (anchorIndex === -1) {
+    throw new Error(`No trading session found on or after ${input.anchorDate} for ${symbol}`);
+  }
+
+  const anchorPoint = points[anchorIndex];
+  const pattern = evaluatePreAnchorMomentumWindow(points, anchorIndex, filters);
+
+  return {
+    name: input.name,
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    anchorDate: input.anchorDate,
+    tradingAnchorDate: anchorPoint.date,
+    latestMentionDate: input.latestMentionDate,
+    note: input.note,
+    pattern
+  };
+}
+
+export async function analyzeRecommendationPatterns(
+  inputs: RecommendationRequest[],
+  overrides?: Partial<RecommendationPatternFilters>
+) {
+  return Promise.all(inputs.map((input) => analyzeRecommendationPattern(input, overrides)));
+}
+
+export async function analyzeSmartMoneyPattern(
+  input: Pick<RecommendationRequest, "symbol" | "name" | "note"> & { referenceDate?: string },
+  overrides?: Partial<SmartMoneyPatternFilters>
+): Promise<SmartMoneyPatternAnalysis> {
+  const filters: SmartMoneyPatternFilters = {
+    ...defaultSmartMoneyPatternFilters,
+    ...overrides
+  };
+  const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+  const referenceDate = input.referenceDate ?? toIsoDate(new Date());
+  const historyLookback = Math.max(90, filters.lookbackTradingDays + filters.breakoutLookbackDays + 25);
+  const period1 = addDays(referenceDate, -historyLookback);
+  const { points } = await fetchQuoteAndChart(symbol, { period1 });
+
+  if (!points.length) {
+    throw new Error(`No chart data available for ${symbol}`);
+  }
+
+  const referenceIndex = resolveReferenceIndex(points, input.referenceDate);
+  if (referenceIndex === -1) {
+    throw new Error(`No trading session found on or before ${referenceDate} for ${symbol}`);
+  }
+
+  const referencePoint = points[referenceIndex];
+  const pattern = evaluateSmartMoneyPatternWindow(points, referenceIndex, filters);
+
+  return {
+    name: input.name,
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    referenceDate: input.referenceDate,
+    tradingReferenceDate: referencePoint.date,
+    note: input.note,
+    pattern
+  };
+}
+
+export async function analyzeSmartMoneyPatterns(
+  inputs: Array<Pick<RecommendationRequest, "symbol" | "name" | "note"> & { referenceDate?: string }>,
+  overrides?: Partial<SmartMoneyPatternFilters>
+) {
+  return Promise.all(inputs.map((input) => analyzeSmartMoneyPattern(input, overrides)));
 }

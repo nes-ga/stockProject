@@ -1,5 +1,15 @@
 import type { FundamentalsPeriod, FundamentalsSummary } from "../types.js";
 
+const TABLE_MARKER = "\uC8FC\uC694\uC7AC\uBB34\uC815\uBCF4";
+const ANALYSIS_SECTION_MARKER = "section cop_analysis";
+const ANALYSIS_TABLE_CLASS = "tb_type1_ifrs";
+const RECENT_ANNUAL = "\uCD5C\uADFC \uC5F0\uAC04";
+const RECENT_QUARTER = "\uCD5C\uADFC \uBD84\uAE30";
+const METRIC_REVENUE = ["\uB9E4\uCD9C\uC561"];
+const METRIC_OPERATING_INCOME = ["\uC601\uC5C5\uC774\uC775"];
+const METRIC_NET_INCOME = ["\uB2F9\uAE30\uC21C\uC774\uC775", "\uC9C0\uBC30\uC8FC\uC8FC\uC21C\uC774\uC775"];
+const METRIC_DEBT_RATIO = ["\uBD80\uCC44\uBE44\uC728"];
+
 function decodeHtml(text: string): string {
   return text
     .replace(/&nbsp;/g, " ")
@@ -8,8 +18,14 @@ function decodeHtml(text: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function readNaverHtml(response: Response): Promise<string> {
+  return response.text();
 }
 
 function stripTags(html: string): string {
@@ -21,12 +37,28 @@ function parseNumber(value: string): number | undefined {
   if (!normalized || normalized === "-" || Number.isNaN(Number(normalized))) {
     return undefined;
   }
+
   return Number(normalized);
 }
 
 function extractTable(html: string): string | undefined {
+  const sectionStart = html.indexOf(ANALYSIS_SECTION_MARKER);
+  if (sectionStart >= 0) {
+    const sectionHtml = html.slice(sectionStart);
+    const sectionTableMatch = sectionHtml.match(/<table[\s\S]*?<\/table>/i);
+    if (sectionTableMatch) {
+      return sectionTableMatch[0];
+    }
+  }
+
   const tables = html.match(/<table[\s\S]*?<\/table>/gi) ?? [];
-  return tables.find((table) => table.includes("주요재무정보"));
+  return tables.find(
+    (table) =>
+      table.includes(ANALYSIS_TABLE_CLASS) ||
+      table.includes(TABLE_MARKER) ||
+      table.includes(RECENT_ANNUAL) ||
+      table.includes(RECENT_QUARTER)
+  );
 }
 
 function extractHeaderCounts(tableHtml: string) {
@@ -45,10 +77,12 @@ function extractHeaderCounts(tableHtml: string) {
     const text = stripTags(inner);
     const colspanMatch = attrs.match(/colspan=["']?(\d+)/i);
     const colspan = colspanMatch ? Number(colspanMatch[1]) : 1;
-    if (text.includes("최근 연간")) {
+
+    if (text.includes(RECENT_ANNUAL)) {
       annualCount = colspan;
     }
-    if (text.includes("최근 분기")) {
+
+    if (text.includes(RECENT_QUARTER)) {
       quarterlyCount = colspan;
     }
   }
@@ -63,7 +97,7 @@ function extractHeaderLabels(tableHtml: string) {
   }
 
   const rows = theadMatch[0].match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
-  const labelRow = rows.at(-1) ?? "";
+  const labelRow = rows[1] ?? rows.at(-1) ?? "";
   const cells = [...labelRow.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)];
   return cells.map((match) => stripTags(match[1])).filter(Boolean);
 }
@@ -79,6 +113,7 @@ function extractBodyRows(tableHtml: string) {
     const cells = [...rowHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((match) =>
       stripTags(match[1])
     );
+
     return {
       label: cells[0] ?? "",
       values: cells.slice(1)
@@ -99,11 +134,11 @@ function buildPeriod(
     return undefined;
   }
 
-  const revenue = pickMetric(rows, ["매출액", "영업수익"]);
-  const operatingIncome = pickMetric(rows, ["영업이익"]);
-  const netIncome = pickMetric(rows, ["당기순이익", "지배주주순이익"]);
+  const revenue = pickMetric(rows, METRIC_REVENUE);
+  const operatingIncome = pickMetric(rows, METRIC_OPERATING_INCOME);
+  const netIncome = pickMetric(rows, METRIC_NET_INCOME);
   const roe = pickMetric(rows, ["ROE"]);
-  const debtRatio = pickMetric(rows, ["부채비율"]);
+  const debtRatio = pickMetric(rows, METRIC_DEBT_RATIO);
   const eps = pickMetric(rows, ["EPS"]);
   const bps = pickMetric(rows, ["BPS"]);
   const per = pickMetric(rows, ["PER"]);
@@ -140,7 +175,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
       return undefined;
     }
 
-    const html = await response.text();
+    const html = await readNaverHtml(response);
     const tableHtml = extractTable(html);
     if (!tableHtml) {
       return undefined;
@@ -150,8 +185,8 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
     const labels = extractHeaderLabels(tableHtml);
     const rows = extractBodyRows(tableHtml);
 
-    const annualLabels = labels.slice(1, 1 + annualCount);
-    const quarterlyLabels = labels.slice(1 + annualCount, 1 + annualCount + quarterlyCount);
+    const annualLabels = labels.slice(0, annualCount);
+    const quarterlyLabels = labels.slice(annualCount, annualCount + quarterlyCount);
     const annualIndex = annualLabels.length - 1;
     const quarterlyIndex = annualCount + quarterlyLabels.length - 1;
 

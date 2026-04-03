@@ -32,6 +32,122 @@ export type RecommendationRequest = {
   note?: string;
 };
 
+export type RecommendationPatternFilters = {
+  lookbackTradingDays: number;
+  minPriceChangePercent: number;
+  minVolumeRatio: number;
+  minSignalScore: number;
+  breakoutWindowDays: number;
+  requireBreakout: boolean;
+  closeNearHighRatio: number;
+};
+
+export type RecommendationPatternMatch = {
+  matched: boolean;
+  windowStartDate?: string;
+  windowEndDate?: string;
+  signalDate?: string;
+  signalScore: number;
+  signal: KoreanMoverSignal;
+  sessionsBeforeAnchor?: number;
+  close?: number;
+  previousClose?: number;
+  priceChangePercent?: number;
+  volume?: number;
+  avgVolume20?: number;
+  volumeRatio20d?: number;
+  breakout10d: boolean;
+  breakout20d: boolean;
+  closedNearHigh: boolean;
+  reasons: string[];
+  summary: string;
+};
+
+export type RecommendationPatternAnalysis = {
+  name?: string;
+  symbol: string;
+  resolvedSymbol: string;
+  anchorDate: string;
+  tradingAnchorDate: string;
+  latestMentionDate?: string;
+  note?: string;
+  pattern: RecommendationPatternMatch;
+};
+
+export type SmartMoneyPatternFilters = {
+  lookbackTradingDays: number;
+  breakoutLookbackDays: number;
+  minLeadInPriceChangePercent: number;
+  minLeadInVolumeRatio: number;
+  minBreakoutPriceChangePercent: number;
+  minBreakoutVolumeRatio: number;
+  minPullbackSessions: number;
+  maxPullbackSessions: number;
+  maxPullbackDrawdownPercent: number;
+  maxPullbackAvgVolumeRatio: number;
+  minPatternScore: number;
+  minSetupPatternScore: number;
+  minBreakoutPatternScore: number;
+  closeNearHighRatio: number;
+  recentSignalSessions: number;
+};
+
+export type SmartMoneyPatternMatch = {
+  matched: boolean;
+  actionable: boolean;
+  stage: "none" | "setup" | "breakout";
+  signal: KoreanMoverSignal;
+  patternScore: number;
+  referenceDate: string;
+  windowStartDate?: string;
+  windowEndDate?: string;
+  leadInDate?: string;
+  sessionsSinceLeadIn?: number;
+  leadInPriceChangePercent?: number;
+  pullbackStartDate?: string;
+  pullbackEndDate?: string;
+  breakoutDate?: string;
+  sessionsSinceBreakout?: number;
+  leadInClose?: number;
+  leadInVolume?: number;
+  leadInVolumeRatio20d?: number;
+  pullbackVolumeRatioToLeadIn?: number;
+  breakoutClose?: number;
+  breakoutPriceChangePercent?: number;
+  breakoutVolume?: number;
+  breakoutVolumeRatio20d?: number;
+  breakoutCloseVsLeadInPercent?: number;
+  referenceClose?: number;
+  referenceCloseVsLeadInPercent?: number;
+  pullbackSessions: number;
+  pullbackMaxDrawdownPercent?: number;
+  breakout20d: boolean;
+  closedNearHigh: boolean;
+  reasons: string[];
+  summary: string;
+};
+
+export type SmartMoneyPatternAnalysis = {
+  name?: string;
+  symbol: string;
+  resolvedSymbol: string;
+  referenceDate?: string;
+  tradingReferenceDate: string;
+  note?: string;
+  pattern: SmartMoneyPatternMatch;
+};
+
+export type SmartMoneyWatchItem = {
+  symbol: string;
+  name?: string;
+  note?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastScannedAt?: string;
+  lastMatchedBreakoutDate?: string;
+};
+
 export type ChartPoint = {
   date: string;
   open?: number;
@@ -79,6 +195,98 @@ export type RecommendationAnalysis = {
     points: ChartPoint[];
   };
   fundamentals?: FundamentalsSummary;
+};
+
+export type KoreanMoverMarket = "KOSPI" | "KOSDAQ";
+
+export type KoreanMoverSignal = "watch" | "strong" | "explosive";
+
+export type KoreanMoverDirection = "rise" | "fall";
+
+export type KoreanMoverAnalysis = {
+  market: KoreanMoverMarket;
+  direction: KoreanMoverDirection;
+  symbol: string;
+  name: string;
+  price: number;
+  previousClose?: number;
+  changeAmount?: number;
+  changePercent?: number;
+  volume?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  estimatedTurnover?: number;
+  latestDate?: string;
+  avgVolume20?: number;
+  volumeRatio20d?: number;
+  highClose20d?: number;
+  highClose60d?: number;
+  lowClose20d?: number;
+  lowClose60d?: number;
+  breakout20d: boolean;
+  breakout60d: boolean;
+  breakdown20d: boolean;
+  breakdown60d: boolean;
+  closedNearHigh: boolean;
+  closedNearLow: boolean;
+  alertScore: number;
+  signal: KoreanMoverSignal;
+  reasons: string[];
+  summary: string;
+};
+
+export type RealTimePriceSpikeEvent = {
+  symbol: string;
+  name?: string;
+  market?: KoreanMoverMarket | "KONEX";
+  price: number;
+  previousClose?: number;
+  changePercent?: number;
+  changeAmount?: number;
+  volume?: number;
+  volumeRatio20d?: number;
+  turnoverKrw?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  breakout20d?: boolean;
+  breakout60d?: boolean;
+  detectedAt?: string;
+  source?: string;
+  note?: string;
+};
+
+export type StockUniverseItem = {
+  code: string;
+  name: string;
+  market: "KOSPI" | "KOSDAQ" | "KONEX" | "ETF" | "ETN" | "WATCHLIST" | "KRX";
+};
+
+export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD";
+
+export type MarketWatchCategory = "index" | "fx" | "commodity";
+
+export type MarketWatchTimeframe = "daily" | "weekly" | "yearly";
+
+export type MarketWatchChartWindow = {
+  startDate: string;
+  endDate: string;
+  points: ChartPoint[];
+};
+
+export type MarketWatchSnapshot = {
+  key: MarketWatchKey;
+  name: string;
+  symbol: string;
+  category: MarketWatchCategory;
+  price?: number;
+  previousClose?: number;
+  changeAmount?: number;
+  changePercent?: number;
+  latestDate?: string;
+  chartSets?: Partial<Record<MarketWatchTimeframe, MarketWatchChartWindow>>;
+  error?: string;
 };
 
 export type FundamentalsPeriod = {
