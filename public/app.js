@@ -12,7 +12,7 @@ const STORAGE_KEY = "band-stock-recommendations-v2";
 const BAND_ACCESS_TOKEN_KEY = "band-access-token-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
-const SWING_LOOKBACK_DAYS = 35;
+const SWING_LOOKBACK_DAYS = 15;
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -145,6 +145,24 @@ const indexWatchSeed = [
   }
 ];
 
+const fundamentalsGuideText = [
+  "재무지표는 네이버 금융 기준 최근 연간/최근 분기 실적을 보여줍니다.",
+  "일부 종목은 추정치(E) 대신 실제 값이 있는 가장 최근 칼럼으로 표시합니다.",
+  "ETF나 지수형 상품은 기업 재무제표가 없어 표시되지 않을 수 있습니다."
+].join("\n");
+
+const fundamentalMetricGuides = {
+  "매출액": "회사가 일정 기간 동안 올린 전체 매출입니다. 외형 성장 속도를 볼 때 먼저 확인합니다.",
+  "영업이익": "본업으로 벌어들인 이익입니다. 일회성보다 사업 체력 판단에 더 유용합니다.",
+  "순이익": "영업외손익과 세금까지 반영한 최종 이익입니다. 주주에게 귀속되는 결과에 가깝습니다.",
+  "ROE": "자기자본 대비 얼마나 이익을 냈는지 보여주는 수익성 지표입니다. 높을수록 자본 효율이 좋습니다.",
+  "부채비율": "자기자본 대비 부채 규모입니다. 일반적으로 너무 높으면 재무 부담이 큰 편입니다.",
+  "EPS": "주당순이익입니다. 순이익을 발행주식 수로 나눈 값으로, 주당 이익 수준을 보여줍니다.",
+  "BPS": "주당순자산입니다. 회사의 순자산을 주식 수로 나눈 값으로, 자산가치 참고용입니다.",
+  "PER": "주가를 주당순이익으로 나눈 값입니다. 이익 대비 현재 주가가 얼마나 비싼지 볼 때 씁니다.",
+  "PBR": "주가를 주당순자산으로 나눈 값입니다. 자산가치 대비 현재 주가 수준을 볼 때 씁니다."
+};
+
 const timeframes = ["daily", "weekly", "monthly"];
 const timeframeLabels = {
   daily: "일봉",
@@ -168,9 +186,15 @@ const moversScoreGuideText = [
 ].join("\n");
 const swingScoreGuideText = [
   `스윙 엔진은 최근 ${SWING_LOOKBACK_DAYS}거래일을 기준으로 봅니다.`,
-  "축적형: 거래량이 터진 기준봉 뒤에 거래량 감소 눌림이 유지되면 55점 이상에서 인정합니다.",
+  "급등 출발은 기본적으로 상한가급 강도에 가깝게 봅니다. 출발봉은 대략 10% 이상, 급등 구간 누적은 15% 이상이어야 setup 후보가 됩니다.",
+  "여기에 힘의 유지가 더 필요합니다. 기준봉 다음 최소 1거래일 이상 강세가 이어져서 급등 피크가 뒤로 확장돼야 합니다.",
+  "좋은 소화형은 강한 급등 구간 뒤에 거래량이 줄고, 가격이 급등 전 바닥을 지키면서 에너지를 소화하는 형태를 우선합니다.",
+  "눌림은 최소 1.5% 이상 되돌림이 있고, 최소 3거래일 이상 이어지며, 적어도 2번 이상 종가가 낮아진 경우만 인정합니다.",
+  "소화형에서는 현재 종가가 급등 피크 종가를 바로 재돌파하면 제외합니다.",
+  "급등 후 소화형은 눌림 폭이 조금 넓어도 거래량이 충분히 식고 급등 전 기준선을 지키면 높은 점수를 줍니다.",
+  "소화형: 거래량이 터진 급등 구간 뒤에 거래량 감소 눌림이 유지되면 60점 이상에서 인정합니다.",
   "완성형: 축적 뒤 재돌파까지 확인되면 68점 이상에서 인정합니다.",
-  "즉 같은 60점이어도 축적형에서는 강한 편일 수 있지만, 완성형에서는 아직 부족할 수 있습니다."
+  "즉 같은 60점이어도 소화형에서는 강한 편일 수 있지만, 완성형에서는 아직 부족할 수 있습니다."
 ].join("\n");
 const defaultRecommendationBySymbol = new Map(defaultRecommendationCatalog.map((item) => [item.symbol, item]));
 
@@ -205,6 +229,8 @@ let previousMarketWatchPrices = new Map();
 let stockModalPointerDownOnBackdrop = false;
 let serverSwingPicksLoaded = false;
 let swingPatternByKey = new Map();
+let latestRiseMovers = [];
+let latestFallMovers = [];
 
 const appTabs = document.querySelector("#appTabs");
 const indexView = document.querySelector("#indexView");
@@ -240,6 +266,8 @@ const stockSearchInput = document.querySelector("#stockSearchInput");
 const stockSearchResults = document.querySelector("#stockSearchResults");
 const selectedStockCard = document.querySelector("#selectedStockCard");
 const indexWatchList = document.querySelector("#indexWatchList");
+const indexRiseThemesList = document.querySelector("#indexRiseThemesList");
+const indexFallThemesList = document.querySelector("#indexFallThemesList");
 const stockNameInput = document.querySelector("#stockNameInput");
 const stockSymbolInput = document.querySelector("#stockSymbolInput");
 const stockPriceInput = document.querySelector("#stockPriceInput");
@@ -547,6 +575,7 @@ async function initializeApp() {
   renderAppTabs();
   renderCategoryTabs();
   renderIndexWatchList();
+  renderIndexThemeLists();
   renderSelector();
   renderBandList();
   renderPostList();
@@ -572,6 +601,7 @@ async function initializeApp() {
 
   void loadStockUniverse();
   void loadMarketWatch();
+  void loadMovers({ background: true, preserveMoversUi: true });
   startMarketWatchAutoRefresh();
 }
 
@@ -593,6 +623,12 @@ function mergeRecommendations(baseItems, incomingItems) {
   return [...merged.values()];
 }
 
+function syncServerSwingRecommendations(baseItems, incomingItems) {
+  const preserved = baseItems.filter((item) => (item.category ?? DEFAULT_CATEGORY) !== "swing");
+  const normalizedIncoming = incomingItems.map((item) => normalizeRecommendation(item));
+  return mergeRecommendations(preserved, normalizedIncoming);
+}
+
 async function loadServerSwingPicks() {
   if (serverSwingPicksLoaded) {
     return;
@@ -606,9 +642,17 @@ async function loadServerSwingPicks() {
     }
 
     const items = Array.isArray(payload.items) ? payload.items : [];
-    if (items.length) {
-      recommendationCatalog = mergeRecommendations(recommendationCatalog, items);
-      saveCatalog();
+    recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items);
+    saveCatalog();
+
+    const visibleKeys = new Set(recommendationCatalog.map((item) => item.key));
+    for (const key of [...swingPatternByKey.keys()]) {
+      if (!visibleKeys.has(key)) {
+        swingPatternByKey.delete(key);
+      }
+    }
+
+    if (!selectedKey || !visibleKeys.has(selectedKey)) {
       selectedKey = getFilteredInitialKey();
     }
   } catch (error) {
@@ -780,6 +824,172 @@ function renderIndexWatchList() {
             <span class="index-watch-pill ${escapeHtml(item.status)}">${pillLabel}</span>
           </div>
           <div class="index-watch-note">${escapeHtml(item.note)}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+const macroThemeRules = [
+  { label: "반도체/전자", keywords: ["반도체", "전자부품", "전자집적", "디스플레이", "광학", "센서"] },
+  { label: "소프트웨어/플랫폼", keywords: ["소프트웨어", "정보서비스", "포털", "데이터베이스", "컴퓨터 프로그래밍"] },
+  { label: "통신/네트워크장비", keywords: ["통신", "방송 장비", "네트워크", "무선", "유선"] },
+  { label: "바이오/헬스케어", keywords: ["의약품", "의료", "제약", "바이오", "건강", "진단", "치과"] },
+  { label: "2차전지/소재", keywords: ["전지", "배터리", "양극재", "음극재", "리튬", "소재"] },
+  { label: "전력/인프라", keywords: ["전동기", "발전기", "전력", "케이블", "전기장비", "배전", "변압기"] },
+  { label: "기계/로봇/자동화", keywords: ["특수목적용 기계", "일반목적용 기계", "기계장비", "로봇", "자동화", "금형"] },
+  { label: "자동차/부품", keywords: ["자동차", "트레일러", "차체", "차량", "내장재"] },
+  { label: "화학/소재", keywords: ["화학", "플라스틱", "고무", "합성수지", "도료", "비금속광물"] },
+  { label: "철강/금속", keywords: ["1차 금속", "철강", "주조", "비철", "금속", "알루미늄"] },
+  { label: "건설/부동산", keywords: ["건설", "토목", "부동산", "엔지니어링"] },
+  { label: "유통/소비재", keywords: ["도매", "소매", "유통", "백화점", "생활용품"] },
+  { label: "음식료/농식품", keywords: ["식료품", "음료", "농업", "수산", "사료", "축산"] },
+  { label: "엔터/콘텐츠", keywords: ["영화", "비디오", "방송", "음악", "오락", "광고", "출판", "게임"] },
+  { label: "물류/운송", keywords: ["운수", "창고", "육상", "항공", "해상", "물류"] },
+  { label: "금융", keywords: ["은행", "보험", "금융", "증권", "여신"] },
+  { label: "에너지/원자재", keywords: ["석유", "가스", "광업", "에너지", "석탄"] }
+];
+
+function mapSectorToMacroTheme(sector) {
+  if (!sector) {
+    return "";
+  }
+
+  for (const rule of macroThemeRules) {
+    if (rule.keywords.some((keyword) => sector.includes(keyword))) {
+      return rule.label;
+    }
+  }
+
+  return sector;
+}
+
+function buildMoverThemes(items, direction) {
+  const grouped = new Map();
+
+  for (const item of items) {
+    const sector = getSectorLabel(item.symbol);
+    if (!sector) {
+      continue;
+    }
+
+    const macroTheme = mapSectorToMacroTheme(sector);
+    const existing = grouped.get(macroTheme) ?? {
+      theme: macroTheme,
+      direction,
+      items: [],
+      sectors: new Set()
+    };
+    existing.items.push(item);
+    existing.sectors.add(sector);
+    grouped.set(macroTheme, existing);
+  }
+
+  return [...grouped.values()]
+    .map((group) => {
+      const avgScore =
+        group.items.reduce((sum, item) => sum + (item.alertScore ?? 0), 0) / Math.max(group.items.length, 1);
+      const avgChangePercent =
+        group.items.reduce((sum, item) => sum + Math.abs(item.changePercent ?? 0), 0) / Math.max(group.items.length, 1);
+      const topItems = [...group.items]
+        .sort((left, right) => Math.abs(right.changePercent ?? 0) - Math.abs(left.changePercent ?? 0))
+        .slice(0, 3)
+        .map((item) => ({
+          name: item.name,
+          changePercent: item.changePercent ?? 0
+        }));
+
+      return {
+        theme: group.theme,
+        direction: group.direction,
+        count: group.items.length,
+        sectorCount: group.sectors.size,
+        sectors: [...group.sectors].slice(0, 2),
+        avgScore,
+        avgChangePercent,
+        topItems
+      };
+    })
+    .sort((left, right) => {
+      const countPriority = Number(right.count >= 2) - Number(left.count >= 2);
+      if (countPriority !== 0) {
+        return countPriority;
+      }
+      if (right.avgScore !== left.avgScore) {
+        return right.avgScore - left.avgScore;
+      }
+      if (right.avgChangePercent !== left.avgChangePercent) {
+        return right.avgChangePercent - left.avgChangePercent;
+      }
+      return right.count - left.count;
+    })
+    .slice(0, 5);
+}
+
+function renderIndexThemeLists() {
+  renderIndexThemeList(indexRiseThemesList, buildMoverThemes(latestRiseMovers, "rise"), "rise");
+  renderIndexThemeList(indexFallThemesList, buildMoverThemes(latestFallMovers, "fall"), "fall");
+}
+
+function renderIndexThemeList(container, themes, direction) {
+  if (!container) {
+    return;
+  }
+
+  if (!hasLoadedMovers) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>${direction === "rise" ? "급등" : "급락"} 테마를 계산하는 중입니다.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!themes.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>${direction === "rise" ? "강하게 묶이는 급등 업종이 아직 없습니다." : "강하게 묶이는 급락 업종이 아직 없습니다."}</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = themes
+    .map((theme, index) => {
+      const trendClass = direction === "rise" ? "positive" : "negative";
+      const countLabel = theme.sectorCount > 1 ? `업종 ${theme.sectorCount} · 종목 ${theme.count}` : `종목 ${theme.count}`;
+      const representatives = theme.topItems
+        .map(
+          (item) =>
+            `<span class="index-theme-chip">${escapeHtml(item.name)} <strong class="${trendClass}">${formatPercent(
+              item.changePercent
+            )}</strong></span>`
+        )
+        .join("");
+      const sectorSummary = theme.sectors.length ? theme.sectors.join(" / ") : "";
+      return `
+        <article class="index-theme-card ${direction}">
+          <div class="index-theme-head">
+            <div>
+              <span class="index-theme-rank">${index + 1}</span>
+              <h3>${escapeHtml(theme.theme)}</h3>
+              ${sectorSummary ? `<div class="index-theme-subtitle">${escapeHtml(sectorSummary)}</div>` : ""}
+            </div>
+            <span class="index-theme-count">${escapeHtml(countLabel)}</span>
+          </div>
+          <div class="index-theme-metrics">
+            <div class="index-theme-metric">
+              <span class="index-theme-label">평균 점수</span>
+              <span class="index-theme-value">${escapeHtml(String(Math.round(theme.avgScore)))}</span>
+            </div>
+            <div class="index-theme-metric">
+              <span class="index-theme-label">평균 등락률</span>
+              <span class="index-theme-value ${trendClass}">${direction === "rise" ? "+" : "-"}${escapeHtml(
+                theme.avgChangePercent.toFixed(2)
+              )}%</span>
+            </div>
+          </div>
+          <div class="index-theme-representatives">${representatives}</div>
         </article>
       `;
     })
@@ -1166,6 +1376,7 @@ function buildStockSearchUniverse() {
         code: item.symbol,
         name: item.name,
         market: "WATCHLIST",
+        sector: undefined,
         aliases: []
       });
     }
@@ -1180,6 +1391,7 @@ function buildStockSearchUniverse() {
     return {
       ...item,
       aliases,
+      sector: item.sector,
       normalizedName: normalizeSearchText(item.name),
       normalizedCode: normalizeSearchText(item.code),
       chosung: extractChosung(item.name),
@@ -1200,6 +1412,7 @@ function mergeStockUniverse(remoteItems) {
       code: item.code,
       name: item.name,
       market: item.market || "KRX",
+      sector: item.sector,
       aliases: [],
       normalizedName: normalizeSearchText(item.name),
       normalizedCode: normalizeSearchText(item.code),
@@ -1230,6 +1443,10 @@ async function loadStockUniverse() {
     stockSearchUniverse = mergeStockUniverse(items);
     stockUniverseLoaded = true;
     repairRecommendationsFromUniverse(items);
+    renderIndexThemeLists();
+    if (hasLoadedMovers && activeView === "movers") {
+      void loadMovers();
+    }
   } catch (error) {
     console.error(error);
   } finally {
@@ -1810,16 +2027,17 @@ function getMoversFilters() {
   };
 }
 
-async function loadMovers() {
+async function loadMovers(options = {}) {
   const filters = getMoversFilters();
+  const preserveMoversUi = Boolean(options.preserveMoversUi);
   setMoversStatus("loading", "\uC21C\uC704 \uC870\uD68C \uC911");
   showMoversSummary("");
   showMoversError("");
 
-  if (riseMoversList) {
+  if (riseMoversList && !preserveMoversUi) {
     riseMoversList.innerHTML = `<div class="empty-state"><p>\uAE09\uB4F1\uC8FC \uC21C\uC704\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4...</p></div>`;
   }
-  if (fallMoversList) {
+  if (fallMoversList && !preserveMoversUi) {
     fallMoversList.innerHTML = `<div class="empty-state"><p>\uAE09\uB77D\uC8FC \uC21C\uC704\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4...</p></div>`;
   }
 
@@ -1830,6 +2048,9 @@ async function loadMovers() {
     ]);
 
     hasLoadedMovers = true;
+    latestRiseMovers = risePayload.analyses;
+    latestFallMovers = fallPayload.analyses;
+    renderIndexThemeLists();
     renderMoversList(riseMoversList, risePayload.analyses, "rise");
     renderMoversList(fallMoversList, fallPayload.analyses, "fall");
 
@@ -1848,6 +2069,10 @@ async function loadMovers() {
     const message = error instanceof Error ? error.message : "\uC21C\uC704\uB97C \uBD88\uB7EC\uC624\uB294 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.";
     setMoversStatus("error", "\uC870\uD68C \uC2E4\uD328");
     showMoversError(message);
+    latestRiseMovers = [];
+    latestFallMovers = [];
+    hasLoadedMovers = true;
+    renderIndexThemeLists();
     renderMoversList(riseMoversList, [], "rise");
     renderMoversList(fallMoversList, [], "fall");
     if (riseCountLabel) {
@@ -1898,6 +2123,7 @@ function renderMoversList(container, items, direction) {
   container.innerHTML = items
     .map((item, index) => {
       const changeClass = (item.changePercent ?? 0) >= 0 ? "positive" : "negative";
+      const sector = getSectorLabel(item.symbol);
       const signalLabel =
         item.signal === "explosive" ? "\uD3ED\uBC1C" : item.signal === "strong" ? "\uAC15\uD568" : "\uAD00\uCC30";
       const edgeMetricLabel = direction === "rise" ? "\uACE0\uC810 \uB3CC\uD30C" : "\uC800\uC810 \uC774\uD0C8";
@@ -1921,7 +2147,7 @@ function renderMoversList(container, items, direction) {
               <span class="mover-rank">${index + 1}</span>
               <div>
                 <h3>${escapeHtml(item.name)}</h3>
-                <div class="mover-meta">${escapeHtml(item.symbol)} / ${escapeHtml(item.market)} / \uC810\uC218 ${escapeHtml(String(item.alertScore))} ${renderInfoIcon(moversScoreGuideText, "점수 기준 안내")}</div>
+                <div class="mover-meta">${escapeHtml(item.symbol)} / ${escapeHtml(item.market)}${sector ? ` / ${escapeHtml(sector)}` : ""} / \uC810\uC218 ${escapeHtml(String(item.alertScore))} ${renderInfoIcon(moversScoreGuideText, "점수 기준 안내")}</div>
               </div>
             </div>
             <span class="signal-pill ${escapeHtml(item.signal)}">${signalLabel}</span>
@@ -1973,6 +2199,15 @@ function applyScoreGuideTooltips() {
 
 function renderInfoIcon(text, label = "안내") {
   return `<span class="inline-info-icon" data-tooltip="${escapeHtml(text)}" aria-label="${escapeHtml(label)}" tabindex="0">i</span>`;
+}
+
+function getSectorLabel(symbol) {
+  const item = stockSearchUniverse.find((candidate) => candidate.code === symbol);
+  if (!item || typeof item.sector !== "string" || !item.sector.trim()) {
+    return "";
+  }
+
+  return item.sector.trim();
 }
 
 function renderSelector() {
@@ -2344,39 +2579,43 @@ function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
 }
 
 function toChartPoints(points) {
-  return points.map((point) => ({
-    time: point.date,
-    open: point.open ?? point.close,
-    high: point.high ?? point.close,
-    low: point.low ?? point.close,
-    close: point.close,
-    value: point.volume ?? 0
-  }));
+  let previousClose = null;
+  const normalized = points.map((point) => {
+    const chartPoint = normalizeChartPoint(point, previousClose);
+    previousClose = chartPoint.close ?? previousClose;
+    return chartPoint;
+  });
+
+  return fillMissingWeekdayPoints(normalized);
 }
 
 function aggregateCandles(points, timeframe) {
   const buckets = new Map();
+  let previousClose = null;
 
   for (const point of points) {
+    const normalizedPoint = normalizeChartPoint(point, previousClose);
+    previousClose = normalizedPoint.close ?? previousClose;
+
     const key = timeframe === "weekly" ? getWeekKey(point.date) : point.date.slice(0, 7);
     const existing = buckets.get(key);
 
     if (!existing) {
       buckets.set(key, {
         time: point.date,
-        open: point.open ?? point.close,
-        high: point.high ?? point.close,
-        low: point.low ?? point.close,
-        close: point.close,
-        value: point.volume ?? 0
+        open: normalizedPoint.open,
+        high: normalizedPoint.high,
+        low: normalizedPoint.low,
+        close: normalizedPoint.close,
+        value: normalizedPoint.value
       });
       continue;
     }
 
-    existing.high = Math.max(existing.high, point.high ?? point.close);
-    existing.low = Math.min(existing.low, point.low ?? point.close);
-    existing.close = point.close;
-    existing.value += point.volume ?? 0;
+    existing.high = Math.max(existing.high, normalizedPoint.high);
+    existing.low = Math.min(existing.low, normalizedPoint.low);
+    existing.close = normalizedPoint.close;
+    existing.value += normalizedPoint.value;
   }
 
   return [...buckets.values()];
@@ -2389,6 +2628,74 @@ function getWeekKey(dateText) {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function addUtcDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function isNonTradingPoint(point) {
+  return (
+    (point.open ?? 0) === 0 &&
+    (point.high ?? 0) === 0 &&
+    (point.low ?? 0) === 0 &&
+    (point.volume ?? 0) === 0
+  );
+}
+
+function normalizeChartPoint(point, previousClose) {
+  const isHalted = isNonTradingPoint(point);
+  const referenceClose = previousClose ?? point.close;
+  const open = isHalted ? referenceClose : point.open ?? point.close;
+  const high = isHalted ? referenceClose : point.high ?? point.close;
+  const low = isHalted ? referenceClose : point.low ?? point.close;
+  const close = point.close ?? referenceClose;
+
+  return {
+    time: point.date,
+    open,
+    high,
+    low,
+    close,
+    value: point.volume ?? 0,
+    isWhitespace: false,
+    isHalted
+  };
+}
+
+function isWeekday(dateText) {
+  const day = new Date(`${dateText}T00:00:00Z`).getUTCDay();
+  return day >= 1 && day <= 5;
+}
+
+function fillMissingWeekdayPoints(points) {
+  if (!points.length) {
+    return [];
+  }
+
+  const filled = [points[0]];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    let cursor = addUtcDays(previous.time, 1);
+
+    while (cursor < current.time) {
+      if (isWeekday(cursor)) {
+        filled.push({
+          time: cursor,
+          isWhitespace: true,
+          isHalted: false
+        });
+      }
+      cursor = addUtcDays(cursor, 1);
+    }
+
+    filled.push(current);
+  }
+
+  return filled;
 }
 
 function setStatus(kind, text) {
@@ -2579,15 +2886,15 @@ function getSwingAssessment(pattern) {
   const isComplete = Boolean(pattern.stage === "breakout" && pattern.matched && pattern.actionable);
   const isSetup = Boolean(pattern.stage === "setup" && pattern.matched);
   return {
-    label: isComplete ? "완성형" : isSetup ? "축적형" : "관찰형",
+    label: isComplete ? "돌파 완료" : isSetup ? "눌림 후보" : "추적 중",
     className: isComplete ? "complete" : isSetup ? "setup" : "watch",
     rank: isComplete ? 3 : isSetup ? 2 : 1,
     score: pattern.patternScore,
     description: isComplete
-      ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 기준봉, 눌림, 재돌파까지 확인된 완성형 패턴입니다.`
+      ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 눌림과 재돌파까지 확인된 상태입니다.`
       : isSetup
-        ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 거래량이 터진 기준봉 이후 거래량이 줄며 눌림을 만드는 축적형 패턴입니다.`
-        : `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 기준봉 이후 눌림 구조를 추적 중이지만 아직 강도나 형태가 더 필요합니다.`
+        ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 거래량이 줄며 눌림을 소화하는 후보 구간입니다.`
+        : `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 구조를 보고 있지만 아직 후보로 보기엔 이른 상태입니다.`
   };
 }
 
@@ -2598,7 +2905,7 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
 
   const pattern = swingPatternAnalysis.pattern;
   const stageLabel =
-    pattern.stage === "breakout" ? "완성형 돌파" : pattern.stage === "setup" ? "축적 진행형" : "관찰";
+    pattern.stage === "breakout" ? "돌파 완료" : pattern.stage === "setup" ? "눌림 후보" : "추적 중";
   const swingGuideHtml = escapeHtml(swingScoreGuideText).replaceAll("\n", "<br>");
   const reasonItems = (pattern.reasons?.length ? pattern.reasons : [pattern.summary])
     .slice(0, 4)
@@ -2630,30 +2937,58 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
         </div>
         <div class="metric">
           <span class="metric-label">판정 기준</span>
-          <span class="metric-value">${escapeHtml(pattern.stage === "breakout" ? "68점 이상" : pattern.stage === "setup" ? "55점 이상" : "구조 관찰")}</span>
+          <span class="metric-value">${escapeHtml(pattern.stage === "breakout" ? "68점 이상" : pattern.stage === "setup" ? "60점 이상" : "구조 관찰")}</span>
         </div>
         <div class="metric">
           <span class="metric-label">선행 수급일</span>
           <span class="metric-value">${escapeHtml(pattern.leadInDate ?? "-")}</span>
         </div>
         <div class="metric">
+          <span class="metric-label">급등 피크일</span>
+          <span class="metric-value">${escapeHtml(pattern.surgePeakDate ?? "-")}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">급등 유지</span>
+          <span class="metric-value">${
+            pattern.surgeContinuationSessions == null
+              ? "-"
+              : `${escapeHtml(String(pattern.surgeContinuationSessions + 1))}거래일`
+          }</span>
+        </div>
+        <div class="metric">
           <span class="metric-label">눌림 구간</span>
           <span class="metric-value">${escapeHtml(pattern.pullbackStartDate ?? "-")} ~ ${escapeHtml(pattern.pullbackEndDate ?? "-")}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">눌림 범위</span>
+          <span class="metric-value">${pattern.pullbackRangePercent == null ? "-" : `${escapeHtml(pattern.pullbackRangePercent.toFixed(1))}%`}</span>
         </div>
         <div class="metric">
           <span class="metric-label">돌파일</span>
           <span class="metric-value">${escapeHtml(pattern.breakoutDate ?? "-")}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">${pattern.stage === "breakout" ? "돌파 후 경과" : "기준봉 후 경과"}</span>
+          <span class="metric-label">현재 종가 위치</span>
+          <span class="metric-value">${
+            pattern.referenceCloseVsBasePercent == null
+              ? "-"
+              : `기준선대비 ${escapeHtml(pattern.referenceCloseVsBasePercent.toFixed(1))}% / 피크대비 ${
+                  pattern.referenceCloseVsPeakPercent == null
+                    ? "-"
+                    : `${escapeHtml(pattern.referenceCloseVsPeakPercent.toFixed(1))}%`
+                }`
+          }</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">${pattern.stage === "breakout" ? "돌파 후 경과" : "피크 후 경과"}</span>
           <span class="metric-value">${
             pattern.stage === "breakout"
               ? pattern.sessionsSinceBreakout == null
                 ? "-"
                 : `${escapeHtml(String(pattern.sessionsSinceBreakout))}거래일`
-              : pattern.sessionsSinceLeadIn == null
+              : pattern.sessionsSincePeak == null
                 ? "-"
-                : `${escapeHtml(String(pattern.sessionsSinceLeadIn))}거래일`
+                : `${escapeHtml(String(pattern.sessionsSincePeak))}거래일`
           }</span>
         </div>
       </div>
@@ -2782,29 +3117,47 @@ function mountInteractiveChart(points, anchorDate) {
   });
 
   candleSeries.setData(
-    points.map((point) => ({
-      time: point.time,
-      open: point.open,
-      high: point.high,
-      low: point.low,
-      close: point.close
-    }))
+    points.map((point) =>
+      point.isWhitespace
+        ? {
+            time: point.time
+          }
+        : {
+            time: point.time,
+            open: point.open,
+            high: point.high,
+            low: point.low,
+            close: point.close
+          }
+    )
   );
 
   volumeSeries.setData(
-    points.map((point) => ({
-      time: point.time,
-      value: point.value,
-      color: point.close >= point.open ? "rgba(216,76,63,0.35)" : "rgba(47,110,229,0.32)"
-    }))
+    points.map((point) =>
+      point.isWhitespace
+        ? {
+            time: point.time
+          }
+        : {
+            time: point.time,
+            value: point.value,
+            color: point.isHalted
+              ? "rgba(120, 128, 140, 0.22)"
+              : point.close >= point.open
+                ? "rgba(216,76,63,0.35)"
+                : "rgba(47,110,229,0.32)"
+          }
+    )
   );
 
   ma5Series.setData(buildMovingAverage(points, 5));
   ma20Series.setData(buildMovingAverage(points, 20));
   ma60Series.setData(buildMovingAverage(points, 60));
 
-  const anchorPoint = points.find((point) => point.time === anchorDate) ?? points[0];
-  if (anchorPoint) {
+  const anchorPoint =
+    points.find((point) => point.time === anchorDate && !point.isWhitespace) ??
+    points.find((point) => !point.isWhitespace);
+  if (anchorPoint?.close != null) {
     candleSeries.createPriceLine({
       price: anchorPoint.close,
       color: "rgba(159,62,25,0.85)",
@@ -2837,7 +3190,21 @@ function mountInteractiveChart(points, anchorDate) {
 
     const candleData = param.seriesData.get(candleSeries);
     if (!candleData || !("open" in candleData)) {
-      tooltip.classList.add("hidden");
+      const point = points.find((candidate) => candidate.time === String(param.time));
+      if (!point?.isWhitespace) {
+        tooltip.classList.add("hidden");
+        return;
+      }
+
+      const left = Math.min(param.point.x + 18, priceContainer.clientWidth - 180);
+      const top = Math.max(param.point.y - 18, 12);
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+      tooltip.classList.remove("hidden");
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${escapeHtml(formatKoreanChartDate(String(param.time)))}</div>
+        <div>${point?.isHalted ? "거래정지" : "거래 없음"}</div>
+      `;
       return;
     }
 
@@ -2850,6 +3217,7 @@ function mountInteractiveChart(points, anchorDate) {
     tooltip.classList.remove("hidden");
     tooltip.innerHTML = `
       <div class="tooltip-date">${escapeHtml(formatKoreanChartDate(String(param.time)))}</div>
+      ${point?.isHalted ? `<div>거래정지</div>` : ""}
       <div>시가 ${formatNumber(candleData.open)}</div>
       <div>고가 ${formatNumber(candleData.high)}</div>
       <div>저가 ${formatNumber(candleData.low)}</div>
@@ -2876,15 +3244,17 @@ function mountInteractiveChart(points, anchorDate) {
 
 function buildMovingAverage(points, period) {
   const result = [];
-  for (let index = 0; index < points.length; index += 1) {
+  const tradingPoints = points.filter((point) => !point.isWhitespace && typeof point.close === "number");
+
+  for (let index = 0; index < tradingPoints.length; index += 1) {
     if (index + 1 < period) {
       continue;
     }
 
-    const window = points.slice(index - period + 1, index + 1);
+    const window = tradingPoints.slice(index - period + 1, index + 1);
     const average = window.reduce((sum, point) => sum + point.close, 0) / period;
     result.push({
-      time: points[index].time,
+      time: tradingPoints[index].time,
       value: average
     });
   }
@@ -2918,7 +3288,7 @@ function renderFundamentals(fundamentals, priceContext) {
     return `
       <section class="fundamentals-panel empty-fundamentals">
         <div class="fundamentals-head">
-          <h4>재무지표</h4>
+          <h4>재무지표 ${renderInfoIcon(fundamentalsGuideText, "재무지표 안내")}</h4>
           ${priceReference ? `<span>${escapeHtml(priceReference)}</span>` : ""}
         </div>
         <p>이 종목은 재무 데이터를 찾지 못했거나 ETF여서 표시할 재무지표가 없습니다.</p>
@@ -2929,7 +3299,7 @@ function renderFundamentals(fundamentals, priceContext) {
   return `
       <section class="fundamentals-panel">
         <div class="fundamentals-head">
-          <h4>재무지표</h4>
+          <h4>재무지표 ${renderInfoIcon(fundamentalsGuideText, "재무지표 안내")}</h4>
           <span>${escapeHtml(fundamentals.source)}</span>
         </div>
         ${priceReference ? `<div class="fundamentals-price-reference">${escapeHtml(priceReference)}</div>` : ""}
@@ -2971,9 +3341,10 @@ function renderFundamentalBlock(title, period) {
 }
 
 function renderFundamentalItem(label, value, suffix = "") {
+  const guide = fundamentalMetricGuides[label];
   return `
     <div class="fundamental-item">
-      <dt>${label}</dt>
+      <dt>${label}${guide ? ` ${renderInfoIcon(guide, `${label} 설명`)}` : ""}</dt>
       <dd>${value == null ? "-" : `${formatNumber(value)}${suffix}`}</dd>
     </div>
   `;

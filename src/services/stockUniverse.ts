@@ -38,12 +38,22 @@ function stripTags(html: string): string {
 }
 
 function parseCode(value: string): string | undefined {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) {
+  const normalized = value.replace(/\s+/g, "").toUpperCase();
+  if (!normalized) {
     return undefined;
   }
 
-  return digits.padStart(6, "0").slice(-6);
+  const directMatch = normalized.match(/\b[0-9A-Z]{6}\b/);
+  if (directMatch) {
+    return directMatch[0];
+  }
+
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length === 6) {
+    return digits;
+  }
+
+  return undefined;
 }
 
 function looksLikeHeaderCell(value: string): boolean {
@@ -71,6 +81,7 @@ function parseRowsFromTable(tableHtml: string, market: StockUniverseItem["market
 
     const name = cells[0]?.trim();
     const code = cells.slice(1).map(parseCode).find((value): value is string => value != null);
+    const sector = cells[3]?.trim();
     if (!name || !code || looksLikeHeaderCell(name)) {
       continue;
     }
@@ -78,7 +89,8 @@ function parseRowsFromTable(tableHtml: string, market: StockUniverseItem["market
     items.push({
       code,
       name,
-      market
+      market,
+      sector: sector || undefined
     });
   }
 

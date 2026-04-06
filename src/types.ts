@@ -76,20 +76,131 @@ export type RecommendationPatternAnalysis = {
 
 export type SmartMoneyPatternFilters = {
   lookbackTradingDays: number;
+  lookbackWindows: number[];
   breakoutLookbackDays: number;
   minLeadInPriceChangePercent: number;
   minLeadInVolumeRatio: number;
+  minTurnoverValue: number;
+  minBreakoutTurnoverValue: number;
   minBreakoutPriceChangePercent: number;
   minBreakoutVolumeRatio: number;
   minPullbackSessions: number;
   maxPullbackSessions: number;
+  minSetupPullbackSessions: number;
+  minSetupDownSessions: number;
+  minTimeCorrectionSessions: number;
+  minPullbackDrawdownPercent: number;
   maxPullbackDrawdownPercent: number;
+  maxPullbackRangePercent: number;
+  maxSetupPullbackDrawdownPercent: number;
+  maxSetupPullbackRangePercent: number;
+  maxTimeCorrectionDrawdownPercent: number;
+  maxTimeCorrectionRangePercent: number;
+  minTimeCorrectionTightClosePercent: number;
+  maxVolatileDigestionDrawdownPercent: number;
+  maxVolatileDigestionRangePercent: number;
+  maxVolatileDigestionAvgVolumeRatio: number;
+  minVolatileDigestionReferenceCloseVsLeadInPercent: number;
+  minVolatileDigestionBaseAdvancePercent: number;
+  volatileDigestionSetupScoreBoost: number;
   maxPullbackAvgVolumeRatio: number;
   minPatternScore: number;
   minSetupPatternScore: number;
   minBreakoutPatternScore: number;
+  minSetupSurgeAdvancePercent: number;
+  minSetupContinuationSessions: number;
+  minReferenceCloseVsBasePercent: number;
+  maxSetupCloseVsPeakPercent: number;
+  minReferenceCloseVsLeadInPercent: number;
   closeNearHighRatio: number;
+  breakoutHoldTolerancePercent: number;
+  maxBreakoutFailurePercent: number;
+  maxBreakoutExtensionPercent: number;
+  maxSetupDistanceBelowBreakoutLevelPercent: number;
+  minActionableValidityScore: number;
+  minExecutionReadinessScore: number;
+  regimeScoreWeight: number;
+  minRegimeScoreForActionable: number;
+  blockActionableOnRiskOff: boolean;
   recentSignalSessions: number;
+  debugTopCandidateLimit: number;
+};
+
+export type SmartMoneyPullbackType = "price_pullback" | "time_correction";
+
+export type SmartMoneySetupType = "tight_price_pullback" | "time_correction" | "volatile_power_digestion";
+
+export type SmartMoneyMarketContext = {
+  asOfDate?: string;
+  regimeScore?: number;
+  marketContextScore?: number;
+  trendScore?: number;
+  riskScore?: number;
+  sectorStrengthScore?: number;
+  riskOff?: boolean;
+  benchmark?: {
+    symbol?: string;
+    trend?: "bullish" | "neutral" | "bearish";
+    changePercent20d?: number;
+    aboveSma20?: boolean;
+    aboveSma50?: boolean;
+  };
+  sector?: {
+    name?: string;
+    strengthScore?: number;
+    relativeStrengthPercent?: number;
+  };
+  notes?: string[];
+};
+
+export type SmartMoneyRejectReason = {
+  stage: "setup" | "breakout";
+  lookbackWindowDays: number;
+  leadInDate?: string;
+  candidateDate?: string;
+  reason: string;
+};
+
+export type SmartMoneyCandidateSummary = {
+  stage: "setup" | "breakout";
+  lookbackWindowDays: number;
+  matched: boolean;
+  actionable: boolean;
+  selected?: boolean;
+  pullbackType?: SmartMoneyPullbackType;
+  setupType?: SmartMoneySetupType;
+  leadInDate?: string;
+  surgePeakDate?: string;
+  breakoutDate?: string;
+  breakoutLevel?: number;
+  setupScore: number;
+  breakoutScore: number;
+  regimeAdjustedScore: number;
+  finalRankScore: number;
+  regimeScore: number;
+  marketContextScore: number;
+  volumeQualityScore: number;
+  breakoutStrengthScore: number;
+  breakoutFailureRiskScore: number;
+  freshnessScore: number;
+  validityScore: number;
+  executionReadinessScore: number;
+  reasons: string[];
+  rejectReasons: string[];
+};
+
+export type SmartMoneyDebugMeta = {
+  evaluatedLookbackWindows: number[];
+  evaluatedCandidateCount: number;
+  rejectedCandidateCount: number;
+  marketContextApplied: boolean;
+  selectionPolicy: string;
+};
+
+export type SmartMoneyPatternRequest = Pick<RecommendationRequest, "symbol" | "name" | "note"> & {
+  referenceDate?: string;
+  marketContext?: SmartMoneyMarketContext;
+  debug?: boolean;
 };
 
 export type SmartMoneyPatternMatch = {
@@ -102,29 +213,60 @@ export type SmartMoneyPatternMatch = {
   windowStartDate?: string;
   windowEndDate?: string;
   leadInDate?: string;
+  surgePeakDate?: string;
+  surgeContinuationSessions?: number;
   sessionsSinceLeadIn?: number;
+  sessionsSincePeak?: number;
   leadInPriceChangePercent?: number;
   pullbackStartDate?: string;
   pullbackEndDate?: string;
   breakoutDate?: string;
   sessionsSinceBreakout?: number;
   leadInClose?: number;
+  leadInHigh?: number;
   leadInVolume?: number;
   leadInVolumeRatio20d?: number;
+  surgePeakClose?: number;
+  surgePeakHigh?: number;
   pullbackVolumeRatioToLeadIn?: number;
+  pullbackRangePercent?: number;
   breakoutClose?: number;
   breakoutPriceChangePercent?: number;
   breakoutVolume?: number;
   breakoutVolumeRatio20d?: number;
   breakoutCloseVsLeadInPercent?: number;
   referenceClose?: number;
+  referenceCloseVsBasePercent?: number;
+  referenceCloseVsPeakPercent?: number;
   referenceCloseVsLeadInPercent?: number;
+  referenceCloseVsLeadInHighPercent?: number;
   pullbackSessions: number;
   pullbackMaxDrawdownPercent?: number;
   breakout20d: boolean;
   closedNearHigh: boolean;
+  pullbackType?: SmartMoneyPullbackType;
+  setupType?: SmartMoneySetupType;
+  breakoutLevel?: number;
+  leadInTurnoverValue?: number;
+  breakoutTurnoverValue?: number;
+  volumeQualityScore?: number;
+  breakoutStrengthScore?: number;
+  breakoutFailureRiskScore?: number;
+  freshnessScore?: number;
+  validityScore?: number;
+  executionReadinessScore?: number;
+  setupScore?: number;
+  breakoutScore?: number;
+  regimeScore?: number;
+  marketContextScore?: number;
+  regimeAdjustedScore?: number;
+  finalRankScore?: number;
+  lookbackWindowDays?: number;
   reasons: string[];
   summary: string;
+  topCandidates?: SmartMoneyCandidateSummary[];
+  rejectReasons?: SmartMoneyRejectReason[];
+  debugMeta?: SmartMoneyDebugMeta;
 };
 
 export type SmartMoneyPatternAnalysis = {
@@ -261,6 +403,7 @@ export type StockUniverseItem = {
   code: string;
   name: string;
   market: "KOSPI" | "KOSDAQ" | "KONEX" | "ETF" | "ETN" | "WATCHLIST" | "KRX";
+  sector?: string;
 };
 
 export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD";

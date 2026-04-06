@@ -125,6 +125,30 @@ function pickMetric(rows: Array<{ label: string; values: string[] }>, candidates
   return rows.find((row) => candidates.some((candidate) => row.label.includes(candidate)));
 }
 
+function hasMeaningfulValue(value: string | undefined): boolean {
+  return Boolean(value && value.trim() && value.trim() !== "-");
+}
+
+function findLatestPopulatedIndex(
+  rows: Array<{ label: string; values: string[] }>,
+  startIndex: number,
+  count: number
+) {
+  if (count <= 0) {
+    return undefined;
+  }
+
+  const endIndex = startIndex + count - 1;
+  for (let index = endIndex; index >= startIndex; index -= 1) {
+    const hasAnyMetricValue = rows.some((row) => hasMeaningfulValue(row.values[index]));
+    if (hasAnyMetricValue) {
+      return index;
+    }
+  }
+
+  return undefined;
+}
+
 function buildPeriod(
   label: string | undefined,
   rows: Array<{ label: string; values: string[] }>,
@@ -187,15 +211,20 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
 
     const annualLabels = labels.slice(0, annualCount);
     const quarterlyLabels = labels.slice(annualCount, annualCount + quarterlyCount);
-    const annualIndex = annualLabels.length - 1;
-    const quarterlyIndex = annualCount + quarterlyLabels.length - 1;
+    const annualIndex = findLatestPopulatedIndex(rows, 0, annualCount);
+    const quarterlyIndex = findLatestPopulatedIndex(rows, annualCount, quarterlyCount);
+    const annualLabelIndex = annualIndex != null ? annualIndex : annualLabels.length - 1;
+    const quarterlyLabelIndex = quarterlyIndex != null ? quarterlyIndex - annualCount : quarterlyLabels.length - 1;
 
     return {
       source: "Naver Finance",
-      annual: annualIndex >= 0 ? buildPeriod(annualLabels[annualIndex], rows, annualIndex) : undefined,
+      annual:
+        annualIndex != null && annualLabelIndex >= 0
+          ? buildPeriod(annualLabels[annualLabelIndex], rows, annualIndex)
+          : undefined,
       quarterly:
-        quarterlyLabels.length > 0
-          ? buildPeriod(quarterlyLabels[quarterlyLabels.length - 1], rows, quarterlyIndex)
+        quarterlyIndex != null && quarterlyLabelIndex >= 0
+          ? buildPeriod(quarterlyLabels[quarterlyLabelIndex], rows, quarterlyIndex)
           : undefined
     };
   } catch {

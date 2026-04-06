@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { buildSmartMoneyPatternDiscordMessages, sendDiscordMessages } from "../services/discord.js";
 import { evaluateRealTimePriceSpike } from "../services/realtimeAlerts.js";
+import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
 import { analyzeSmartMoneyPatterns } from "../services/stockAnalysis.js";
 import {
   listSmartMoneyWatchItems,
@@ -69,23 +70,86 @@ const smartMoneyWatchBatchSchema = z.object({
 
 const smartMoneyScanSchema = z.object({
   referenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  marketContext: z
+    .object({
+      asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      regimeScore: z.coerce.number().min(0).max(100).optional(),
+      marketContextScore: z.coerce.number().min(0).max(100).optional(),
+      trendScore: z.coerce.number().min(0).max(100).optional(),
+      riskScore: z.coerce.number().min(0).max(100).optional(),
+      sectorStrengthScore: z.coerce.number().min(0).max(100).optional(),
+      riskOff: z.coerce.boolean().optional(),
+      benchmark: z
+        .object({
+          symbol: z.string().min(1).optional(),
+          trend: z.enum(["bullish", "neutral", "bearish"]).optional(),
+          changePercent20d: z.coerce.number().min(-100).max(200).optional(),
+          aboveSma20: z.coerce.boolean().optional(),
+          aboveSma50: z.coerce.boolean().optional()
+        })
+        .optional(),
+      sector: z
+        .object({
+          name: z.string().min(1).optional(),
+          strengthScore: z.coerce.number().min(0).max(100).optional(),
+          relativeStrengthPercent: z.coerce.number().min(-100).max(200).optional()
+        })
+        .optional(),
+      notes: z.array(z.string().min(1).max(200)).max(5).optional()
+    })
+    .optional(),
+  debug: z.coerce.boolean().optional().default(false),
   filters: z
     .object({
       lookbackTradingDays: z.coerce.number().int().min(5).max(60).optional(),
+      lookbackWindows: z.array(z.coerce.number().int().min(5).max(60)).min(1).max(8).optional(),
       breakoutLookbackDays: z.coerce.number().int().min(5).max(60).optional(),
       minLeadInPriceChangePercent: z.coerce.number().min(0).max(30).optional(),
       minLeadInVolumeRatio: z.coerce.number().min(0).max(20).optional(),
+      minTurnoverValue: z.coerce.number().min(0).optional(),
+      minBreakoutTurnoverValue: z.coerce.number().min(0).optional(),
       minBreakoutPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       minBreakoutVolumeRatio: z.coerce.number().min(0).max(20).optional(),
       minPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
       maxPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
+      minSetupPullbackSessions: z.coerce.number().int().min(1).max(20).optional(),
+      minSetupDownSessions: z.coerce.number().int().min(1).max(20).optional(),
+      minTimeCorrectionSessions: z.coerce.number().int().min(1).max(20).optional(),
+      minPullbackDrawdownPercent: z.coerce.number().min(0).max(20).optional(),
       maxPullbackDrawdownPercent: z.coerce.number().min(0).max(20).optional(),
+      maxPullbackRangePercent: z.coerce.number().min(0).max(30).optional(),
+      maxSetupPullbackDrawdownPercent: z.coerce.number().min(0).max(60).optional(),
+      maxSetupPullbackRangePercent: z.coerce.number().min(0).max(60).optional(),
+      maxTimeCorrectionDrawdownPercent: z.coerce.number().min(0).max(20).optional(),
+      maxTimeCorrectionRangePercent: z.coerce.number().min(0).max(20).optional(),
+      minTimeCorrectionTightClosePercent: z.coerce.number().min(-30).max(10).optional(),
+      maxVolatileDigestionDrawdownPercent: z.coerce.number().min(0).max(60).optional(),
+      maxVolatileDigestionRangePercent: z.coerce.number().min(0).max(80).optional(),
+      maxVolatileDigestionAvgVolumeRatio: z.coerce.number().min(0.01).max(1).optional(),
+      minVolatileDigestionReferenceCloseVsLeadInPercent: z.coerce.number().min(-50).max(20).optional(),
+      minVolatileDigestionBaseAdvancePercent: z.coerce.number().min(0).max(100).optional(),
+      volatileDigestionSetupScoreBoost: z.coerce.number().int().min(0).max(40).optional(),
       maxPullbackAvgVolumeRatio: z.coerce.number().min(0.1).max(1).optional(),
       minPatternScore: z.coerce.number().int().min(0).max(100).optional(),
       minSetupPatternScore: z.coerce.number().int().min(0).max(100).optional(),
       minBreakoutPatternScore: z.coerce.number().int().min(0).max(100).optional(),
+      minSetupSurgeAdvancePercent: z.coerce.number().min(0).max(60).optional(),
+      minSetupContinuationSessions: z.coerce.number().int().min(1).max(5).optional(),
+      minReferenceCloseVsBasePercent: z.coerce.number().min(-30).max(60).optional(),
+      maxSetupCloseVsPeakPercent: z.coerce.number().min(-50).max(10).optional(),
+      minReferenceCloseVsLeadInPercent: z.coerce.number().min(-30).max(30).optional(),
       closeNearHighRatio: z.coerce.number().min(0.9).max(1).optional(),
-      recentSignalSessions: z.coerce.number().int().min(1).max(10).optional()
+      breakoutHoldTolerancePercent: z.coerce.number().min(0).max(10).optional(),
+      maxBreakoutFailurePercent: z.coerce.number().min(0).max(15).optional(),
+      maxBreakoutExtensionPercent: z.coerce.number().min(0).max(25).optional(),
+      maxSetupDistanceBelowBreakoutLevelPercent: z.coerce.number().min(0).max(20).optional(),
+      minActionableValidityScore: z.coerce.number().int().min(0).max(100).optional(),
+      minExecutionReadinessScore: z.coerce.number().int().min(0).max(100).optional(),
+      regimeScoreWeight: z.coerce.number().min(0).max(1).optional(),
+      minRegimeScoreForActionable: z.coerce.number().int().min(0).max(100).optional(),
+      blockActionableOnRiskOff: z.coerce.boolean().optional(),
+      recentSignalSessions: z.coerce.number().int().min(1).max(10).optional(),
+      debugTopCandidateLimit: z.coerce.number().int().min(1).max(10).optional()
     })
     .optional(),
   discord: z
@@ -242,30 +306,16 @@ alertRoutes.post("/smart-money-watchlist/scan", async (request, response, next) 
   try {
     const input = smartMoneyScanSchema.parse(request.body);
     const watchItems = (await listSmartMoneyWatchItems()).filter((item) => item.enabled);
-    const filters = {
-      lookbackTradingDays: input.filters?.lookbackTradingDays ?? 35,
-      breakoutLookbackDays: input.filters?.breakoutLookbackDays ?? 20,
-      minLeadInPriceChangePercent: input.filters?.minLeadInPriceChangePercent ?? 4,
-      minLeadInVolumeRatio: input.filters?.minLeadInVolumeRatio ?? 2.5,
-      minBreakoutPriceChangePercent: input.filters?.minBreakoutPriceChangePercent ?? 8,
-      minBreakoutVolumeRatio: input.filters?.minBreakoutVolumeRatio ?? 3.5,
-      minPullbackSessions: input.filters?.minPullbackSessions ?? 1,
-      maxPullbackSessions: input.filters?.maxPullbackSessions ?? 30,
-      maxPullbackDrawdownPercent: input.filters?.maxPullbackDrawdownPercent ?? 6.5,
-      maxPullbackAvgVolumeRatio: input.filters?.maxPullbackAvgVolumeRatio ?? 0.65,
-      minPatternScore: input.filters?.minPatternScore ?? 60,
-      minSetupPatternScore: input.filters?.minSetupPatternScore ?? input.filters?.minPatternScore ?? 55,
-      minBreakoutPatternScore: input.filters?.minBreakoutPatternScore ?? input.filters?.minPatternScore ?? 68,
-      closeNearHighRatio: input.filters?.closeNearHighRatio ?? 0.985,
-      recentSignalSessions: input.filters?.recentSignalSessions ?? 2
-    };
+    const filters = resolveSmartMoneyPatternFilters(input.filters);
 
     const analyses = await analyzeSmartMoneyPatterns(
       watchItems.map((item) => ({
         symbol: item.symbol,
         name: item.name,
         note: item.note,
-        referenceDate: input.referenceDate
+        referenceDate: input.referenceDate,
+        marketContext: input.marketContext,
+        debug: input.debug
       })),
       filters
     );

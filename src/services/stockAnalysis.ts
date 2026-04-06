@@ -8,11 +8,17 @@ import type {
   RecommendationPatternMatch,
   RecommendationRequest,
   SmartMoneyPatternAnalysis,
+  SmartMoneyCandidateSummary,
   SmartMoneyPatternFilters,
   SmartMoneyPatternMatch,
+  SmartMoneyPatternRequest,
+  SmartMoneyMarketContext,
+  SmartMoneyPullbackType,
+  SmartMoneyRejectReason,
   StockAnalysis
 } from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
+import { evaluateSmartMoneyPattern, resolveSmartMoneyPatternFilters } from "./smartMoneyEngine.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
 
 type QuoteResponse = {
@@ -388,23 +394,7 @@ const defaultRecommendationPatternFilters: RecommendationPatternFilters = {
   closeNearHighRatio: 0.985
 };
 
-const defaultSmartMoneyPatternFilters: SmartMoneyPatternFilters = {
-  lookbackTradingDays: 35,
-  breakoutLookbackDays: 20,
-  minLeadInPriceChangePercent: 4,
-  minLeadInVolumeRatio: 2.5,
-  minBreakoutPriceChangePercent: 8,
-  minBreakoutVolumeRatio: 3.5,
-  minPullbackSessions: 1,
-  maxPullbackSessions: 30,
-  maxPullbackDrawdownPercent: 6.5,
-  maxPullbackAvgVolumeRatio: 0.65,
-  minPatternScore: 60,
-  minSetupPatternScore: 55,
-  minBreakoutPatternScore: 68,
-  closeNearHighRatio: 0.985,
-  recentSignalSessions: 2
-};
+const defaultSmartMoneyPatternFilters: SmartMoneyPatternFilters = resolveSmartMoneyPatternFilters();
 
 function averageNumberSeries(values: Array<number | undefined>): number | undefined {
   return average(values.filter((value): value is number => typeof value === "number"));
@@ -581,23 +571,33 @@ function buildEmptySmartMoneyPattern(referenceDate: string, windowPoints: ChartP
     windowStartDate: windowPoints[0]?.date,
     windowEndDate: windowPoints.at(-1)?.date,
     leadInDate: undefined,
+    surgePeakDate: undefined,
+    surgeContinuationSessions: undefined,
     sessionsSinceLeadIn: undefined,
+    sessionsSincePeak: undefined,
     leadInPriceChangePercent: undefined,
     pullbackStartDate: undefined,
     pullbackEndDate: undefined,
     breakoutDate: undefined,
     sessionsSinceBreakout: undefined,
     leadInClose: undefined,
+    leadInHigh: undefined,
     leadInVolume: undefined,
     leadInVolumeRatio20d: undefined,
+    surgePeakClose: undefined,
+    surgePeakHigh: undefined,
     pullbackVolumeRatioToLeadIn: undefined,
+    pullbackRangePercent: undefined,
     breakoutClose: undefined,
     breakoutPriceChangePercent: undefined,
     breakoutVolume: undefined,
     breakoutVolumeRatio20d: undefined,
     breakoutCloseVsLeadInPercent: undefined,
     referenceClose: undefined,
+    referenceCloseVsBasePercent: undefined,
+    referenceCloseVsPeakPercent: undefined,
     referenceCloseVsLeadInPercent: undefined,
+    referenceCloseVsLeadInHighPercent: undefined,
     pullbackSessions: 0,
     pullbackMaxDrawdownPercent: undefined,
     breakout20d: false,
@@ -697,123 +697,200 @@ function evaluateSmartMoneyPatternWindow(
       continue;
     }
 
-    const pullbackPoints = points.slice(leadInIndex + 1, referenceIndex + 1);
-    if (
-      pullbackPoints.length < filters.minPullbackSessions ||
-      pullbackPoints.length > filters.maxPullbackSessions
+    const preLeadBaseClose = getHighestCloseBefore(points, leadInIndex, filters.breakoutLookbackDays) ?? leadInPrevious.close;
+    const surgePeakUpperBound = Math.min(referenceIndex - filters.minPullbackSessions, leadInIndex + 5);
+
+    for (
+      let surgePeakIndex = leadInIndex + filters.minSetupContinuationSessions;
+      surgePeakIndex <= surgePeakUpperBound;
+      surgePeakIndex += 1
     ) {
-      continue;
-    }
+      const surgePeakPoint = points[surgePeakIndex];
+      if (!surgePeakPoint) {
+        continue;
+      }
 
-    const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
-    const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, leadInPoint.volume);
-    const pullbackLowestClose = Math.min(...pullbackPoints.map((point) => point.close));
-    const pullbackMaxDrawdownPercent = Math.abs(percentChange(pullbackLowestClose, leadInPoint.close) ?? 0);
+      const surgeAdvancePercent = percentChange(surgePeakPoint.close, leadInPoint.close);
+      if (
+        surgeAdvancePercent == null ||
+        surgeAdvancePercent < filters.minSetupSurgeAdvancePercent
+      ) {
+        continue;
+      }
 
-    if (
-      pullbackVolumeRatioToLeadIn == null ||
-      pullbackVolumeRatioToLeadIn > filters.maxPullbackAvgVolumeRatio ||
-      pullbackMaxDrawdownPercent > filters.maxPullbackDrawdownPercent
-    ) {
-      continue;
-    }
+      const pullbackPoints = points.slice(surgePeakIndex + 1, referenceIndex + 1);
+      if (
+        pullbackPoints.length < Math.max(filters.minPullbackSessions, filters.minSetupPullbackSessions) ||
+        pullbackPoints.length > filters.maxPullbackSessions
+      ) {
+        continue;
+      }
 
-    const referenceCloseVsLeadInPercent = percentChange(referencePoint.close, leadInPoint.close);
-    if (referenceCloseVsLeadInPercent == null) {
-      continue;
-    }
+      const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
+      const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, surgePeakPoint.volume ?? leadInPoint.volume);
+      const pullbackLowestClose = Math.min(...pullbackPoints.map((point) => point.close));
+      const pullbackHighestClose = Math.max(...pullbackPoints.map((point) => point.close));
+      const pullbackMaxDrawdownPercent = Math.abs(percentChange(pullbackLowestClose, surgePeakPoint.close) ?? 0);
+      const pullbackRangePercent = Math.abs(percentChange(pullbackHighestClose, pullbackLowestClose) ?? 0);
+      const pullbackDownSessions = pullbackPoints.reduce((count, point, index) => {
+        const comparisonPoint = index === 0 ? surgePeakPoint : pullbackPoints[index - 1];
+        return count + (comparisonPoint && point.close < comparisonPoint.close ? 1 : 0);
+      }, 0);
 
-    let patternScore = 0;
-    const reasons: string[] = [];
+      if (
+        pullbackVolumeRatioToLeadIn == null ||
+        pullbackVolumeRatioToLeadIn > filters.maxPullbackAvgVolumeRatio ||
+        pullbackMaxDrawdownPercent < filters.minPullbackDrawdownPercent ||
+        pullbackDownSessions < filters.minSetupDownSessions ||
+        pullbackRangePercent > filters.maxSetupPullbackRangePercent ||
+        pullbackMaxDrawdownPercent > filters.maxSetupPullbackDrawdownPercent
+      ) {
+        continue;
+      }
 
-    if (leadInPriceChangePercent >= 10) {
-      patternScore += 22;
-    } else if (leadInPriceChangePercent >= 7) {
-      patternScore += 18;
-    } else {
-      patternScore += 14;
-    }
-    reasons.push(`Lead-in day on ${leadInPoint.date} rose ${leadInPriceChangePercent.toFixed(1)}% with volume ${leadInVolumeRatio20d.toFixed(1)}x.`);
+      const referenceCloseVsLeadInPercent = percentChange(referencePoint.close, leadInPoint.close);
+      const referenceCloseVsLeadInHighPercent = percentChange(referencePoint.close, leadInPoint.high ?? leadInPoint.close);
+      const referenceCloseVsBasePercent = percentChange(referencePoint.close, preLeadBaseClose);
+      const referenceCloseVsPeakPercent = percentChange(referencePoint.close, surgePeakPoint.close);
+      const surgeContinuationSessions = surgePeakIndex - leadInIndex;
+      if (referenceCloseVsBasePercent == null || referenceCloseVsBasePercent < filters.minReferenceCloseVsBasePercent) {
+        continue;
+      }
+      if (referenceCloseVsPeakPercent == null || referenceCloseVsPeakPercent > filters.maxSetupCloseVsPeakPercent) {
+        continue;
+      }
 
-    if (pullbackVolumeRatioToLeadIn <= 0.35) {
-      patternScore += 24;
-    } else if (pullbackVolumeRatioToLeadIn <= 0.5) {
-      patternScore += 20;
-    } else {
-      patternScore += 14;
-    }
+      let patternScore = 0;
+      const reasons: string[] = [];
 
-    if (pullbackMaxDrawdownPercent <= 3) {
-      patternScore += 20;
-    } else if (pullbackMaxDrawdownPercent <= 5) {
-      patternScore += 14;
-    } else {
-      patternScore += 10;
-    }
-    reasons.push(
-      `Since then volume contracted to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% of the lead-in day while the pullback held within ${pullbackMaxDrawdownPercent.toFixed(1)}% for ${pullbackPoints.length} sessions.`
-    );
+      if (leadInPriceChangePercent >= 12) {
+        patternScore += 20;
+      } else if (leadInPriceChangePercent >= 7) {
+        patternScore += 16;
+      } else {
+        patternScore += 12;
+      }
 
-    if (referenceCloseVsLeadInPercent >= -1) {
-      patternScore += 18;
-    } else if (referenceCloseVsLeadInPercent >= -3) {
-      patternScore += 14;
-    } else {
-      patternScore += 8;
-    }
+      if (surgeAdvancePercent >= 20) {
+        patternScore += 22;
+      } else if (surgeAdvancePercent >= 12) {
+        patternScore += 18;
+      } else {
+        patternScore += 14;
+      }
+      reasons.push(
+        `Lead-in started on ${leadInPoint.date} and the surge extended to ${surgePeakPoint.date} over ${surgeContinuationSessions + 1} sessions, advancing ${surgeAdvancePercent.toFixed(1)}% with volume still elevated.`
+      );
 
-    const sessionsSinceLeadIn = referenceIndex - leadInIndex;
-    if (sessionsSinceLeadIn <= 10) {
-      patternScore += 12;
-    } else if (sessionsSinceLeadIn <= 20) {
-      patternScore += 8;
-    } else {
-      patternScore += 4;
-    }
-    reasons.push(
-      `The current close is ${referenceCloseVsLeadInPercent.toFixed(1)}% versus the lead-in close, so the post-surge pullback still looks like an active setup.`
-    );
+      if (pullbackVolumeRatioToLeadIn <= 0.2) {
+        patternScore += 24;
+      } else if (pullbackVolumeRatioToLeadIn <= 0.35) {
+        patternScore += 20;
+      } else {
+        patternScore += 14;
+      }
 
-    patternScore = clamp(patternScore, 0, 100);
-    const matched = patternScore >= filters.minSetupPatternScore;
+      if (pullbackMaxDrawdownPercent <= 12) {
+        patternScore += 16;
+      } else if (pullbackMaxDrawdownPercent <= 22) {
+        patternScore += 12;
+      } else {
+        patternScore += 8;
+      }
 
-    const candidate: SmartMoneyPatternMatch = {
-      matched,
-      actionable: matched,
-      stage: "setup",
-      signal: toSignal(patternScore),
-      patternScore,
-      referenceDate,
-      windowStartDate: windowPoints[0]?.date,
-      windowEndDate: windowPoints.at(-1)?.date,
-      leadInDate: leadInPoint.date,
-      sessionsSinceLeadIn,
-      leadInPriceChangePercent,
-      pullbackStartDate: pullbackPoints[0]?.date,
-      pullbackEndDate: pullbackPoints.at(-1)?.date,
-      breakoutDate: undefined,
-      sessionsSinceBreakout: undefined,
-      leadInClose: leadInPoint.close,
-      leadInVolume: leadInPoint.volume,
-      leadInVolumeRatio20d,
-      pullbackVolumeRatioToLeadIn,
-      breakoutClose: undefined,
-      breakoutPriceChangePercent: undefined,
-      breakoutVolume: undefined,
-      breakoutVolumeRatio20d: undefined,
-      breakoutCloseVsLeadInPercent: undefined,
-      referenceClose: referencePoint.close,
-      referenceCloseVsLeadInPercent,
-      pullbackSessions: pullbackPoints.length,
-      pullbackMaxDrawdownPercent,
-      breakout20d: false,
-      closedNearHigh: false,
-      reasons,
-      summary: reasons.join(" ")
-    };
+      if (pullbackRangePercent <= 15) {
+        patternScore += 14;
+      } else if (pullbackRangePercent <= 25) {
+        patternScore += 10;
+      } else {
+        patternScore += 6;
+      }
+      reasons.push(
+        `After the surge peak, volume cooled to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% while the digestion ranged ${pullbackRangePercent.toFixed(1)}% with ${pullbackDownSessions} down closes and a max close drawdown of ${pullbackMaxDrawdownPercent.toFixed(1)}%.`
+      );
 
-    if (isBetterSmartMoneyCandidate(candidate, bestMatch)) {
-      bestMatch = candidate;
+      if (referenceCloseVsBasePercent >= 10) {
+        patternScore += 18;
+      } else if (referenceCloseVsBasePercent >= 3) {
+        patternScore += 14;
+      } else {
+        patternScore += 10;
+      }
+
+      if (referenceCloseVsPeakPercent != null) {
+        if (referenceCloseVsPeakPercent >= -12) {
+          patternScore += 12;
+        } else if (referenceCloseVsPeakPercent >= -22) {
+          patternScore += 8;
+        } else {
+          patternScore += 4;
+        }
+      }
+
+      const sessionsSinceLeadIn = referenceIndex - leadInIndex;
+      const sessionsSincePeak = referenceIndex - surgePeakIndex;
+      if (sessionsSincePeak <= 5) {
+        patternScore += 10;
+      } else if (sessionsSincePeak <= 10) {
+        patternScore += 8;
+      } else {
+        patternScore += 5;
+      }
+      reasons.push(
+        `The current close is ${referenceCloseVsBasePercent.toFixed(1)}% above the pre-surge base and ${referenceCloseVsPeakPercent.toFixed(1)}% versus the surge peak close, so the move still looks like a live digestion pattern.`
+      );
+
+      patternScore = clamp(Math.round(patternScore * 0.68), 0, 100);
+      const matched = patternScore >= filters.minSetupPatternScore;
+
+      const candidate: SmartMoneyPatternMatch = {
+        matched,
+        actionable: matched,
+        stage: "setup",
+        signal: toSignal(patternScore),
+        patternScore,
+        referenceDate,
+        windowStartDate: windowPoints[0]?.date,
+        windowEndDate: windowPoints.at(-1)?.date,
+        leadInDate: leadInPoint.date,
+        surgePeakDate: surgePeakPoint.date,
+        surgeContinuationSessions,
+        sessionsSinceLeadIn,
+        sessionsSincePeak,
+        leadInPriceChangePercent,
+        pullbackStartDate: pullbackPoints[0]?.date,
+        pullbackEndDate: pullbackPoints.at(-1)?.date,
+        breakoutDate: undefined,
+        sessionsSinceBreakout: undefined,
+        leadInClose: leadInPoint.close,
+        leadInHigh: leadInPoint.high,
+        leadInVolume: leadInPoint.volume,
+        leadInVolumeRatio20d,
+        surgePeakClose: surgePeakPoint.close,
+        surgePeakHigh: surgePeakPoint.high,
+        pullbackVolumeRatioToLeadIn,
+        pullbackRangePercent,
+        breakoutClose: undefined,
+        breakoutPriceChangePercent: undefined,
+        breakoutVolume: undefined,
+        breakoutVolumeRatio20d: undefined,
+        breakoutCloseVsLeadInPercent: undefined,
+        referenceClose: referencePoint.close,
+        referenceCloseVsBasePercent,
+        referenceCloseVsPeakPercent: referenceCloseVsPeakPercent,
+        referenceCloseVsLeadInPercent,
+        referenceCloseVsLeadInHighPercent,
+        pullbackSessions: pullbackPoints.length,
+        pullbackMaxDrawdownPercent,
+        breakout20d: false,
+        closedNearHigh: false,
+        reasons,
+        summary: reasons.join(" ")
+      };
+
+      if (isBetterSmartMoneyCandidate(candidate, bestMatch)) {
+        bestMatch = candidate;
+      }
     }
   }
 
@@ -874,17 +951,37 @@ function evaluateSmartMoneyPatternWindow(
       const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
       const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, leadInPoint.volume);
       const pullbackLowestClose = Math.min(...pullbackPoints.map((point) => point.close));
+      const pullbackHighestHigh = Math.max(...pullbackPoints.map((point) => point.high ?? point.close));
+      const pullbackLowestLow = Math.min(...pullbackPoints.map((point) => point.low ?? point.close));
       const pullbackMaxDrawdownPercent = Math.abs(percentChange(pullbackLowestClose, leadInPoint.close) ?? 0);
+      const pullbackRangePercent = Math.abs(percentChange(pullbackHighestHigh, pullbackLowestLow) ?? 0);
+      const pullbackDownSessions = pullbackPoints.reduce((count, point, index) => {
+        const comparisonPoint = index === 0 ? leadInPoint : pullbackPoints[index - 1];
+        return count + (comparisonPoint && point.close < comparisonPoint.close ? 1 : 0);
+      }, 0);
 
       if (
         pullbackVolumeRatioToLeadIn == null ||
         pullbackVolumeRatioToLeadIn > filters.maxPullbackAvgVolumeRatio ||
+        pullbackMaxDrawdownPercent < filters.minPullbackDrawdownPercent ||
+        pullbackDownSessions < 1 ||
+        pullbackRangePercent > filters.maxPullbackRangePercent ||
         pullbackMaxDrawdownPercent > filters.maxPullbackDrawdownPercent
       ) {
         continue;
       }
 
       const breakoutCloseVsLeadInPercent = percentChange(breakoutPoint.close, leadInPoint.close);
+      const referenceCloseVsLeadInPercent = referencePoint ? percentChange(referencePoint.close, leadInPoint.close) : undefined;
+      const referenceCloseVsLeadInHighPercent = referencePoint
+        ? percentChange(referencePoint.close, leadInPoint.high ?? leadInPoint.close)
+        : undefined;
+      if (
+        referenceCloseVsLeadInPercent != null &&
+        referenceCloseVsLeadInPercent < filters.minReferenceCloseVsLeadInPercent
+      ) {
+        continue;
+      }
       let patternScore = 0;
       const reasons: string[] = [];
 
@@ -901,8 +998,16 @@ function evaluateSmartMoneyPatternWindow(
         patternScore += 16;
       }
       reasons.push(
-        `Pullback held for ${pullbackPoints.length} sessions with max drawdown ${pullbackMaxDrawdownPercent.toFixed(1)}% and volume contraction to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% of the lead-in day.`
+        `Pullback held for ${pullbackPoints.length} sessions with max drawdown ${pullbackMaxDrawdownPercent.toFixed(1)}%, ${pullbackDownSessions} down closes, a ${pullbackRangePercent.toFixed(1)}% range, and volume contraction to ${(pullbackVolumeRatioToLeadIn * 100).toFixed(0)}% of the lead-in day.`
       );
+
+      if (pullbackRangePercent <= 4) {
+        patternScore += 12;
+      } else if (pullbackRangePercent <= 7) {
+        patternScore += 8;
+      } else {
+        patternScore += 4;
+      }
 
       if (breakoutPriceChangePercent >= 20) {
         patternScore += 34;
@@ -937,16 +1042,20 @@ function evaluateSmartMoneyPatternWindow(
         breakoutDate: breakoutPoint.date,
         sessionsSinceBreakout,
         leadInClose: leadInPoint.close,
+        leadInHigh: leadInPoint.high,
         leadInVolume: leadInPoint.volume,
         leadInVolumeRatio20d,
         pullbackVolumeRatioToLeadIn,
+        pullbackRangePercent,
         breakoutClose: breakoutPoint.close,
         breakoutPriceChangePercent,
         breakoutVolume: breakoutPoint.volume,
         breakoutVolumeRatio20d,
         breakoutCloseVsLeadInPercent,
         referenceClose: referencePoint?.close,
-        referenceCloseVsLeadInPercent: referencePoint ? percentChange(referencePoint.close, leadInPoint.close) : undefined,
+        referenceCloseVsPeakPercent: referencePoint && breakoutPoint ? percentChange(referencePoint.close, breakoutPoint.close) : undefined,
+        referenceCloseVsLeadInPercent,
+        referenceCloseVsLeadInHighPercent,
         pullbackSessions: pullbackPoints.length,
         pullbackMaxDrawdownPercent,
         breakout20d,
@@ -1099,16 +1208,17 @@ export async function analyzeRecommendationPatterns(
 }
 
 export async function analyzeSmartMoneyPattern(
-  input: Pick<RecommendationRequest, "symbol" | "name" | "note"> & { referenceDate?: string },
+  input: SmartMoneyPatternRequest,
   overrides?: Partial<SmartMoneyPatternFilters>
 ): Promise<SmartMoneyPatternAnalysis> {
-  const filters: SmartMoneyPatternFilters = {
+  const filters = resolveSmartMoneyPatternFilters({
     ...defaultSmartMoneyPatternFilters,
     ...overrides
-  };
+  });
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
   const referenceDate = input.referenceDate ?? toIsoDate(new Date());
-  const historyLookback = Math.max(90, filters.lookbackTradingDays + filters.breakoutLookbackDays + 25);
+  const maxLookbackWindow = Math.max(...filters.lookbackWindows);
+  const historyLookback = Math.max(90, maxLookbackWindow + filters.breakoutLookbackDays + filters.maxPullbackSessions + 25);
   const period1 = addDays(referenceDate, -historyLookback);
   const { points } = await fetchQuoteAndChart(symbol, { period1 });
 
@@ -1122,7 +1232,10 @@ export async function analyzeSmartMoneyPattern(
   }
 
   const referencePoint = points[referenceIndex];
-  const pattern = evaluateSmartMoneyPatternWindow(points, referenceIndex, filters);
+  const pattern = evaluateSmartMoneyPattern(points, referenceIndex, filters, {
+    marketContext: input.marketContext,
+    debug: input.debug
+  });
 
   return {
     name: input.name,
@@ -1136,7 +1249,7 @@ export async function analyzeSmartMoneyPattern(
 }
 
 export async function analyzeSmartMoneyPatterns(
-  inputs: Array<Pick<RecommendationRequest, "symbol" | "name" | "note"> & { referenceDate?: string }>,
+  inputs: SmartMoneyPatternRequest[],
   overrides?: Partial<SmartMoneyPatternFilters>
 ) {
   return Promise.all(inputs.map((input) => analyzeSmartMoneyPattern(input, overrides)));

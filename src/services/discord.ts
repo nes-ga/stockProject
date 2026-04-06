@@ -169,10 +169,12 @@ function buildSmartMoneyPatternLines(analyses: SmartMoneyPatternAnalysis[]) {
     const { pattern } = item;
     const parts = [
       `${index + 1}. ${item.name ?? item.symbol} (${item.symbol})`,
+      `stage ${pattern.stage}`,
       `ref ${item.tradingReferenceDate}`,
       `lead ${pattern.leadInDate ?? "-"}`,
       `breakout ${pattern.breakoutDate ?? "-"}`,
       `score ${pattern.patternScore}`,
+      `rank ${pattern.finalRankScore ?? pattern.patternScore}`,
       `breakout ${formatPercent(pattern.breakoutPriceChangePercent)}`,
       `vol ${formatNumber(pattern.breakoutVolumeRatio20d)}x`
     ];
@@ -196,7 +198,7 @@ export function buildSmartMoneyPatternDiscordMessages(params: {
     mention?.trim(),
     "Smart-money entry pattern alerts",
     `Generated ${nowInSeoul()} KST`,
-    `lookback=${filters.lookbackTradingDays}, leadVol=${filters.minLeadInVolumeRatio}, breakoutVol=${filters.minBreakoutVolumeRatio}, setupScore=${filters.minSetupPatternScore}, breakoutScore=${filters.minBreakoutPatternScore}, recent=${filters.recentSignalSessions}`
+    `lookbacks=${filters.lookbackWindows.join("/")}, leadVol=${filters.minLeadInVolumeRatio}, breakoutVol=${filters.minBreakoutVolumeRatio}, minTurnover=${Math.round(filters.minTurnoverValue).toLocaleString("ko-KR")}, setupScore=${filters.minSetupPatternScore}, breakoutScore=${filters.minBreakoutPatternScore}, recent=${filters.recentSignalSessions}`
   ].filter(Boolean);
   const header = headerParts.join("\n");
 
