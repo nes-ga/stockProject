@@ -13,6 +13,7 @@ const BAND_ACCESS_TOKEN_KEY = "band-access-token-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
 const SWING_LOOKBACK_DAYS = 15;
+const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -146,10 +147,16 @@ const indexWatchSeed = [
 ];
 
 const fundamentalsGuideText = [
-  "재무지표는 네이버 금융 기준 최근 연간/최근 분기 실적을 보여줍니다.",
-  "일부 종목은 추정치(E) 대신 실제 값이 있는 가장 최근 칼럼으로 표시합니다.",
+  "재무지표는 네이버 금융 기준 최근 2개 연간과 최대 8개 분기 흐름을 보여줍니다.",
+  "분기 데이터는 최대 8개까지 보여주며, 실제 확정 분기와 추정 분기(E)를 표에서 분리해서 표시합니다.",
   "ETF나 지수형 상품은 기업 재무제표가 없어 표시되지 않을 수 있습니다."
 ].join("\n");
+const businessAreaGuideText = [
+  "사업 포트폴리오 맵은 현재 기업개요 문장을 바탕으로 자동 추정한 원형 그래프입니다.",
+  "정확한 매출 비중 공시가 아니라, 어떤 사업 축으로 회사를 이해하면 좋은지 빠르게 보여주는 참고용 맵입니다.",
+  "추후 사업부문 매출 비중 데이터가 연결되면 같은 UI에 실제 비중으로 교체할 수 있습니다."
+].join("\n");
+const businessAreaPalette = ["#c45a2d", "#177245", "#2563eb", "#d97706", "#7c3aed", "#0f766e"];
 
 const fundamentalMetricGuides = {
   "매출액": "회사가 일정 기간 동안 올린 전체 매출입니다. 외형 성장 속도를 볼 때 먼저 확인합니다.",
@@ -162,6 +169,17 @@ const fundamentalMetricGuides = {
   "PER": "주가를 주당순이익으로 나눈 값입니다. 이익 대비 현재 주가가 얼마나 비싼지 볼 때 씁니다.",
   "PBR": "주가를 주당순자산으로 나눈 값입니다. 자산가치 대비 현재 주가 수준을 볼 때 씁니다."
 };
+const fundamentalMetricDefinitions = [
+  { key: "revenue", label: "매출액", digits: 0 },
+  { key: "operatingIncome", label: "영업이익", digits: 0 },
+  { key: "netIncome", label: "순이익", digits: 0 },
+  { key: "roe", label: "ROE", digits: 2, suffix: "%" },
+  { key: "debtRatio", label: "부채비율", digits: 2, suffix: "%" },
+  { key: "eps", label: "EPS", digits: 0 },
+  { key: "bps", label: "BPS", digits: 0 },
+  { key: "per", label: "PER", digits: 2 },
+  { key: "pbr", label: "PBR", digits: 2 }
+];
 
 const timeframes = ["daily", "weekly", "monthly"];
 const timeframeLabels = {
@@ -186,15 +204,12 @@ const moversScoreGuideText = [
 ].join("\n");
 const swingScoreGuideText = [
   `스윙 엔진은 최근 ${SWING_LOOKBACK_DAYS}거래일을 기준으로 봅니다.`,
-  "급등 출발은 기본적으로 상한가급 강도에 가깝게 봅니다. 출발봉은 대략 10% 이상, 급등 구간 누적은 15% 이상이어야 setup 후보가 됩니다.",
-  "여기에 힘의 유지가 더 필요합니다. 기준봉 다음 최소 1거래일 이상 강세가 이어져서 급등 피크가 뒤로 확장돼야 합니다.",
-  "좋은 소화형은 강한 급등 구간 뒤에 거래량이 줄고, 가격이 급등 전 바닥을 지키면서 에너지를 소화하는 형태를 우선합니다.",
-  "눌림은 최소 1.5% 이상 되돌림이 있고, 최소 3거래일 이상 이어지며, 적어도 2번 이상 종가가 낮아진 경우만 인정합니다.",
-  "소화형에서는 현재 종가가 급등 피크 종가를 바로 재돌파하면 제외합니다.",
-  "급등 후 소화형은 눌림 폭이 조금 넓어도 거래량이 충분히 식고 급등 전 기준선을 지키면 높은 점수를 줍니다.",
-  "소화형: 거래량이 터진 급등 구간 뒤에 거래량 감소 눌림이 유지되면 60점 이상에서 인정합니다.",
-  "완성형: 축적 뒤 재돌파까지 확인되면 68점 이상에서 인정합니다.",
-  "즉 같은 60점이어도 소화형에서는 강한 편일 수 있지만, 완성형에서는 아직 부족할 수 있습니다."
+  "첫 단계는 기준봉입니다. 가격과 거래량이 함께 붙으면서 시세의 축이 세워져야 합니다.",
+  "그 다음은 눌림입니다. 거래량이 줄고, 기준봉 저점이나 핵심 가격대를 크게 훼손하지 않는 조정이 나와야 합니다.",
+  "눌림이 충분히 진행되면 분할매수 구간을 따로 잡습니다. 보통 돌파선 근처에서 버티는지와 이탈선이 명확한지가 핵심입니다.",
+  "재돌파가 나와도 너무 멀리 달아나면 추격보다 확인 구간으로 둡니다.",
+  "이탈은 기준봉 저점이나 눌림 저점을 훼손해 구조가 무너진 경우입니다.",
+  "화면에는 점수 대신 현재 상태와 진입 구간, 이탈 기준을 중심으로 표시합니다."
 ].join("\n");
 const defaultRecommendationBySymbol = new Map(defaultRecommendationCatalog.map((item) => [item.symbol, item]));
 
@@ -233,6 +248,7 @@ let latestRiseMovers = [];
 let latestFallMovers = [];
 
 const appTabs = document.querySelector("#appTabs");
+const newsView = document.querySelector("#newsView");
 const indexView = document.querySelector("#indexView");
 const bandView = document.querySelector("#bandView");
 const moversView = document.querySelector("#moversView");
@@ -261,13 +277,17 @@ const indexChartModalContainer = document.querySelector("#indexChartModalContain
 const indexChartModalTooltip = document.querySelector("#indexChartModalTooltip");
 const indexChartModalStartDate = document.querySelector("#indexChartModalStartDate");
 const indexChartModalEndDate = document.querySelector("#indexChartModalEndDate");
+const swingScoreModal = document.querySelector("#swingScoreModal");
+const closeSwingScoreModalBtn = document.querySelector("#closeSwingScoreModalBtn");
+const swingScoreModalMeta = document.querySelector("#swingScoreModalMeta");
+const swingScoreModalBody = document.querySelector("#swingScoreModalBody");
 const stockForm = document.querySelector("#stockForm");
 const stockSearchInput = document.querySelector("#stockSearchInput");
 const stockSearchResults = document.querySelector("#stockSearchResults");
 const selectedStockCard = document.querySelector("#selectedStockCard");
 const indexWatchList = document.querySelector("#indexWatchList");
-const indexRiseThemesList = document.querySelector("#indexRiseThemesList");
-const indexFallThemesList = document.querySelector("#indexFallThemesList");
+const moversRiseThemesList = document.querySelector("#moversRiseThemesList");
+const moversFallThemesList = document.querySelector("#moversFallThemesList");
 const stockNameInput = document.querySelector("#stockNameInput");
 const stockSymbolInput = document.querySelector("#stockSymbolInput");
 const stockPriceInput = document.querySelector("#stockPriceInput");
@@ -425,6 +445,7 @@ openAddStockBtn.addEventListener("click", () => {
 closeStockModalBtn.addEventListener("click", closeStockModal);
 cancelStockModalBtn.addEventListener("click", closeStockModal);
 closeIndexChartModalBtn?.addEventListener("click", closeIndexChartModal);
+closeSwingScoreModalBtn?.addEventListener("click", closeSwingScoreModal);
 
 stockModal.addEventListener("pointerdown", (event) => {
   stockModalPointerDownOnBackdrop = event.target === stockModal;
@@ -444,6 +465,12 @@ indexChartModal?.addEventListener("click", (event) => {
   }
 });
 
+swingScoreModal?.addEventListener("click", (event) => {
+  if (event.target === swingScoreModal) {
+    closeSwingScoreModal();
+  }
+});
+
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !stockModal.classList.contains("hidden")) {
     closeStockModal();
@@ -452,6 +479,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && indexChartModal && !indexChartModal.classList.contains("hidden")) {
     closeIndexChartModal();
+    return;
+  }
+
+  if (event.key === "Escape" && swingScoreModal && !swingScoreModal.classList.contains("hidden")) {
+    closeSwingScoreModal();
   }
 });
 
@@ -553,6 +585,29 @@ postList?.addEventListener("click", async (event) => {
 });
 
 results.addEventListener("click", (event) => {
+  const fundamentalsButton = event.target.closest("[data-fundamentals-scroll]");
+  if (fundamentalsButton) {
+    const targetId = fundamentalsButton.dataset.fundamentalsTarget;
+    const direction = fundamentalsButton.dataset.fundamentalsScroll;
+    if (targetId && direction) {
+      const container = document.getElementById(targetId);
+      if (container) {
+        const distance = Math.max(container.clientWidth * 0.72, 220);
+        container.scrollBy({
+          left: direction === "prev" ? -distance : distance,
+          behavior: "smooth"
+        });
+      }
+    }
+    return;
+  }
+
+  const scoreExplainButton = event.target.closest("[data-score-explain-toggle]");
+  if (scoreExplainButton) {
+    openSwingScoreModal(scoreExplainButton);
+    return;
+  }
+
   const button = event.target.closest("[data-timeframe]");
   if (!button || !currentAnalysis) {
     return;
@@ -575,7 +630,7 @@ async function initializeApp() {
   renderAppTabs();
   renderCategoryTabs();
   renderIndexWatchList();
-  renderIndexThemeLists();
+  renderMoversThemeLists();
   renderSelector();
   renderBandList();
   renderPostList();
@@ -713,6 +768,7 @@ function renderAppTabs() {
     }
   }
 
+  newsView?.classList.toggle("hidden", activeView !== "news");
   indexView?.classList.toggle("hidden", activeView !== "index");
   bandView?.classList.toggle("hidden", activeView !== "band");
   moversView?.classList.toggle("hidden", activeView !== "movers");
@@ -926,12 +982,12 @@ function buildMoverThemes(items, direction) {
     .slice(0, 5);
 }
 
-function renderIndexThemeLists() {
-  renderIndexThemeList(indexRiseThemesList, buildMoverThemes(latestRiseMovers, "rise"), "rise");
-  renderIndexThemeList(indexFallThemesList, buildMoverThemes(latestFallMovers, "fall"), "fall");
+function renderMoversThemeLists() {
+  renderMoversThemeList(moversRiseThemesList, buildMoverThemes(latestRiseMovers, "rise"), "rise");
+  renderMoversThemeList(moversFallThemesList, buildMoverThemes(latestFallMovers, "fall"), "fall");
 }
 
-function renderIndexThemeList(container, themes, direction) {
+function renderMoversThemeList(container, themes, direction) {
   if (!container) {
     return;
   }
@@ -961,35 +1017,35 @@ function renderIndexThemeList(container, themes, direction) {
       const representatives = theme.topItems
         .map(
           (item) =>
-            `<span class="index-theme-chip">${escapeHtml(item.name)} <strong class="${trendClass}">${formatPercent(
+            `<span class="movers-theme-chip">${escapeHtml(item.name)} <strong class="${trendClass}">${formatPercent(
               item.changePercent
             )}</strong></span>`
         )
         .join("");
       const sectorSummary = theme.sectors.length ? theme.sectors.join(" / ") : "";
       return `
-        <article class="index-theme-card ${direction}">
-          <div class="index-theme-head">
-            <div>
-              <span class="index-theme-rank">${index + 1}</span>
+        <article class="movers-theme-card ${direction}">
+          <div class="movers-theme-main">
+            <span class="movers-theme-rank">${index + 1}</span>
+            <div class="movers-theme-copy">
               <h3>${escapeHtml(theme.theme)}</h3>
-              ${sectorSummary ? `<div class="index-theme-subtitle">${escapeHtml(sectorSummary)}</div>` : ""}
-            </div>
-            <span class="index-theme-count">${escapeHtml(countLabel)}</span>
-          </div>
-          <div class="index-theme-metrics">
-            <div class="index-theme-metric">
-              <span class="index-theme-label">평균 점수</span>
-              <span class="index-theme-value">${escapeHtml(String(Math.round(theme.avgScore)))}</span>
-            </div>
-            <div class="index-theme-metric">
-              <span class="index-theme-label">평균 등락률</span>
-              <span class="index-theme-value ${trendClass}">${direction === "rise" ? "+" : "-"}${escapeHtml(
-                theme.avgChangePercent.toFixed(2)
-              )}%</span>
+              ${sectorSummary ? `<div class="movers-theme-subtitle">${escapeHtml(sectorSummary)}</div>` : ""}
             </div>
           </div>
-          <div class="index-theme-representatives">${representatives}</div>
+          <div class="movers-theme-stat">
+            <span class="movers-theme-label">평균 점수</span>
+            <span class="movers-theme-value">${escapeHtml(String(Math.round(theme.avgScore)))}</span>
+          </div>
+          <div class="movers-theme-stat">
+            <span class="movers-theme-label">평균 등락률</span>
+            <span class="movers-theme-value ${trendClass}">${direction === "rise" ? "+" : "-"}${escapeHtml(
+              theme.avgChangePercent.toFixed(2)
+            )}%</span>
+          </div>
+          <div class="movers-theme-tail">
+            <span class="movers-theme-count">${escapeHtml(countLabel)}</span>
+          </div>
+          <div class="movers-theme-representatives">${representatives}</div>
         </article>
       `;
     })
@@ -997,7 +1053,7 @@ function renderIndexThemeList(container, themes, direction) {
 }
 
 function switchAppView(view) {
-  activeView = ["index", "band", "movers"].includes(view) ? view : "band";
+  activeView = ["news", "index", "band", "movers"].includes(view) ? view : "band";
   renderAppTabs();
 
   if (activeView === "index") {
@@ -1273,6 +1329,49 @@ function closeIndexChartModal() {
   indexChartModal?.classList.add("hidden");
 }
 
+function openSwingScoreModal(button) {
+  if (!swingScoreModal || !swingScoreModalBody || !swingScoreModalMeta) {
+    return;
+  }
+
+  const label = button.dataset.scoreLabel ?? "상태";
+  const description = decodeURIComponent(button.dataset.scoreDescription ?? "");
+  const summary = decodeURIComponent(button.dataset.scoreSummary ?? "");
+  const guide = decodeURIComponent(button.dataset.scoreGuide ?? "");
+  const action = decodeURIComponent(button.dataset.scoreAction ?? "");
+  const entry = decodeURIComponent(button.dataset.scoreEntry ?? "");
+  const invalidation = decodeURIComponent(button.dataset.scoreInvalidation ?? "");
+  const reasons = JSON.parse(decodeURIComponent(button.dataset.scoreReasons ?? "%5B%5D"));
+
+  swingScoreModalMeta.textContent = label;
+  swingScoreModalBody.innerHTML = `
+    <div class="swing-pattern-summary">${escapeHtml(summary)}</div>
+    <div class="swing-pattern-copy">${escapeHtml(description)}</div>
+    ${action ? `<div class="swing-pattern-copy"><strong>전략:</strong> ${escapeHtml(action)}</div>` : ""}
+    ${
+      entry || invalidation
+        ? `
+          <div class="swing-reason-list">
+            ${entry ? `<span class="swing-reason-chip">진입 구간 ${escapeHtml(entry)}</span>` : ""}
+            ${invalidation ? `<span class="swing-reason-chip">이탈 기준 ${escapeHtml(invalidation)}</span>` : ""}
+          </div>
+        `
+        : ""
+    }
+    <div class="swing-pattern-copy">${escapeHtml(guide).replaceAll("\n", "<br>")}</div>
+    <div class="swing-reason-list">
+      ${(Array.isArray(reasons) ? reasons : [])
+        .map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`)
+        .join("")}
+    </div>
+  `;
+  swingScoreModal.classList.remove("hidden");
+}
+
+function closeSwingScoreModal() {
+  swingScoreModal?.classList.add("hidden");
+}
+
 function renderIndexChartModal() {
   if (!activeMarketWatchKey) {
     return;
@@ -1443,7 +1542,7 @@ async function loadStockUniverse() {
     stockSearchUniverse = mergeStockUniverse(items);
     stockUniverseLoaded = true;
     repairRecommendationsFromUniverse(items);
-    renderIndexThemeLists();
+  renderMoversThemeLists();
     if (hasLoadedMovers && activeView === "movers") {
       void loadMovers();
     }
@@ -2050,7 +2149,7 @@ async function loadMovers(options = {}) {
     hasLoadedMovers = true;
     latestRiseMovers = risePayload.analyses;
     latestFallMovers = fallPayload.analyses;
-    renderIndexThemeLists();
+    renderMoversThemeLists();
     renderMoversList(riseMoversList, risePayload.analyses, "rise");
     renderMoversList(fallMoversList, fallPayload.analyses, "fall");
 
@@ -2072,7 +2171,7 @@ async function loadMovers(options = {}) {
     latestRiseMovers = [];
     latestFallMovers = [];
     hasLoadedMovers = true;
-    renderIndexThemeLists();
+    renderMoversThemeLists();
     renderMoversList(riseMoversList, [], "rise");
     renderMoversList(fallMoversList, [], "fall");
     if (riseCountLabel) {
@@ -2142,49 +2241,26 @@ function renderMoversList(container, items, direction) {
 
       return `
         <article class="mover-card ${direction}">
-          <div class="mover-card-head">
+          <div class="mover-row">
             <div class="mover-title">
               <span class="mover-rank">${index + 1}</span>
-              <div>
+              <div class="mover-copy">
                 <h3>${escapeHtml(item.name)}</h3>
                 <div class="mover-meta">${escapeHtml(item.symbol)} / ${escapeHtml(item.market)}${sector ? ` / ${escapeHtml(sector)}` : ""} / \uC810\uC218 ${escapeHtml(String(item.alertScore))} ${renderInfoIcon(moversScoreGuideText, "점수 기준 안내")}</div>
               </div>
             </div>
+            <div class="mover-price-line">
+              <span class="mover-price">${formatNumber(item.price)}\uC6D0</span>
+              <span class="mover-change ${changeClass}">${formatPercent(item.changePercent)}</span>
+            </div>
+            <div class="mover-metrics-inline">
+              <span class="mover-metric-chip">\uAC70\uB798 ${formatMultiplier(item.volumeRatio20d)}</span>
+              <span class="mover-metric-chip">\uB300\uAE08 ${formatKoreanEok(item.estimatedTurnover)}</span>
+              <span class="mover-metric-chip">${edgeMetricLabel} ${edgeMetricValue}</span>
+              <span class="mover-metric-chip">${direction === "rise" ? "\uACE0\uAC00\uBD80\uADFC" : "\uC800\uAC00\uBD80\uADFC"} ${direction === "rise" ? (item.closedNearHigh ? "\uC720\uC9C0" : "-") : item.closedNearLow ? "\uC720\uC9C0" : "-"}</span>
+            </div>
             <span class="signal-pill ${escapeHtml(item.signal)}">${signalLabel}</span>
           </div>
-
-          <div class="mover-price-line">
-            <span class="mover-price">${formatNumber(item.price)}\uC6D0</span>
-            <span class="mover-change ${changeClass}">${formatPercent(item.changePercent)}</span>
-          </div>
-
-          <div class="mover-metrics">
-            <div class="mover-metric">
-              <span class="mover-metric-label">\uAC70\uB798\uB7C9 \uBC30\uC218</span>
-              <span class="mover-metric-value">${formatMultiplier(item.volumeRatio20d)}</span>
-            </div>
-            <div class="mover-metric">
-              <span class="mover-metric-label">\uAC70\uB798\uB300\uAE08</span>
-              <span class="mover-metric-value">${formatKoreanEok(item.estimatedTurnover)}</span>
-            </div>
-            <div class="mover-metric">
-              <span class="mover-metric-label">${edgeMetricLabel}</span>
-              <span class="mover-metric-value">${edgeMetricValue}</span>
-            </div>
-            <div class="mover-metric">
-              <span class="mover-metric-label">${direction === "rise" ? "\uACE0\uAC00 \uBD80\uADFC" : "\uC800\uAC00 \uBD80\uADFC"}</span>
-              <span class="mover-metric-value">${direction === "rise" ? (item.closedNearHigh ? "\uC720\uC9C0" : "-") : item.closedNearLow ? "\uC720\uC9C0" : "-"}</span>
-            </div>
-          </div>
-
-          <div class="mover-reasons">
-            ${(item.reasons?.length ? item.reasons : ["\uCD94\uAC00 \uC2E0\uD638 \uC5C6\uC74C"])
-              .slice(0, 3)
-              .map((reason) => `<span class="mover-reason">${escapeHtml(reason)}</span>`)
-              .join("")}
-          </div>
-
-          <div class="mover-summary">${escapeHtml(item.summary || "")}</div>
         </article>
       `;
     })
@@ -2216,24 +2292,39 @@ function renderSelector() {
   stockSelector.innerHTML = pagedItems
     .map((item) => {
       const selected = item.key === selectedKey;
-      const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPatternByKey.get(item.key)?.pattern) : null;
+      const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
+      const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPattern) : null;
+      const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern) : null;
       return `
         <article class="stock-card ${selected ? "selected" : ""}">
           <span class="stock-card-head">
             <button class="stock-card-select" type="button" data-stock-key="${escapeHtml(item.key)}">
               <span class="stock-card-name">${escapeHtml(item.name)}</span>
-              <span class="stock-card-meta">${escapeHtml(item.symbol)} / ${escapeHtml(item.anchorDate)}</span>
+              <span class="stock-card-meta">${escapeHtml(item.symbol)}${item.category === "swing" ? "" : ` / ${escapeHtml(item.anchorDate)}`}</span>
               ${
-                swingAssessment
+                item.category === "swing" && swingTradePlan
                   ? `
-                    <span class="stock-card-badges">
-                      <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingAssessment.label)}</span>
-                      <span class="stock-pattern-score">15거래일 / 점수 ${escapeHtml(String(swingAssessment.score ?? "-"))}</span>
+                    <span class="stock-card-trade-grid">
+                      <span class="stock-card-trade-item">
+                        <span class="stock-card-trade-label">매수가</span>
+                        <span class="stock-card-trade-value">${escapeHtml(swingTradePlan.buy)}</span>
+                      </span>
+                      <span class="stock-card-trade-item">
+                        <span class="stock-card-trade-label">손절가</span>
+                        <span class="stock-card-trade-value">${escapeHtml(swingTradePlan.stop)}</span>
+                      </span>
                     </span>
                   `
-                  : ""
+                  : swingAssessment
+                    ? `
+                      <span class="stock-card-badges">
+                        <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
+                        <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
+                      </span>
+                    `
+                    : ""
               }
-              <span class="stock-card-note">${escapeHtml(item.note ?? "")}</span>
+              ${item.category === "swing" ? "" : `<span class="stock-card-note">${escapeHtml(item.note ?? "")}</span>`}
             </button>
             <button class="stock-card-delete" type="button" data-delete-key="${escapeHtml(item.key)}" aria-label="${escapeHtml(item.name)} 삭제">×</button>
           </span>
@@ -2544,11 +2635,15 @@ async function runAnalysisByKey(key) {
     currentAnalysis = enrichAnalysis(analysis, item, swingPatternAnalysis);
     results.classList.remove("empty");
     results.innerHTML = renderCard(currentAnalysis);
-    mountInteractiveChart(currentAnalysis.chartSets[currentAnalysis.activeTimeframe], currentAnalysis.tradingAnchorDate);
+    mountInteractiveChart(
+      currentAnalysis.chartSets[currentAnalysis.activeTimeframe],
+      currentAnalysis.tradingAnchorDate,
+      currentAnalysis.swingTradeOverlay
+    );
     setStatus("done", "완료");
     if (item.category === "swing" && currentAnalysis.swingAssessment) {
       showSummary(
-        `${item.name} 분석이 완료되었습니다. 최근 ${SWING_LOOKBACK_DAYS}거래일 기준 ${currentAnalysis.swingAssessment.label}로 분류했습니다.`
+        `${item.name} 분석이 완료되었습니다. 최근 ${SWING_LOOKBACK_DAYS}거래일 기준 ${currentAnalysis.swingAssessment.label} 상태입니다.`
       );
     } else {
       showSummary(`${item.name} 분석이 완료되었습니다. 확대/축소, 드래그 이동, 툴팁을 지원합니다.`);
@@ -2564,11 +2659,16 @@ async function runAnalysisByKey(key) {
 
 function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
   const daily = analysis.chartWindow.points;
+  const swingPattern = swingPatternAnalysis?.pattern ?? null;
   return {
     ...analysis,
     category: item.category ?? DEFAULT_CATEGORY,
     swingPatternAnalysis,
-    swingAssessment: swingPatternAnalysis ? getSwingAssessment(swingPatternAnalysis.pattern) : null,
+    swingAssessment: swingPattern ? getSwingAssessment(swingPattern) : null,
+    swingTradeOverlay:
+      (item.category ?? DEFAULT_CATEGORY) === "swing"
+        ? getSwingTradeOverlay(item.note, swingPattern)
+        : null,
     chartSets: {
       daily: toChartPoints(daily),
       weekly: aggregateCandles(daily, "weekly"),
@@ -2771,7 +2871,7 @@ function renderCard(item) {
           </div>
           ${
             item.swingAssessment
-              ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / 최근 ${SWING_LOOKBACK_DAYS}거래일 기준</div>`
+              ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
               : ""
           }
           ${item.note ? `<div class="meta-line">${escapeHtml(item.note)}</div>` : ""}
@@ -2853,7 +2953,9 @@ function renderCard(item) {
       <div class="fundamentals-wrap">
         ${renderFundamentals(item.fundamentals, {
           latestClose: item.latestClose,
-          latestDate: item.latestDate
+          latestDate: item.latestDate,
+          sectorLabel: getSectorLabel(item.symbol),
+          stockName: item.name || item.shortName || item.symbol
         })}
       </div>
     </article>
@@ -2869,8 +2971,8 @@ function compareSwingItems(left, right) {
     return rightRank - leftRank;
   }
 
-  const leftScore = leftAssessment?.score ?? -1;
-  const rightScore = rightAssessment?.score ?? -1;
+  const leftScore = leftAssessment?.sortScore ?? -1;
+  const rightScore = rightAssessment?.sortScore ?? -1;
   if (leftScore !== rightScore) {
     return rightScore - leftScore;
   }
@@ -2878,23 +2980,209 @@ function compareSwingItems(left, right) {
   return right.anchorDate.localeCompare(left.anchorDate);
 }
 
+function resolveLegacySwingStatus(pattern) {
+  if (!pattern) {
+    return "none";
+  }
+  if (pattern.stage === "breakout" && pattern.matched && pattern.actionable) {
+    return "breakout_confirmed";
+  }
+  if (pattern.stage === "breakout" && pattern.matched) {
+    return "breakout_ready";
+  }
+  if (pattern.stage === "setup" && pattern.matched && pattern.actionable) {
+    return "buy_ready";
+  }
+  if (pattern.stage === "setup" && pattern.matched) {
+    return "pullback_ready";
+  }
+  return pattern.stage === "setup" ? "pivot_formed" : "none";
+}
+
 function getSwingAssessment(pattern) {
   if (!pattern) {
     return null;
   }
 
-  const isComplete = Boolean(pattern.stage === "breakout" && pattern.matched && pattern.actionable);
-  const isSetup = Boolean(pattern.stage === "setup" && pattern.matched);
+  const status = pattern.status ?? resolveLegacySwingStatus(pattern);
+  const rankScore = pattern.finalRankScore ?? pattern.regimeAdjustedScore ?? pattern.patternScore ?? 0;
+  const statusMap = {
+    none: {
+      label: "관찰 전",
+      className: "watch",
+      rank: 0,
+      description: "기준봉과 눌림 구조가 아직 분할매수 관점에서 충분히 잡히지 않았습니다.",
+      action: "구조 확인이 먼저"
+    },
+    pivot_formed: {
+      label: "기준봉 형성",
+      className: "watch",
+      rank: 2,
+      description: "거래량과 가격이 붙는 기준봉은 보였지만, 아직 눌림이 충분히 진행되지는 않았습니다.",
+      action: "눌림 확인 대기"
+    },
+    pullback_early: {
+      label: "눌림 초기",
+      className: "watch",
+      rank: 3,
+      description: "기준봉 이후 조정이 시작됐지만, 시간이나 가격 소화가 아직 더 필요합니다.",
+      action: "성급한 진입 금지"
+    },
+    pullback_ready: {
+      label: "눌림 완성",
+      className: "setup",
+      rank: 4,
+      description: "거래량이 식으면서 눌림 구조가 어느 정도 정리됐고, 이제 기준 가격대를 다시 확인할 수 있는 구간입니다.",
+      action: "분할매수 준비"
+    },
+    buy_ready: {
+      label: "1차 매수 가능",
+      className: "setup",
+      rank: 6,
+      description: "눌림이 충분히 진행됐고 현재 가격이 분할매수 구간 근처에서 버티는 상태입니다.",
+      action: "1차 분할매수 가능"
+    },
+    breakout_ready: {
+      label: "재돌파 대기",
+      className: "ready",
+      rank: 5,
+      description: "구조는 살아 있지만 바로 추격하기보다 돌파선 안착이나 재확인을 기다리는 편이 좋습니다.",
+      action: "재돌파 확인 대기"
+    },
+    breakout_confirmed: {
+      label: "재돌파 확인",
+      className: "complete",
+      rank: 7,
+      description: "눌림 뒤 재돌파가 확인된 상태입니다. 추격보다 보유·눌림 재확인을 함께 봐야 합니다.",
+      action: "추격보다 재확인"
+    },
+    broken: {
+      label: "이탈",
+      className: "broken",
+      rank: 1,
+      description: "기준봉 저점이나 눌림 저점이 훼손돼 구조가 무너진 상태입니다.",
+      action: "관찰 종료"
+    }
+  };
+  const base = statusMap[status] ?? statusMap.none;
   return {
-    label: isComplete ? "돌파 완료" : isSetup ? "눌림 후보" : "추적 중",
-    className: isComplete ? "complete" : isSetup ? "setup" : "watch",
-    rank: isComplete ? 3 : isSetup ? 2 : 1,
-    score: pattern.patternScore,
-    description: isComplete
-      ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 눌림과 재돌파까지 확인된 상태입니다.`
-      : isSetup
-        ? `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 거래량이 줄며 눌림을 소화하는 후보 구간입니다.`
-        : `최근 ${SWING_LOOKBACK_DAYS}거래일 안에서 급등 뒤 구조를 보고 있지만 아직 후보로 보기엔 이른 상태입니다.`
+    ...base,
+    status,
+    sortScore: rankScore
+  };
+}
+
+function getSwingStructureLabel(pattern) {
+  if (!pattern) {
+    return "-";
+  }
+  if (pattern.stage === "breakout") {
+    return "재돌파 확인 단계";
+  }
+  if (pattern.setupType === "time_correction") {
+    return "시간 조정형";
+  }
+  if (pattern.setupType === "volatile_power_digestion") {
+    return "변동성 소화형";
+  }
+  if (pattern.stage === "setup") {
+    return "가격 눌림형";
+  }
+  return "구조 관찰";
+}
+
+function formatSwingPriceBand(low, high) {
+  if (typeof low !== "number" && typeof high !== "number") {
+    return "-";
+  }
+  if (typeof low === "number" && typeof high === "number") {
+    return `${formatNumber(low)}원 ~ ${formatNumber(high)}원`;
+  }
+  const single = typeof high === "number" ? high : low;
+  return single == null ? "-" : `${formatNumber(single)}원`;
+}
+
+function parseSwingPlanSegment(note, label) {
+  if (typeof note !== "string" || !note.trim()) {
+    return null;
+  }
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = note.match(new RegExp(`${escapedLabel}\\s*([^|]+)`));
+  return match?.[1]?.trim() ?? null;
+}
+
+function parsePriceNumbers(text) {
+  if (typeof text !== "string" || !text.trim()) {
+    return [];
+  }
+
+  const matches = text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+  return matches
+    .map((value) => Number.parseFloat(value.replaceAll(",", "")))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function parseSwingPlanNumbersFromNote(note) {
+  const buySegment =
+    parseSwingPlanSegment(note, "매수가") ??
+    parseSwingPlanSegment(note, "매수");
+  const stopSegment =
+    parseSwingPlanSegment(note, "손절가") ??
+    parseSwingPlanSegment(note, "손절");
+
+  return {
+    buyPrices: [...new Set(parsePriceNumbers(buySegment))],
+    stopPrice: parsePriceNumbers(stopSegment)[0]
+  };
+}
+
+function getSwingTradeOverlay(note, pattern) {
+  const notePlan = parseSwingPlanNumbersFromNote(note);
+  const buyPlan = pattern?.buyPlan;
+  const buyPrices = notePlan.buyPrices.length
+    ? notePlan.buyPrices
+    : buyPlan
+      ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
+      : [];
+  const normalizedBuyPrices = [...new Set(
+    buyPrices
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .map((value) => Math.round(value * 100) / 100)
+  )].sort((left, right) => right - left);
+  const stopPriceRaw = notePlan.stopPrice ?? buyPlan?.stopLossPrice ?? pattern?.invalidationPrice;
+  const stopPrice =
+    Number.isFinite(stopPriceRaw) && stopPriceRaw > 0
+      ? Math.round(stopPriceRaw * 100) / 100
+      : undefined;
+
+  return {
+    buyPrices: normalizedBuyPrices,
+    stopPrice
+  };
+}
+
+function getSwingCardTradePlan(note, pattern) {
+  const overlay = getSwingTradeOverlay(note, pattern);
+  const buyPlan = pattern?.buyPlan;
+  const buyFromPattern =
+    overlay.buyPrices.length
+      ? `${overlay.buyPrices.map((price) => formatNumber(price)).join(" / ")}원`
+      : buyPlan
+        ? `${formatNumber(buyPlan.firstBuyPrice)} / ${formatNumber(buyPlan.secondBuyPrice)} / ${formatNumber(buyPlan.thirdBuyPrice)}원`
+        : pattern
+          ? formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh)
+          : null;
+  const stopFromPattern =
+    typeof overlay.stopPrice === "number" && overlay.stopPrice > 0
+      ? `${formatNumber(overlay.stopPrice)}원`
+      : null;
+  const buyFromNote = parseSwingPlanSegment(note, "매수가") ?? parseSwingPlanSegment(note, "매수");
+  const stopFromNote = parseSwingPlanSegment(note, "손절가") ?? parseSwingPlanSegment(note, "손절");
+
+  return {
+    buy: buyFromPattern ?? buyFromNote ?? "-",
+    stop: stopFromPattern ?? stopFromNote ?? "-"
   };
 }
 
@@ -2904,40 +3192,64 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
   }
 
   const pattern = swingPatternAnalysis.pattern;
-  const stageLabel =
-    pattern.stage === "breakout" ? "돌파 완료" : pattern.stage === "setup" ? "눌림 후보" : "추적 중";
-  const swingGuideHtml = escapeHtml(swingScoreGuideText).replaceAll("\n", "<br>");
-  const reasonItems = (pattern.reasons?.length ? pattern.reasons : [pattern.summary])
-    .slice(0, 4)
-    .map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`)
-    .join("");
+  const scoreReasons = encodeURIComponent(JSON.stringify(pattern.reasons?.length ? pattern.reasons : [pattern.summary]));
+  const scoreDescription = encodeURIComponent(swingAssessment.description);
+  const scoreSummary = encodeURIComponent(pattern.summary ?? "");
+  const scoreGuide = encodeURIComponent(swingScoreGuideText);
+  const scoreAction = encodeURIComponent(swingAssessment.action);
+  const scoreEntry = encodeURIComponent(formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh));
+  const scoreInvalidation = encodeURIComponent(
+    typeof pattern.invalidationPrice === "number" ? `${formatNumber(pattern.invalidationPrice)}원` : "-"
+  );
+  const priceLocation =
+    pattern.referenceCloseVsBreakoutLevelPercent == null
+      ? "-"
+      : `돌파선 ${pattern.referenceCloseVsBreakoutLevelPercent.toFixed(1)}% / 피크 ${
+          pattern.referenceCloseVsPeakPercent == null ? "-" : `${pattern.referenceCloseVsPeakPercent.toFixed(1)}%`
+        }`;
 
   return `
     <section class="swing-pattern-panel">
       <div class="swing-pattern-head">
         <div>
           <h4>스윙 패턴 판정</h4>
-          <div class="swing-pattern-copy">${escapeHtml(swingAssessment.description)}</div>
         </div>
         <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingAssessment.label)}</span>
       </div>
 
       <div class="metric-grid swing-metric-grid">
-        <div class="metric">
-          <span class="metric-label">패턴 점수</span>
-          <span class="metric-value">${escapeHtml(String(pattern.patternScore))}</span>
-        </div>
+        <button
+          class="metric metric-button"
+          type="button"
+          data-score-explain-toggle="modal"
+          data-score-label="${escapeHtml(swingAssessment.label)}"
+          data-score-description="${escapeHtml(scoreDescription)}"
+          data-score-summary="${escapeHtml(scoreSummary)}"
+          data-score-guide="${escapeHtml(scoreGuide)}"
+          data-score-action="${escapeHtml(scoreAction)}"
+          data-score-entry="${escapeHtml(scoreEntry)}"
+          data-score-invalidation="${escapeHtml(scoreInvalidation)}"
+          data-score-reasons="${escapeHtml(scoreReasons)}"
+        >
+          <span class="metric-label">상태 설명</span>
+          <span class="metric-value">${escapeHtml(swingAssessment.label)}</span>
+          <span class="metric-hint">눌러서 전략 보기</span>
+        </button>
         <div class="metric">
           <span class="metric-label">기준 윈도우</span>
           <span class="metric-value">${SWING_LOOKBACK_DAYS}거래일</span>
         </div>
         <div class="metric">
-          <span class="metric-label">현재 단계</span>
-          <span class="metric-value">${escapeHtml(stageLabel)}</span>
+          <span class="metric-label">내부 구조</span>
+          <span class="metric-value">${escapeHtml(getSwingStructureLabel(pattern))}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">판정 기준</span>
-          <span class="metric-value">${escapeHtml(pattern.stage === "breakout" ? "68점 이상" : pattern.stage === "setup" ? "60점 이상" : "구조 관찰")}</span>
+          <span class="metric-label">진입 구간</span>
+          <span class="metric-value">${escapeHtml(formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">이탈 기준</span>
+          <span class="metric-value">${typeof pattern.invalidationPrice === "number" ? `${formatNumber(pattern.invalidationPrice)}원` : "-"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">선행 수급일</span>
@@ -2968,16 +3280,8 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
           <span class="metric-value">${escapeHtml(pattern.breakoutDate ?? "-")}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">현재 종가 위치</span>
-          <span class="metric-value">${
-            pattern.referenceCloseVsBasePercent == null
-              ? "-"
-              : `기준선대비 ${escapeHtml(pattern.referenceCloseVsBasePercent.toFixed(1))}% / 피크대비 ${
-                  pattern.referenceCloseVsPeakPercent == null
-                    ? "-"
-                    : `${escapeHtml(pattern.referenceCloseVsPeakPercent.toFixed(1))}%`
-                }`
-          }</span>
+          <span class="metric-label">현재 가격 위치</span>
+          <span class="metric-value">${escapeHtml(priceLocation)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">${pattern.stage === "breakout" ? "돌파 후 경과" : "피크 후 경과"}</span>
@@ -2992,10 +3296,6 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
           }</span>
         </div>
       </div>
-
-      <div class="swing-pattern-summary">${escapeHtml(pattern.summary)}</div>
-      <div class="swing-pattern-copy">${swingGuideHtml}</div>
-      <div class="swing-reason-list">${reasonItems}</div>
     </section>
   `;
 }
@@ -3012,7 +3312,7 @@ function cleanupChart() {
   }
 }
 
-function mountInteractiveChart(points, anchorDate) {
+function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
   const priceContainer = document.querySelector("#priceChartContainer");
   const volumeContainer = document.querySelector("#volumeChartContainer");
   const stack = document.querySelector("#chartStack");
@@ -3168,6 +3468,31 @@ function mountInteractiveChart(points, anchorDate) {
     });
   }
 
+  const buyPrices = Array.isArray(swingTradeOverlay?.buyPrices)
+    ? swingTradeOverlay.buyPrices.filter((price) => Number.isFinite(price) && price > 0)
+    : [];
+  buyPrices.forEach((price, index) => {
+    candleSeries.createPriceLine({
+      price,
+      color: index === 0 ? "rgba(202, 138, 4, 0.95)" : "rgba(217, 119, 6, 0.8)",
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: buyPrices.length > 1 ? `${index + 1}차 매수` : "매수가"
+    });
+  });
+
+  if (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0) {
+    candleSeries.createPriceLine({
+      price: swingTradeOverlay.stopPrice,
+      color: "rgba(185, 28, 28, 0.95)",
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: "손절가"
+    });
+  }
+
   let syncingRange = false;
   const syncVisibleRange = (sourceChart, targetChart) => {
     sourceChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
@@ -3226,7 +3551,7 @@ function mountInteractiveChart(points, anchorDate) {
     `;
   });
 
-  priceChart.timeScale().fitContent();
+  setDefaultVisibleTradingRange(priceChart, points);
 
   resizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0];
@@ -3261,6 +3586,24 @@ function buildMovingAverage(points, period) {
   return result;
 }
 
+function setDefaultVisibleTradingRange(priceChart, points, visibleSessions = DEFAULT_VISIBLE_TRADING_SESSIONS) {
+  const tradingIndexes = points
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => !point.isWhitespace && typeof point.close === "number");
+
+  if (!tradingIndexes.length) {
+    priceChart.timeScale().fitContent();
+    return;
+  }
+
+  const endIndex = tradingIndexes.at(-1).index;
+  const startIndex = tradingIndexes[Math.max(0, tradingIndexes.length - visibleSessions)].index;
+  priceChart.timeScale().setVisibleLogicalRange({
+    from: startIndex - 1,
+    to: endIndex + 0.5
+  });
+}
+
 function updateChartView(timeframe) {
   if (!currentAnalysis) {
     return;
@@ -3275,7 +3618,11 @@ function updateChartView(timeframe) {
     caption.textContent = timeframeLabels[timeframe];
   }
 
-  mountInteractiveChart(currentAnalysis.chartSets[timeframe], currentAnalysis.tradingAnchorDate);
+  mountInteractiveChart(
+    currentAnalysis.chartSets[timeframe],
+    currentAnalysis.tradingAnchorDate,
+    currentAnalysis.swingTradeOverlay
+  );
 }
 
 function renderFundamentals(fundamentals, priceContext) {
@@ -3283,8 +3630,12 @@ function renderFundamentals(fundamentals, priceContext) {
     priceContext?.latestClose != null
       ? `가격 기준: ${formatNumber(priceContext.latestClose)}원${priceContext?.latestDate ? ` (${priceContext.latestDate} 종가)` : ""}`
       : "";
+  const businessProfileHtml = renderBusinessProfile(fundamentals, priceContext);
+  const hasAnnualHistory = Array.isArray(fundamentals?.annualHistory) && fundamentals.annualHistory.length > 0;
+  const hasQuarterlyHistory = Array.isArray(fundamentals?.quarterlyHistory) && fundamentals.quarterlyHistory.length > 0;
+  const hasFinancials = Boolean(fundamentals?.annual || fundamentals?.quarterly || hasAnnualHistory || hasQuarterlyHistory);
 
-  if (!fundamentals || (!fundamentals.annual && !fundamentals.quarterly)) {
+  if (!hasFinancials && !businessProfileHtml) {
     return `
       <section class="fundamentals-panel empty-fundamentals">
         <div class="fundamentals-head">
@@ -3300,22 +3651,128 @@ function renderFundamentals(fundamentals, priceContext) {
       <section class="fundamentals-panel">
         <div class="fundamentals-head">
           <h4>재무지표 ${renderInfoIcon(fundamentalsGuideText, "재무지표 안내")}</h4>
-          <span>${escapeHtml(fundamentals.source)}</span>
+          <span>${escapeHtml(fundamentals?.source || "데이터 없음")}</span>
         </div>
         ${priceReference ? `<div class="fundamentals-price-reference">${escapeHtml(priceReference)}</div>` : ""}
-        <div class="fundamentals-grid">
-          ${renderFundamentalBlock("최근 연간", fundamentals.annual)}
-          ${renderFundamentalBlock("최근 분기", fundamentals.quarterly)}
-        </div>
+        ${businessProfileHtml}
+        ${
+          hasFinancials
+            ? `
+              ${renderQuarterlyHistoryTable(fundamentals)}
+            `
+            : `<div class="fundamental-empty">재무 수치는 아직 비어 있지만, 사업 포트폴리오 맵은 먼저 확인할 수 있습니다.</div>`
+        }
       </section>
   `;
 }
 
-function renderFundamentalBlock(title, period) {
+function renderBusinessProfile(fundamentals, priceContext) {
+  const businessAreas = getBusinessAreasForRender(fundamentals, priceContext?.sectorLabel);
+  const businessSummary = typeof fundamentals?.businessSummary === "string" ? fundamentals.businessSummary.trim() : "";
+  if (!businessAreas.length && !businessSummary) {
+    return "";
+  }
+
+  const profileSource =
+    fundamentals?.businessAreasSource ||
+    (priceContext?.sectorLabel ? `업종 기준 기본 맵 · ${priceContext.sectorLabel}` : "사업 개요 기반 추정");
+
+  return `
+    <section class="business-profile-panel">
+      <div class="business-profile-head">
+        <div>
+          <h5>사업 포트폴리오 맵 ${renderInfoIcon(businessAreaGuideText, "사업 포트폴리오 안내")}</h5>
+          <div class="business-profile-copy">한 종목이 가진 여러 사업 축을 원형 그래프로 빠르게 읽는 보드입니다.</div>
+        </div>
+        <span class="business-profile-source">${escapeHtml(profileSource)}</span>
+      </div>
+
+      <div class="business-profile-layout">
+        <div class="business-profile-chart-wrap">
+          <div class="business-profile-chart" style="background:${escapeHtml(buildBusinessAreaGradient(businessAreas))};">
+            <div class="business-profile-chart-hole">
+              <strong>${escapeHtml(priceContext?.stockName || "사업 구조")}</strong>
+              <span>${escapeHtml(String(businessAreas.length || 1))}개 축</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="business-profile-legend">
+          ${businessAreas
+            .map(
+              (area, index) => `
+                <div class="business-profile-item">
+                  <span class="business-profile-swatch" style="background:${escapeHtml(getBusinessAreaColor(index))};"></span>
+                  <div class="business-profile-item-copy">
+                    <strong>${escapeHtml(area.label)}</strong>
+                    <span>${escapeHtml(String(area.weight))}%</span>
+                  </div>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+
+      ${
+        businessSummary
+          ? `<div class="business-profile-summary">${escapeHtml(truncateText(businessSummary, 210))}</div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
+function getBusinessAreasForRender(fundamentals, sectorLabel) {
+  if (Array.isArray(fundamentals?.businessAreas) && fundamentals.businessAreas.length) {
+    return fundamentals.businessAreas
+      .filter((item) => item && typeof item.label === "string" && Number.isFinite(item.weight))
+      .slice(0, 5);
+  }
+
+  if (!sectorLabel) {
+    return [];
+  }
+
+  return [
+    {
+      label: sectorLabel,
+      weight: 100,
+      source: "sector_fallback"
+    }
+  ];
+}
+
+function getBusinessAreaColor(index) {
+  return businessAreaPalette[index % businessAreaPalette.length];
+}
+
+function buildBusinessAreaGradient(areas) {
+  if (!areas.length) {
+    return "conic-gradient(#d8cdbd 0 100%)";
+  }
+
+  let cursor = 0;
+  const stops = areas.map((area, index) => {
+    const start = cursor;
+    const end = Math.min(100, cursor + area.weight);
+    cursor = end;
+    return `${getBusinessAreaColor(index)} ${start}% ${end}%`;
+  });
+
+  if (cursor < 100) {
+    stops.push(`rgba(121, 103, 82, 0.12) ${cursor}% 100%`);
+  }
+
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+function renderFundamentalBlock(title, period, description = "") {
   if (!period) {
     return `
       <div class="fundamental-block">
         <div class="fundamental-title">${title}</div>
+        ${description ? `<div class="fundamental-copy">${escapeHtml(description)}</div>` : ""}
         <div class="fundamental-empty">데이터 없음</div>
       </div>
     `;
@@ -3324,30 +3781,161 @@ function renderFundamentalBlock(title, period) {
   return `
     <div class="fundamental-block">
       <div class="fundamental-title">${title}</div>
+      ${description ? `<div class="fundamental-copy">${escapeHtml(description)}</div>` : ""}
       <div class="fundamental-period">${escapeHtml(period.label)}</div>
       <dl class="fundamental-list">
-        ${renderFundamentalItem("매출액", period.revenue)}
-        ${renderFundamentalItem("영업이익", period.operatingIncome)}
-        ${renderFundamentalItem("순이익", period.netIncome)}
-        ${renderFundamentalItem("ROE", period.roe, "%")}
-        ${renderFundamentalItem("부채비율", period.debtRatio, "%")}
-        ${renderFundamentalItem("EPS", period.eps)}
-        ${renderFundamentalItem("BPS", period.bps)}
-        ${renderFundamentalItem("PER", period.per)}
-        ${renderFundamentalItem("PBR", period.pbr)}
+        ${fundamentalMetricDefinitions.map((metric) => renderFundamentalItem(metric, period?.[metric.key])).join("")}
       </dl>
     </div>
   `;
 }
 
-function renderFundamentalItem(label, value, suffix = "") {
-  const guide = fundamentalMetricGuides[label];
+function buildFundamentalsTablePeriods(history, fallback, limit = 8) {
+  const items = Array.isArray(history) ? history.filter(Boolean) : [];
+  const deduped = [];
+  const seen = new Set();
+  for (const item of items) {
+    const key = item?.label;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    deduped.push(item);
+    seen.add(key);
+  }
+
+  if ((!deduped.length || (fallback?.label && !seen.has(fallback.label))) && fallback?.label) {
+    deduped.push(fallback);
+  }
+
+  return deduped.slice(-limit);
+}
+
+function renderQuarterlyHistoryTable(fundamentals) {
+  const annualPeriods = buildFundamentalsTablePeriods(fundamentals?.annualHistory, fundamentals?.annual, 2);
+  const actualQuarterlyPeriods = buildFundamentalsTablePeriods(fundamentals?.quarterlyHistory, fundamentals?.quarterly, 8);
+  const estimatedQuarterlyPeriods = buildFundamentalsTablePeriods(fundamentals?.quarterlyEstimateHistory, undefined, 8);
+  if (!annualPeriods.length && !actualQuarterlyPeriods.length && !estimatedQuarterlyPeriods.length) {
+    return "";
+  }
+
+  const tableId = "fundamentalsQuarterlyHistory";
+  const annualHeader = annualPeriods.length
+    ? `<th colspan="${annualPeriods.length}" class="fundamentals-group annual">연간</th>`
+    : "";
+  const actualQuarterlyHeader = actualQuarterlyPeriods.length
+    ? `<th colspan="${actualQuarterlyPeriods.length}" class="fundamentals-group quarterly">실제 분기</th>`
+    : "";
+  const estimatedQuarterlyHeader = estimatedQuarterlyPeriods.length
+    ? `<th colspan="${estimatedQuarterlyPeriods.length}" class="fundamentals-group estimated">추정 분기 (E)</th>`
+    : "";
+  const annualCells = annualPeriods
+    .map(
+      (period, index) => {
+        const needsSectionEnd = index === annualPeriods.length - 1 && (actualQuarterlyPeriods.length || estimatedQuarterlyPeriods.length);
+        return `<th class="fundamentals-period-head annual ${needsSectionEnd ? "section-end" : ""}">${escapeHtml(period.label)}</th>`;
+      }
+    )
+    .join("");
+  const actualQuarterlyCells = actualQuarterlyPeriods
+    .map(
+      (period, index) =>
+        `<th class="fundamentals-period-head quarterly ${index === 0 && annualPeriods.length ? "section-start" : ""} ${index === actualQuarterlyPeriods.length - 1 && estimatedQuarterlyPeriods.length ? "section-end" : ""}">${escapeHtml(period.label)}</th>`
+    )
+    .join("");
+  const estimatedQuarterlyCells = estimatedQuarterlyPeriods
+    .map(
+      (period, index) =>
+        `<th class="fundamentals-period-head estimated ${index === 0 && (annualPeriods.length || actualQuarterlyPeriods.length) ? "section-start" : ""}">${escapeHtml(period.label)}</th>`
+    )
+    .join("");
+  return `
+    <section class="fundamentals-history-section">
+      <div class="fundamentals-history-head">
+        <div>
+          <h5>재무 흐름 표</h5>
+          <p>최근 2개 연간, 실제 분기 최대 8개를 우선 보여주고 추정 분기(E)는 별도 구간으로 분리합니다.</p>
+        </div>
+        <div class="fundamentals-scroll-controls">
+          <button type="button" class="fundamentals-scroll-button" data-fundamentals-scroll="prev" data-fundamentals-target="${tableId}" aria-label="이전 재무 구간 보기">‹</button>
+          <button type="button" class="fundamentals-scroll-button" data-fundamentals-scroll="next" data-fundamentals-target="${tableId}" aria-label="다음 재무 구간 보기">›</button>
+        </div>
+      </div>
+      <div id="${tableId}" class="fundamentals-table-scroll">
+        <table class="fundamentals-table">
+          <thead>
+            <tr>
+              <th rowspan="2" class="fundamentals-sticky-col">지표</th>
+              ${annualHeader}
+              ${actualQuarterlyHeader}
+              ${estimatedQuarterlyHeader}
+            </tr>
+            <tr>
+              ${annualCells}
+              ${actualQuarterlyCells}
+              ${estimatedQuarterlyCells}
+            </tr>
+          </thead>
+          <tbody>
+            ${fundamentalMetricDefinitions
+              .map(
+                (metric) => `
+                  <tr>
+                    <th class="fundamentals-sticky-col">${metric.label}${renderInfoIcon(fundamentalMetricGuides[metric.label], `${metric.label} 설명`)}</th>
+                    ${annualPeriods
+                      .map(
+                        (period, index) => {
+                          const needsSectionEnd =
+                            index === annualPeriods.length - 1 && (actualQuarterlyPeriods.length || estimatedQuarterlyPeriods.length);
+                          return `<td class="annual ${needsSectionEnd ? "section-end" : ""}">${formatFundamentalMetricValue(metric, period?.[metric.key])}</td>`;
+                        }
+                      )
+                      .join("")}
+                    ${actualQuarterlyPeriods
+                      .map(
+                        (period, index) =>
+                          `<td class="quarterly ${index === 0 && annualPeriods.length ? "section-start" : ""} ${index === actualQuarterlyPeriods.length - 1 && estimatedQuarterlyPeriods.length ? "section-end" : ""}">${formatFundamentalMetricValue(metric, period?.[metric.key])}</td>`
+                      )
+                      .join("")}
+                    ${estimatedQuarterlyPeriods
+                      .map(
+                        (period, index) =>
+                          `<td class="estimated ${index === 0 && (annualPeriods.length || actualQuarterlyPeriods.length) ? "section-start" : ""}">${formatFundamentalMetricValue(metric, period?.[metric.key])}</td>`
+                      )
+                      .join("")}
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderFundamentalItem(metric, value) {
+  const guide = fundamentalMetricGuides[metric.label];
   return `
     <div class="fundamental-item">
-      <dt>${label}${guide ? ` ${renderInfoIcon(guide, `${label} 설명`)}` : ""}</dt>
-      <dd>${value == null ? "-" : `${formatNumber(value)}${suffix}`}</dd>
+      <dt>${metric.label}${guide ? ` ${renderInfoIcon(guide, `${metric.label} 설명`)}` : ""}</dt>
+      <dd>${formatFundamentalMetricValue(metric, value)}</dd>
     </div>
   `;
+}
+
+function formatFundamentalMetricValue(metric, value) {
+  if (value == null || Number.isNaN(value)) {
+    return "-";
+  }
+
+  if ((metric?.digits ?? 0) > 0) {
+    return `${new Intl.NumberFormat("ko-KR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: metric.digits
+    }).format(value)}${metric.suffix ?? ""}`;
+  }
+
+  return `${formatNumber(value)}${metric?.suffix ?? ""}`;
 }
 
 function formatNumber(value) {
@@ -3355,6 +3943,14 @@ function formatNumber(value) {
     return "-";
   }
   return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(value);
+}
+
+function truncateText(value, maxLength = 210) {
+  if (!value || value.length <= maxLength) {
+    return value || "";
+  }
+
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function formatDecimal(value, digits = 2) {

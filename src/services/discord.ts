@@ -122,6 +122,81 @@ function formatPercent(value?: number, maximumFractionDigits = 1): string {
   return `${formatNumber(value, maximumFractionDigits)}%`;
 }
 
+function formatSwingStatusLabel(status?: SmartMoneyPatternAnalysis["pattern"]["status"]): string {
+  switch (status) {
+    case "pivot_formed":
+      return "\uAE30\uC900 \uD615\uC131";
+    case "pullback_early":
+      return "\uB20C\uB9BC \uCD08\uAE30";
+    case "pullback_deep":
+      return "\uAE4A\uC740 \uB20C\uB9BC";
+    case "pullback_ready":
+      return "\uB20C\uB9BC \uC900\uBE44";
+    case "buy_ready":
+      return "1\uCC28 \uB9E4\uC218 \uAD6C\uAC04";
+    case "breakout_ready":
+      return "\uB3CC\uD30C \uB300\uAE30";
+    case "breakout_confirmed":
+      return "\uB3CC\uD30C \uD655\uC778";
+    case "broken":
+      return "\uC774\uD0C8";
+    default:
+      return "\uAD00\uCC30";
+  }
+}
+
+function formatSwingStatus(status?: SmartMoneyPatternAnalysis["pattern"]["status"]): string {
+  switch (status) {
+    case "pivot_formed":
+      return "기준봉 형성";
+    case "pullback_early":
+      return "눌림 초기";
+    case "pullback_ready":
+      return "눌림 완성";
+    case "buy_ready":
+      return "1차 매수 가능";
+    case "breakout_ready":
+      return "재돌파 대기";
+    case "breakout_confirmed":
+      return "재돌파 확인";
+    case "broken":
+      return "이탈";
+    default:
+      return "관찰 전";
+  }
+}
+
+function formatEntryStrategy(entryStrategy?: SmartMoneyPatternAnalysis["pattern"]["entryStrategy"]): string {
+  switch (entryStrategy) {
+    case "pullback_buy":
+      return "눌림매수";
+    case "breakout_ready":
+      return "돌파대기";
+    case "breakout_confirmed":
+      return "돌파확인";
+    default:
+      return "-";
+  }
+}
+
+function formatPriceBand(low?: number, high?: number): string {
+  if (low == null && high == null) {
+    return "-";
+  }
+  if (low != null && high != null) {
+    return `${formatNumber(low, 0)}~${formatNumber(high, 0)}`;
+  }
+  return formatNumber(high ?? low, 0);
+}
+
+function formatBuyPlan(buyPlan?: SmartMoneyPatternAnalysis["pattern"]["buyPlan"]): string {
+  if (!buyPlan) {
+    return "-";
+  }
+
+  return `${formatNumber(buyPlan.firstBuyPrice, 0)}/${formatNumber(buyPlan.secondBuyPrice, 0)}/${formatNumber(buyPlan.thirdBuyPrice, 0)}`;
+}
+
 function buildRecommendationPatternLines(analyses: RecommendationPatternAnalysis[]) {
   return analyses.map((item, index) => {
     const { pattern } = item;
@@ -169,12 +244,15 @@ function buildSmartMoneyPatternLines(analyses: SmartMoneyPatternAnalysis[]) {
     const { pattern } = item;
     const parts = [
       `${index + 1}. ${item.name ?? item.symbol} (${item.symbol})`,
-      `stage ${pattern.stage}`,
+      `status ${formatSwingStatusLabel(pattern.status)}`,
+      `style ${formatEntryStrategy(pattern.entryStrategy)}`,
       `ref ${item.tradingReferenceDate}`,
       `lead ${pattern.leadInDate ?? "-"}`,
       `breakout ${pattern.breakoutDate ?? "-"}`,
-      `score ${pattern.patternScore}`,
-      `rank ${pattern.finalRankScore ?? pattern.patternScore}`,
+      `entry ${formatPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh)}`,
+      `buy ${formatBuyPlan(pattern.buyPlan)}`,
+      `stop ${formatNumber(pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice, 0)}`,
+      `invalid ${formatNumber(pattern.invalidationPrice, 0)}`,
       `breakout ${formatPercent(pattern.breakoutPriceChangePercent)}`,
       `vol ${formatNumber(pattern.breakoutVolumeRatio20d)}x`
     ];
@@ -198,7 +276,7 @@ export function buildSmartMoneyPatternDiscordMessages(params: {
     mention?.trim(),
     "Smart-money entry pattern alerts",
     `Generated ${nowInSeoul()} KST`,
-    `lookbacks=${filters.lookbackWindows.join("/")}, leadVol=${filters.minLeadInVolumeRatio}, breakoutVol=${filters.minBreakoutVolumeRatio}, minTurnover=${Math.round(filters.minTurnoverValue).toLocaleString("ko-KR")}, setupScore=${filters.minSetupPatternScore}, breakoutScore=${filters.minBreakoutPatternScore}, recent=${filters.recentSignalSessions}`
+    `lookbacks=${filters.lookbackWindows.join("/")}, leadVol=${filters.minLeadInVolumeRatio}, breakoutVol=${filters.minBreakoutVolumeRatio}, minTurnover=${Math.round(filters.minTurnoverValue).toLocaleString("ko-KR")}, recent=${filters.recentSignalSessions}`
   ].filter(Boolean);
   const header = headerParts.join("\n");
 

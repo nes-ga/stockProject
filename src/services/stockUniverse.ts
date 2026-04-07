@@ -1,7 +1,9 @@
 import type { StockUniverseItem } from "../types.js";
+import { createLogger, toErrorContext } from "../lib/logger.js";
 
 const KRX_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const eucKrDecoder = new TextDecoder("euc-kr");
+const logger = createLogger("stockUniverse");
 
 const MARKET_ENDPOINTS: Array<{ market: StockUniverseItem["market"]; marketType: string }> = [
   { market: "KOSPI", marketType: "stockMkt" },
@@ -109,6 +111,10 @@ function parseCorpListRows(html: string, market: StockUniverseItem["market"]): S
 }
 
 async function fetchMarketUniverse(market: StockUniverseItem["market"], marketType: string): Promise<StockUniverseItem[]> {
+  logger.info("market:load:start", {
+    market,
+    marketType
+  });
   const url = new URL("https://kind.krx.co.kr/corpgeneral/corpList.do");
   url.searchParams.set("method", "download");
   url.searchParams.set("searchType", "13");
@@ -126,7 +132,12 @@ async function fetchMarketUniverse(market: StockUniverseItem["market"], marketTy
   }
 
   const html = await readEucKr(response);
-  return parseCorpListRows(html, market);
+  const items = parseCorpListRows(html, market);
+  logger.info("market:load:success", {
+    market,
+    count: items.length
+  });
+  return items;
 }
 
 function dedupeUniverse(items: StockUniverseItem[]): StockUniverseItem[] {
@@ -143,6 +154,10 @@ function dedupeUniverse(items: StockUniverseItem[]): StockUniverseItem[] {
 export async function getStockUniverse(options?: { forceRefresh?: boolean }) {
   const now = Date.now();
   if (!options?.forceRefresh && stockUniverseCache && now - stockUniverseCache.fetchedAt < KRX_CACHE_TTL_MS) {
+    logger.info("universe:cache-hit", {
+      count: stockUniverseCache.items.length,
+      fetchedAt: new Date(stockUniverseCache.fetchedAt).toISOString()
+    });
     return {
       fetchedAt: new Date(stockUniverseCache.fetchedAt).toISOString(),
       count: stockUniverseCache.items.length,
@@ -150,16 +165,32 @@ export async function getStockUniverse(options?: { forceRefresh?: boolean }) {
     };
   }
 
-  const items = dedupeUniverse(
-    (
-      await Promise.all(MARKET_ENDPOINTS.map(({ market, marketType }) => fetchMarketUniverse(market, marketType)))
-    ).flat()
-  );
+  logger.info("universe:cache-miss", {
+    forceRefresh: options?.forceRefresh ?? false
+  });
+
+  let items: StockUniverseItem[];
+
+  try {
+    items = dedupeUniverse(
+      (
+        await Promise.all(MARKET_ENDPOINTS.map(({ market, marketType }) => fetchMarketUniverse(market, marketType)))
+      ).flat()
+    );
+  } catch (error) {
+    logger.error("universe:load:failed", toErrorContext(error));
+    throw error;
+  }
 
   stockUniverseCache = {
     fetchedAt: now,
     items
   };
+
+  logger.info("universe:ready", {
+    count: items.length,
+    fetchedAt: new Date(now).toISOString()
+  });
 
   return {
     fetchedAt: new Date(now).toISOString(),

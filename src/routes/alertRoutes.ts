@@ -73,6 +73,16 @@ const smartMoneyScanSchema = z.object({
   marketContext: z
     .object({
       asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      marketTrend: z.enum(["bullish", "neutral", "bearish"]).optional(),
+      marketBreadth: z
+        .object({
+          score: z.coerce.number().min(0).max(100).optional(),
+          advanceDeclineRatio: z.coerce.number().min(0).max(10).optional(),
+          advancingPercent: z.coerce.number().min(0).max(100).optional()
+        })
+        .optional(),
+      momentumCondition: z.enum(["strong", "neutral", "weak"]).optional(),
+      leaderPersistenceScore: z.coerce.number().min(0).max(100).optional(),
       regimeScore: z.coerce.number().min(0).max(100).optional(),
       marketContextScore: z.coerce.number().min(0).max(100).optional(),
       trendScore: z.coerce.number().min(0).max(100).optional(),
@@ -122,6 +132,7 @@ const smartMoneyScanSchema = z.object({
       maxSetupPullbackRangePercent: z.coerce.number().min(0).max(60).optional(),
       maxTimeCorrectionDrawdownPercent: z.coerce.number().min(0).max(20).optional(),
       maxTimeCorrectionRangePercent: z.coerce.number().min(0).max(20).optional(),
+      maxTimeCorrectionCloseRangePercent: z.coerce.number().min(0).max(20).optional(),
       minTimeCorrectionTightClosePercent: z.coerce.number().min(-30).max(10).optional(),
       maxVolatileDigestionDrawdownPercent: z.coerce.number().min(0).max(60).optional(),
       maxVolatileDigestionRangePercent: z.coerce.number().min(0).max(80).optional(),
@@ -143,6 +154,16 @@ const smartMoneyScanSchema = z.object({
       maxBreakoutFailurePercent: z.coerce.number().min(0).max(15).optional(),
       maxBreakoutExtensionPercent: z.coerce.number().min(0).max(25).optional(),
       maxSetupDistanceBelowBreakoutLevelPercent: z.coerce.number().min(0).max(20).optional(),
+      minPullbackBuyDrawdownPercent: z.coerce.number().min(0).max(40).optional(),
+      minPullbackBuyDistanceBelowBreakoutPercent: z.coerce.number().min(0).max(40).optional(),
+      minTightPullbackBuyLeadInPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
+      pullbackBuyStartPercentFromPeak: z.coerce.number().min(0).max(50).optional(),
+      tightPullbackBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      tightPullbackBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      timeCorrectionBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      timeCorrectionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      volatileDigestionBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      volatileDigestionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       minActionableValidityScore: z.coerce.number().int().min(0).max(100).optional(),
       minExecutionReadinessScore: z.coerce.number().int().min(0).max(100).optional(),
       regimeScoreWeight: z.coerce.number().min(0).max(1).optional(),

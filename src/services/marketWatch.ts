@@ -1,4 +1,5 @@
 import { readJson } from "../lib/http.js";
+import { createLogger, toErrorContext } from "../lib/logger.js";
 import type { ChartPoint, MarketWatchChartWindow, MarketWatchSnapshot } from "../types.js";
 
 type ChartResponse = {
@@ -41,6 +42,7 @@ const requestHeaders = {
 };
 
 const cacheTtlMs = 2 * 1000;
+const logger = createLogger("marketWatch");
 const marketWatchDefinitions: MarketWatchDefinition[] = [
   { key: "KOSPI", name: "KOSPI", symbol: "^KS11", category: "index" },
   { key: "KOSDAQ", name: "KOSDAQ", symbol: "^KQ11", category: "index" },
@@ -146,6 +148,12 @@ async function fetchChartPoints(symbol: string, interval: string, range: string)
 }
 
 async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
+  logger.info("item:load:start", {
+    key: definition.key,
+    symbol: definition.symbol,
+    name: definition.name
+  });
+
   const [dailyPayload, weeklyPayload, monthlyPayload] = await Promise.all([
     fetchChartPoints(definition.symbol, "1d", "1y"),
     fetchChartPoints(definition.symbol, "1wk", "5y"),
@@ -163,7 +171,7 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     throw new Error(`${definition.name} chart data is unavailable.`);
   }
 
-  return {
+  const snapshot = {
     key: definition.key,
     name: definition.name,
     symbol: definition.symbol,
@@ -178,11 +186,24 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
       weekly: buildChartWindow(weeklyPoints),
       yearly: buildChartWindow(yearlyPoints)
     }
-  };
+  } satisfies MarketWatchSnapshot;
+
+  logger.info("item:load:success", {
+    key: definition.key,
+    latestDate,
+    price,
+    changePercent: snapshot.changePercent
+  });
+
+  return snapshot;
 }
 
 export async function getMarketWatchSnapshots() {
   if (cachedPayload && cachedPayload.expiresAt > Date.now()) {
+    logger.info("snapshot:cache-hit", {
+      count: cachedPayload.items.length,
+      fetchedAt: cachedPayload.fetchedAt
+    });
     return {
       fetchedAt: cachedPayload.fetchedAt,
       count: cachedPayload.items.length,
@@ -190,6 +211,9 @@ export async function getMarketWatchSnapshots() {
     };
   }
 
+  logger.info("snapshot:cache-miss", {
+    symbols: marketWatchDefinitions.map((definition) => definition.symbol).join(",")
+  });
   const settled = await Promise.allSettled(marketWatchDefinitions.map((definition) => fetchMarketWatchItem(definition)));
 
   const items = settled.map((result, index) => {
@@ -197,6 +221,12 @@ export async function getMarketWatchSnapshots() {
     if (result.status === "fulfilled") {
       return result.value;
     }
+
+    logger.error("item:load:failed", {
+      key: definition.key,
+      symbol: definition.symbol,
+      ...toErrorContext(result.reason)
+    });
 
     return {
       key: definition.key,
@@ -213,6 +243,12 @@ export async function getMarketWatchSnapshots() {
     expiresAt: Date.now() + cacheTtlMs,
     items
   };
+
+  logger.info("snapshot:ready", {
+    count: items.length,
+    errors: items.filter((item) => item.error).length,
+    fetchedAt
+  });
 
   return {
     fetchedAt,

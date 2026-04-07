@@ -96,6 +96,7 @@ export type SmartMoneyPatternFilters = {
   maxSetupPullbackRangePercent: number;
   maxTimeCorrectionDrawdownPercent: number;
   maxTimeCorrectionRangePercent: number;
+  maxTimeCorrectionCloseRangePercent: number;
   minTimeCorrectionTightClosePercent: number;
   maxVolatileDigestionDrawdownPercent: number;
   maxVolatileDigestionRangePercent: number;
@@ -117,6 +118,16 @@ export type SmartMoneyPatternFilters = {
   maxBreakoutFailurePercent: number;
   maxBreakoutExtensionPercent: number;
   maxSetupDistanceBelowBreakoutLevelPercent: number;
+  minPullbackBuyDrawdownPercent: number;
+  minPullbackBuyDistanceBelowBreakoutPercent: number;
+  minTightPullbackBuyLeadInPriceChangePercent: number;
+  pullbackBuyStartPercentFromPeak: number;
+  tightPullbackBuyZoneLowRetracementRatio: number;
+  tightPullbackBuyZoneHighRetracementRatio: number;
+  timeCorrectionBuyZoneLowRetracementRatio: number;
+  timeCorrectionBuyZoneHighRetracementRatio: number;
+  volatileDigestionBuyZoneLowRetracementRatio: number;
+  volatileDigestionBuyZoneHighRetracementRatio: number;
   minActionableValidityScore: number;
   minExecutionReadinessScore: number;
   regimeScoreWeight: number;
@@ -130,8 +141,36 @@ export type SmartMoneyPullbackType = "price_pullback" | "time_correction";
 
 export type SmartMoneySetupType = "tight_price_pullback" | "time_correction" | "volatile_power_digestion";
 
+export type SmartMoneyEntryStrategy = "pullback_buy" | "breakout_ready" | "breakout_confirmed";
+
+export type SmartMoneyBuyPlan = {
+  firstBuyPrice: number;
+  secondBuyPrice: number;
+  thirdBuyPrice: number;
+  stopLossPrice: number;
+};
+
+export type SmartMoneyWorkflowStatus =
+  | "none"
+  | "pivot_formed"
+  | "pullback_early"
+  | "pullback_deep"
+  | "pullback_ready"
+  | "buy_ready"
+  | "breakout_ready"
+  | "breakout_confirmed"
+  | "broken";
+
 export type SmartMoneyMarketContext = {
   asOfDate?: string;
+  marketTrend?: "bullish" | "neutral" | "bearish";
+  marketBreadth?: {
+    score?: number;
+    advanceDeclineRatio?: number;
+    advancingPercent?: number;
+  };
+  momentumCondition?: "strong" | "neutral" | "weak";
+  leaderPersistenceScore?: number;
   regimeScore?: number;
   marketContextScore?: number;
   trendScore?: number;
@@ -153,6 +192,90 @@ export type SmartMoneyMarketContext = {
   notes?: string[];
 };
 
+export type SmartMoneyAppliedMarketContext = SmartMoneyMarketContext & {
+  resolvedTrend?: "bullish" | "neutral" | "bearish";
+  breadthScore?: number;
+  momentumScore?: number;
+  regimeScore: number;
+  marketContextScore: number;
+  marketScoreAdjustment: number;
+  entryPriceAdjustmentPercent?: number;
+  setupThresholdAdjustment: number;
+  breakoutThresholdAdjustment: number;
+  actionableAllowed: boolean;
+  applied: boolean;
+  notes: string[];
+};
+
+export type SmartMoneyConditionCheck = {
+  key: string;
+  label: string;
+  passed: boolean;
+  actual?: number | string | boolean;
+  threshold?: number | string;
+  comparator?: ">=" | "<=" | "range" | "equals";
+  details: string;
+};
+
+export type SmartMoneyRiskFactor = {
+  code: string;
+  label: string;
+  severity: "low" | "medium" | "high";
+  scoreImpact: number;
+  description: string;
+  metrics?: Record<string, number | string | boolean | undefined>;
+};
+
+export type SmartMoneyDebugInfo = {
+  surgePct?: number;
+  surgeDurationDays?: number;
+  surgeVolumeRatio?: number;
+  peakPrice?: number;
+  basePrice?: number;
+  breakoutLevel?: number;
+  pullbackDays: number;
+  pullbackDepthPct?: number;
+  pullbackRangePct?: number;
+  closeRetentionPct?: number;
+  volumeDryingRatio?: number;
+  breakoutStatus: "none" | "watch" | "ready" | "confirmed" | "failed";
+  supportStatus: "holding" | "testing" | "broken";
+  marketScoreAdjustment?: number;
+  dangerPenalty?: number;
+  conditions: SmartMoneyConditionCheck[];
+  summary: string[];
+};
+
+export type SmartMoneyBacktestResult = {
+  signalDate: string;
+  signalClose: number;
+  availableSessions: number;
+  evaluationWindows: number[];
+  forwardReturn5?: number;
+  forwardReturn10?: number;
+  forwardReturn20?: number;
+  maxRunupPct?: number;
+  maxDrawdownPct?: number;
+  breakoutSuccess?: boolean;
+  stopLossHit?: boolean;
+  breakoutReferencePrice?: number;
+  stopLossReferencePrice?: number;
+};
+
+export type SmartMoneyTradePlan = {
+  strategy: SmartMoneyEntryStrategy | "setup_watch";
+  idealBuyZone?: {
+    low: number;
+    high: number;
+  };
+  breakoutPrice?: number;
+  stopLoss?: number;
+  invalidationPrice?: number;
+  targetPrice?: number;
+  riskRewardRatio?: number;
+  notes: string[];
+};
+
 export type SmartMoneyRejectReason = {
   stage: "setup" | "breakout";
   lookbackWindowDays: number;
@@ -163,6 +286,9 @@ export type SmartMoneyRejectReason = {
 
 export type SmartMoneyCandidateSummary = {
   stage: "setup" | "breakout";
+  status: SmartMoneyWorkflowStatus;
+  entryStrategy?: SmartMoneyEntryStrategy;
+  buyPlan?: SmartMoneyBuyPlan;
   lookbackWindowDays: number;
   matched: boolean;
   actionable: boolean;
@@ -182,6 +308,7 @@ export type SmartMoneyCandidateSummary = {
   volumeQualityScore: number;
   breakoutStrengthScore: number;
   breakoutFailureRiskScore: number;
+  dangerScore: number;
   freshnessScore: number;
   validityScore: number;
   executionReadinessScore: number;
@@ -207,6 +334,9 @@ export type SmartMoneyPatternMatch = {
   matched: boolean;
   actionable: boolean;
   stage: "none" | "setup" | "breakout";
+  status: SmartMoneyWorkflowStatus;
+  entryStrategy?: SmartMoneyEntryStrategy;
+  buyPlan?: SmartMoneyBuyPlan;
   signal: KoreanMoverSignal;
   patternScore: number;
   referenceDate: string;
@@ -221,6 +351,9 @@ export type SmartMoneyPatternMatch = {
   pullbackStartDate?: string;
   pullbackEndDate?: string;
   breakoutDate?: string;
+  basePrice?: number;
+  surgeAdvancePercent?: number;
+  surgeDurationDays?: number;
   sessionsSinceBreakout?: number;
   leadInClose?: number;
   leadInHigh?: number;
@@ -237,6 +370,7 @@ export type SmartMoneyPatternMatch = {
   breakoutCloseVsLeadInPercent?: number;
   referenceClose?: number;
   referenceCloseVsBasePercent?: number;
+  referenceCloseVsBreakoutLevelPercent?: number;
   referenceCloseVsPeakPercent?: number;
   referenceCloseVsLeadInPercent?: number;
   referenceCloseVsLeadInHighPercent?: number;
@@ -247,6 +381,9 @@ export type SmartMoneyPatternMatch = {
   pullbackType?: SmartMoneyPullbackType;
   setupType?: SmartMoneySetupType;
   breakoutLevel?: number;
+  entryZoneLow?: number;
+  entryZoneHigh?: number;
+  invalidationPrice?: number;
   leadInTurnoverValue?: number;
   breakoutTurnoverValue?: number;
   volumeQualityScore?: number;
@@ -261,6 +398,13 @@ export type SmartMoneyPatternMatch = {
   marketContextScore?: number;
   regimeAdjustedScore?: number;
   finalRankScore?: number;
+  dangerScore: number;
+  riskFactors: SmartMoneyRiskFactor[];
+  debugInfo: SmartMoneyDebugInfo;
+  rejectionReasons: string[];
+  marketContext?: SmartMoneyAppliedMarketContext;
+  backtestResult?: SmartMoneyBacktestResult;
+  tradePlan?: SmartMoneyTradePlan;
   lookbackWindowDays?: number;
   reasons: string[];
   summary: string;
@@ -434,6 +578,7 @@ export type MarketWatchSnapshot = {
 
 export type FundamentalsPeriod = {
   label: string;
+  isEstimated?: boolean;
   revenue?: number;
   operatingIncome?: number;
   netIncome?: number;
@@ -445,8 +590,20 @@ export type FundamentalsPeriod = {
   pbr?: number;
 };
 
+export type BusinessAreaSlice = {
+  label: string;
+  weight: number;
+  source: "overview_estimated" | "sector_fallback";
+};
+
 export type FundamentalsSummary = {
   source: string;
   annual?: FundamentalsPeriod;
   quarterly?: FundamentalsPeriod;
+  annualHistory?: FundamentalsPeriod[];
+  quarterlyHistory?: FundamentalsPeriod[];
+  quarterlyEstimateHistory?: FundamentalsPeriod[];
+  businessAreasSource?: string;
+  businessSummary?: string;
+  businessAreas?: BusinessAreaSlice[];
 };

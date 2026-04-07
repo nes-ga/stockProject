@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { createLogger, toErrorContext } from "../lib/logger.js";
 import {
   buildKoreanMoversDiscordMessages,
   buildRecommendationPatternDiscordMessages,
@@ -21,6 +22,7 @@ import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js
 import { extractStockSymbols } from "../services/symbolExtractor.js";
 
 export const analysisRoutes = Router();
+const logger = createLogger("analysisRoutes");
 
 const analysisSchema = z
   .object({
@@ -54,6 +56,16 @@ const smartMoneyItemSchema = z.object({
 
 const marketContextSchema = z.object({
   asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  marketTrend: z.enum(["bullish", "neutral", "bearish"]).optional(),
+  marketBreadth: z
+    .object({
+      score: z.coerce.number().min(0).max(100).optional(),
+      advanceDeclineRatio: z.coerce.number().min(0).max(10).optional(),
+      advancingPercent: z.coerce.number().min(0).max(100).optional()
+    })
+    .optional(),
+  momentumCondition: z.enum(["strong", "neutral", "weak"]).optional(),
+  leaderPersistenceScore: z.coerce.number().min(0).max(100).optional(),
   regimeScore: z.coerce.number().min(0).max(100).optional(),
   marketContextScore: z.coerce.number().min(0).max(100).optional(),
   trendScore: z.coerce.number().min(0).max(100).optional(),
@@ -129,6 +141,7 @@ const smartMoneyPatternSchema = z.object({
       maxSetupPullbackRangePercent: z.coerce.number().min(0).max(60).optional(),
       maxTimeCorrectionDrawdownPercent: z.coerce.number().min(0).max(20).optional(),
       maxTimeCorrectionRangePercent: z.coerce.number().min(0).max(20).optional(),
+      maxTimeCorrectionCloseRangePercent: z.coerce.number().min(0).max(20).optional(),
       minTimeCorrectionTightClosePercent: z.coerce.number().min(-30).max(10).optional(),
       maxVolatileDigestionDrawdownPercent: z.coerce.number().min(0).max(60).optional(),
       maxVolatileDigestionRangePercent: z.coerce.number().min(0).max(80).optional(),
@@ -150,6 +163,16 @@ const smartMoneyPatternSchema = z.object({
       maxBreakoutFailurePercent: z.coerce.number().min(0).max(15).optional(),
       maxBreakoutExtensionPercent: z.coerce.number().min(0).max(25).optional(),
       maxSetupDistanceBelowBreakoutLevelPercent: z.coerce.number().min(0).max(20).optional(),
+      minPullbackBuyDrawdownPercent: z.coerce.number().min(0).max(40).optional(),
+      minPullbackBuyDistanceBelowBreakoutPercent: z.coerce.number().min(0).max(40).optional(),
+      minTightPullbackBuyLeadInPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
+      pullbackBuyStartPercentFromPeak: z.coerce.number().min(0).max(50).optional(),
+      tightPullbackBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      tightPullbackBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      timeCorrectionBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      timeCorrectionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      volatileDigestionBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
+      volatileDigestionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       minActionableValidityScore: z.coerce.number().int().min(0).max(100).optional(),
       minExecutionReadinessScore: z.coerce.number().int().min(0).max(100).optional(),
       regimeScoreWeight: z.coerce.number().min(0).max(1).optional(),
@@ -211,6 +234,7 @@ const moversDiscordSchema = z.object({
 
 analysisRoutes.post("/from-post", async (request, response, next) => {
   try {
+    logger.info("from-post:start");
     const input = analysisSchema.parse(request.body);
     const post =
       input.postText != null
@@ -234,12 +258,17 @@ analysisRoutes.post("/from-post", async (request, response, next) => {
     }
 
     const analyses = await analyzeSymbols(symbols);
+    logger.info("from-post:success", {
+      symbolCount: symbols.length,
+      analysisCount: analyses.length
+    });
     response.json({
       post,
       symbols,
       analyses
     });
   } catch (error) {
+    logger.error("from-post:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -248,11 +277,15 @@ analysisRoutes.post("/recommendations", async (request, response, next) => {
   try {
     const input = recommendationBatchSchema.parse(request.body);
     const analyses = await analyzeRecommendations(input.items);
+    logger.info("recommendations:success", {
+      count: analyses.length
+    });
     response.json({
       count: analyses.length,
       analyses
     });
   } catch (error) {
+    logger.error("recommendations:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -300,6 +333,7 @@ analysisRoutes.post("/recommendation-patterns", async (request, response, next) 
       analyses
     });
   } catch (error) {
+    logger.error("recommendation-patterns:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -351,6 +385,7 @@ analysisRoutes.post("/smart-money-patterns", async (request, response, next) => 
       analyses
     });
   } catch (error) {
+    logger.error("smart-money-patterns:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -359,12 +394,18 @@ analysisRoutes.get("/korean-movers", async (request, response, next) => {
   try {
     const input = moversQuerySchema.parse(request.query);
     const analyses = await analyzeKoreanMovers(input);
+    logger.info("korean-movers:success", {
+      direction: input.direction,
+      market: input.market,
+      count: analyses.length
+    });
     response.json({
       count: analyses.length,
       filters: input,
       analyses
     });
   } catch (error) {
+    logger.error("korean-movers:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -375,8 +416,13 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
     const payload = await getStockUniverse({
       forceRefresh: input.forceRefresh
     });
+    logger.info("stock-universe:success", {
+      count: payload.count,
+      forceRefresh: input.forceRefresh
+    });
     response.json(payload);
   } catch (error) {
+    logger.error("stock-universe:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -384,11 +430,15 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
 analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
   try {
     const items = await readServerSwingPicks();
+    logger.info("server-swing-picks:get:success", {
+      count: items.length
+    });
     response.json({
       count: items.length,
       items
     });
   } catch (error) {
+    logger.error("server-swing-picks:get:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -397,12 +447,16 @@ analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
   try {
     const input = serverSwingPickBatchSchema.parse(request.body);
     const items = await writeServerSwingPicks(input.items);
+    logger.info("server-swing-picks:save:success", {
+      count: items.length
+    });
     response.json({
       ok: true,
       count: items.length,
       items
     });
   } catch (error) {
+    logger.error("server-swing-picks:save:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -410,8 +464,13 @@ analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
 analysisRoutes.get("/market-watch", async (request, response, next) => {
   try {
     const payload = await getMarketWatchSnapshots();
+    logger.info("market-watch:success", {
+      count: payload.count,
+      fetchedAt: payload.fetchedAt
+    });
     response.json(payload);
   } catch (error) {
+    logger.error("market-watch:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -449,6 +508,7 @@ analysisRoutes.post("/korean-movers/discord", async (request, response, next) =>
       analyses
     });
   } catch (error) {
+    logger.error("korean-movers-discord:failed", toErrorContext(error));
     next(error);
   }
 });

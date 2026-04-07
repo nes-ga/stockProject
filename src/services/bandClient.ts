@@ -1,10 +1,12 @@
 import { config } from "../config.js";
 import { readJson } from "../lib/http.js";
+import { createLogger, toErrorContext } from "../lib/logger.js";
 import type { BandPost } from "../types.js";
 
 const BAND_AUTH_URL = "https://auth.band.us/oauth2/authorize";
 const BAND_TOKEN_URL = "https://auth.band.us/oauth2/token";
 const BAND_API_URL = "https://openapi.band.us";
+const logger = createLogger("bandClient");
 
 type BandEnvelope<T> = {
   result_code: number;
@@ -71,6 +73,9 @@ export function buildBandAuthorizeUrl(): string {
 }
 
 export async function exchangeBandCode(code: string) {
+  logger.info("exchangeBandCode:start", {
+    codeLength: code.length
+  });
   const { clientId, clientSecret, redirectUri } = config.requireBandOAuth();
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -88,16 +93,37 @@ export async function exchangeBandCode(code: string) {
     body
   });
 
-  return readJson<TokenResponse>(response);
+  try {
+    const token = await readJson<TokenResponse>(response);
+    logger.info("exchangeBandCode:success", {
+      tokenType: token.token_type,
+      expiresIn: token.expires_in
+    });
+    return token;
+  } catch (error) {
+    logger.error("exchangeBandCode:failed", toErrorContext(error));
+    throw error;
+  }
 }
 
 export async function fetchBands(accessToken: string) {
+  logger.info("fetchBands:start", {
+    tokenLength: accessToken.length
+  });
   const url = new URL("/v2.1/bands", BAND_API_URL);
   url.searchParams.set("access_token", accessToken);
 
-  const response = await fetch(url);
-  const payload = await readJson<BandEnvelope<BandsResponse>>(response);
-  return payload.result_data.items;
+  try {
+    const response = await fetch(url);
+    const payload = await readJson<BandEnvelope<BandsResponse>>(response);
+    logger.info("fetchBands:success", {
+      count: payload.result_data.items.length
+    });
+    return payload.result_data.items;
+  } catch (error) {
+    logger.error("fetchBands:failed", toErrorContext(error));
+    throw error;
+  }
 }
 
 export async function fetchBandPosts(params: {
@@ -105,6 +131,10 @@ export async function fetchBandPosts(params: {
   bandKey: string;
   limit?: number;
 }) {
+  logger.info("fetchBandPosts:start", {
+    bandKey: params.bandKey,
+    limit: params.limit ?? 10
+  });
   const url = new URL("/v2/band/posts", BAND_API_URL);
   url.searchParams.set("access_token", params.accessToken);
   url.searchParams.set("band_key", params.bandKey);
@@ -112,10 +142,22 @@ export async function fetchBandPosts(params: {
     url.searchParams.set("locale", "ko_KR");
   }
 
-  const response = await fetch(url);
-  const payload = await readJson<BandEnvelope<PostsResponse>>(response);
-  const items = payload.result_data.items.slice(0, params.limit ?? 10);
-  return items.map(toBandPost);
+  try {
+    const response = await fetch(url);
+    const payload = await readJson<BandEnvelope<PostsResponse>>(response);
+    const items = payload.result_data.items.slice(0, params.limit ?? 10);
+    logger.info("fetchBandPosts:success", {
+      bandKey: params.bandKey,
+      count: items.length
+    });
+    return items.map(toBandPost);
+  } catch (error) {
+    logger.error("fetchBandPosts:failed", {
+      bandKey: params.bandKey,
+      ...toErrorContext(error)
+    });
+    throw error;
+  }
 }
 
 export async function fetchBandPost(params: {
@@ -123,12 +165,31 @@ export async function fetchBandPost(params: {
   bandKey: string;
   postKey: string;
 }) {
+  logger.info("fetchBandPost:start", {
+    bandKey: params.bandKey,
+    postKey: params.postKey
+  });
   const url = new URL("/v2.1/band/post", BAND_API_URL);
   url.searchParams.set("access_token", params.accessToken);
   url.searchParams.set("band_key", params.bandKey);
   url.searchParams.set("post_key", params.postKey);
 
-  const response = await fetch(url);
-  const payload = await readJson<BandEnvelope<PostResponse>>(response);
-  return toBandPost(payload.result_data);
+  try {
+    const response = await fetch(url);
+    const payload = await readJson<BandEnvelope<PostResponse>>(response);
+    const post = toBandPost(payload.result_data);
+    logger.info("fetchBandPost:success", {
+      bandKey: params.bandKey,
+      postKey: params.postKey,
+      contentLength: post.content.length
+    });
+    return post;
+  } catch (error) {
+    logger.error("fetchBandPost:failed", {
+      bandKey: params.bandKey,
+      postKey: params.postKey,
+      ...toErrorContext(error)
+    });
+    throw error;
+  }
 }

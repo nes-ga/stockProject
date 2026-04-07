@@ -16,6 +16,10 @@
         </p>
 
         <div class="app-tabs" id="appTabs">
+          <button class="app-tab" type="button" data-view="news">
+            <span class="app-tab-title">뉴스 기사</span>
+            <span class="app-tab-copy">시장 뉴스와 관심 종목 이슈를 모아보는 공간</span>
+          </button>
           <button class="app-tab active" type="button" data-view="index">
             <span class="app-tab-title">&#xC9C0;&#xC218; &#xBC0F; &#xAD00;&#xC2EC; &#xC790;&#xC0B0;</span>
             <span class="app-tab-copy">&#xC9C0;&#xC218;, &#xD658;&#xC728;, &#xC6D0;&#xC790;&#xC7AC; &#xD655;&#xC7A5; &#xC6A9; &#xD0ED;</span>
@@ -31,6 +35,23 @@
         </div>
       </header>
 
+      <section id="newsView" class="app-view hidden">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>뉴스 기사</h2>
+              <p class="field-help">시장 전반 뉴스와 관심 종목 관련 기사를 모아볼 수 있도록 준비한 탭입니다.</p>
+            </div>
+            <span class="status-badge idle">준비 중</span>
+          </div>
+
+          <div class="empty-state news-empty-state">
+            <p>여기에 시장 뉴스, 종목 뉴스, 키워드 검색, 기사 카드 레이아웃을 붙일 수 있게 기본 탭을 먼저 열어뒀습니다.</p>
+            <p>다음 단계에서는 뉴스 수집 API 또는 RSS/포털 기사 목록을 연결하면 됩니다.</p>
+          </div>
+        </section>
+      </section>
+
       <section id="indexView" class="app-view">
         <section class="panel index-panel">
           <div class="panel-head">
@@ -40,36 +61,6 @@
             </div>
           </div>
           <div id="indexWatchList" class="index-watch-list"></div>
-        </section>
-
-        <section class="index-theme-grid">
-          <section class="panel index-theme-panel">
-            <div class="panel-head">
-              <div>
-                <h2>&#xAE09;&#xB4F1; &#xD14C;&#xB9C8;</h2>
-                <p class="field-help">&#xC624;&#xB298; &#xAC15;&#xD55C; &#xC5C5;&#xC885; &#xD750;&#xB984;&#xC744; &#xB300;&#xD45C; &#xC885;&#xBAA9;&#xACFC; &#xD568;&#xAED8; &#xBCF4;&#xC5EC;&#xC90D;&#xB2C8;&#xB2E4;.</p>
-              </div>
-            </div>
-            <div id="indexRiseThemesList" class="index-theme-list">
-              <div class="empty-state">
-                <p>&#xAE09;&#xB4F1; &#xD14C;&#xB9C8;&#xB97C; &#xACC4;&#xC0B0;&#xD558;&#xB294; &#xC911;&#xC785;&#xB2C8;&#xB2E4;.</p>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel index-theme-panel">
-            <div class="panel-head">
-              <div>
-                <h2>&#xAE09;&#xB77D; &#xD14C;&#xB9C8;</h2>
-                <p class="field-help">&#xC57D;&#xD55C; &#xC5C5;&#xC885; &#xD750;&#xB984;&#xB3C4; &#xAC19;&#xC740; &#xD615;&#xC2DD;&#xC73C;&#xB85C; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</p>
-              </div>
-            </div>
-            <div id="indexFallThemesList" class="index-theme-list">
-              <div class="empty-state">
-                <p>&#xAE09;&#xB77D; &#xD14C;&#xB9C8;&#xB97C; &#xACC4;&#xC0B0;&#xD558;&#xB294; &#xC911;&#xC785;&#xB2C8;&#xB2E4;.</p>
-              </div>
-            </div>
-          </section>
         </section>
       </section>
 
@@ -237,6 +228,36 @@
             </div>
           </section>
         </section>
+
+        <section class="movers-theme-grid">
+          <section class="panel movers-theme-panel">
+            <div class="panel-head">
+              <div>
+                <h2>&#xAE09;&#xB4F1; &#xD14C;&#xB9C8;</h2>
+                <p class="field-help">&#xC624;&#xB298; &#xAC15;&#xD55C; &#xC5C5;&#xC885; &#xBB36;&#xC74C;&#xC744; &#xB300;&#xD45C; &#xC885;&#xBAA9;&#xACFC; &#xD568;&#xAED8; &#xBCF4;&#xC5EC;&#xC90D;&#xB2C8;&#xB2E4;.</p>
+              </div>
+            </div>
+            <div id="moversRiseThemesList" class="movers-theme-list">
+              <div class="empty-state">
+                <p>&#xAE09;&#xB4F1; &#xD14C;&#xB9C8;&#xB97C; &#xACC4;&#xC0B0;&#xD558;&#xB294; &#xC911;&#xC785;&#xB2C8;&#xB2E4;.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel movers-theme-panel">
+            <div class="panel-head">
+              <div>
+                <h2>&#xAE09;&#xB77D; &#xD14C;&#xB9C8;</h2>
+                <p class="field-help">&#xC57D;&#xD55C; &#xC5C5;&#xC885; &#xBB36;&#xC74C;&#xB3C4; &#xAC19;&#xC740; &#xD615;&#xC2DD;&#xC73C;&#xB85C; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</p>
+              </div>
+            </div>
+            <div id="moversFallThemesList" class="movers-theme-list">
+              <div class="empty-state">
+                <p>&#xAE09;&#xB77D; &#xD14C;&#xB9C8;&#xB97C; &#xACC4;&#xC0B0;&#xD558;&#xB294; &#xC911;&#xC785;&#xB2C8;&#xB2E4;.</p>
+              </div>
+            </div>
+          </section>
+        </section>
       </section>
     </div>
 
@@ -314,6 +335,19 @@
             <span id="indexChartModalEndDate">-</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="swingScoreModal" class="modal-backdrop hidden">
+      <div class="modal-panel swing-score-modal-panel" role="dialog" aria-modal="true" aria-labelledby="swingScoreModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="swingScoreModalTitle">&#xC2A4;&#xC719; &#xC0C1;&#xD0DC; &#xC124;&#xBA85;</h3>
+            <p id="swingScoreModalMeta" class="field-help modal-field-help"></p>
+          </div>
+          <button id="closeSwingScoreModalBtn" class="icon-button" type="button" aria-label="&#xB2EB;&#xAE30;">&#x00D7;</button>
+        </div>
+        <div id="swingScoreModalBody" class="swing-score-modal-body"></div>
       </div>
     </div>
 

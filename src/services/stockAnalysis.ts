@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { readJson } from "../lib/http.js";
+import { createLogger, toErrorContext } from "../lib/logger.js";
 import type {
   ChartPoint,
   RecommendationAnalysis,
@@ -13,13 +14,17 @@ import type {
   SmartMoneyPatternMatch,
   SmartMoneyPatternRequest,
   SmartMoneyMarketContext,
+  MarketWatchSnapshot,
   SmartMoneyPullbackType,
   SmartMoneyRejectReason,
   StockAnalysis
 } from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
+import { getMarketWatchSnapshots } from "./marketWatch.js";
+import { calculateSmartMoneyBacktestResult } from "./smartMoneyBacktest.js";
 import { evaluateSmartMoneyPattern, resolveSmartMoneyPatternFilters } from "./smartMoneyEngine.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
+const logger = createLogger("stockAnalysis");
 
 type QuoteResponse = {
   quoteResponse: {
@@ -80,6 +85,169 @@ function average(values: number[]): number | undefined {
   }
 
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+const AUTO_MARKET_CONTEXT_TTL_MS = 60 * 1000;
+
+let cachedAutoMarketContext:
+  | {
+      expiresAt: number;
+      value?: SmartMoneyMarketContext;
+    }
+  | null = null;
+let autoMarketContextPromise: Promise<SmartMoneyMarketContext | undefined> | null = null;
+
+function getMovingAverage(points: ChartPoint[], period: number): number | undefined {
+  if (points.length < period) {
+    return undefined;
+  }
+
+  return average(points.slice(-period).map((point) => point.close));
+}
+
+function getPriorClose(points: ChartPoint[], sessionsAgo: number): number | undefined {
+  const index = points.length - 1 - sessionsAgo;
+  return index >= 0 ? points[index]?.close : undefined;
+}
+
+function deriveSnapshotTrend(snapshot?: MarketWatchSnapshot) {
+  if (!snapshot) {
+    return null;
+  }
+
+  const points = snapshot.chartSets?.daily?.points ?? [];
+  const latestPoint = points.at(-1);
+  if (!latestPoint) {
+    return null;
+  }
+
+  const sma20 = getMovingAverage(points, 20);
+  const sma50 = getMovingAverage(points, 50);
+  const change20d = percentChange(latestPoint.close, getPriorClose(points, 20));
+  const aboveSma20 = sma20 == null ? undefined : latestPoint.close >= sma20;
+  const aboveSma50 = sma50 == null ? undefined : latestPoint.close >= sma50;
+  const strengthScore = clamp(
+    50 +
+      (aboveSma20 == null ? 0 : aboveSma20 ? 12 : -12) +
+      (aboveSma50 == null ? 0 : aboveSma50 ? 10 : -10) +
+      (change20d == null ? 0 : change20d >= 6 ? 12 : change20d >= 0 ? 6 : change20d >= -5 ? -8 : -16),
+    10,
+    90
+  );
+
+  return {
+    snapshot,
+    latestDate: latestPoint.date,
+    price: latestPoint.close,
+    change20d,
+    sma20,
+    sma50,
+    aboveSma20,
+    aboveSma50,
+    strengthScore,
+    trend: strengthScore >= 62 ? "bullish" : strengthScore <= 38 ? "bearish" : "neutral"
+  } as const;
+}
+
+function buildAutoSmartMoneyMarketContext(items: MarketWatchSnapshot[]): SmartMoneyMarketContext | undefined {
+  const kospi = deriveSnapshotTrend(items.find((item) => item.key === "KOSPI"));
+  const kosdaq = deriveSnapshotTrend(items.find((item) => item.key === "KOSDAQ"));
+  const usdkrw = deriveSnapshotTrend(items.find((item) => item.key === "USDKRW"));
+  const gold = deriveSnapshotTrend(items.find((item) => item.key === "GOLD"));
+  const indexHealth = [kospi, kosdaq].filter((item): item is NonNullable<typeof kospi> => Boolean(item));
+
+  if (!indexHealth.length) {
+    return undefined;
+  }
+
+  const averageStrength = average(indexHealth.map((item) => item.strengthScore)) ?? 50;
+  const advancingCount = indexHealth.filter((item) => item.aboveSma20).length;
+  const decliningCount = Math.max(1, indexHealth.length - advancingCount);
+  const advancingPercent = (advancingCount / indexHealth.length) * 100;
+  const breadthScore = clamp(
+    Math.round(averageStrength * 0.55 + advancingPercent * 0.45),
+    15,
+    85
+  );
+  const averageChange20d = average(indexHealth.map((item) => item.change20d).filter((value): value is number => value != null)) ?? 0;
+  const momentumCondition = averageChange20d >= 4 ? "strong" : averageChange20d <= -3 ? "weak" : "neutral";
+  const marketTrend = averageStrength >= 62 ? "bullish" : averageStrength <= 40 ? "bearish" : "neutral";
+  const usdkrwChange20d = usdkrw?.change20d;
+  const goldChange20d = gold?.change20d;
+  const riskOff =
+    (indexHealth.every((item) => item.aboveSma20 === false) && averageChange20d < 0) ||
+    averageChange20d <= -4 ||
+    ((usdkrwChange20d ?? 0) >= 2.5 && averageStrength < 52) ||
+    ((goldChange20d ?? 0) >= 5 && averageStrength < 50);
+  const asOfDate = [kospi?.latestDate, kosdaq?.latestDate, usdkrw?.latestDate, gold?.latestDate].find(Boolean);
+
+  return {
+    asOfDate,
+    marketTrend,
+    marketBreadth: {
+      score: breadthScore,
+      advanceDeclineRatio: advancingCount / decliningCount,
+      advancingPercent
+    },
+    momentumCondition,
+    leaderPersistenceScore: Math.round(averageStrength),
+    regimeScore: Math.round(clamp(averageStrength + (riskOff ? -6 : 0), 0, 100)),
+    marketContextScore: breadthScore,
+    riskScore: Math.round(clamp((riskOff ? 34 : 62) + averageChange20d * 1.6, 10, 90)),
+    riskOff,
+    benchmark: {
+      symbol: kospi?.snapshot.symbol ?? "^KS11",
+      trend: kospi?.trend ?? marketTrend,
+      changePercent20d: kospi?.change20d,
+      aboveSma20: kospi?.aboveSma20,
+      aboveSma50: kospi?.aboveSma50
+    },
+    notes: [
+      `Auto market context from KOSPI/KOSDAQ as of ${asOfDate ?? "-"}.`,
+      `Average 20-session index change is ${averageChange20d.toFixed(1)}%.`,
+      usdkrwChange20d != null ? `USD/KRW 20-session change ${usdkrwChange20d.toFixed(1)}%.` : "USD/KRW context unavailable."
+    ]
+  };
+}
+
+async function getAutoSmartMoneyMarketContext() {
+  if (cachedAutoMarketContext && cachedAutoMarketContext.expiresAt > Date.now()) {
+    return cachedAutoMarketContext.value;
+  }
+
+  if (autoMarketContextPromise) {
+    return autoMarketContextPromise;
+  }
+
+  autoMarketContextPromise = (async () => {
+    try {
+      const snapshots = await getMarketWatchSnapshots();
+      const value = buildAutoSmartMoneyMarketContext(snapshots.items);
+      cachedAutoMarketContext = {
+        expiresAt: Date.now() + AUTO_MARKET_CONTEXT_TTL_MS,
+        value
+      };
+      logger.info("smartMoney:market-context:auto:ready", {
+        applied: Boolean(value),
+        asOfDate: value?.asOfDate,
+        marketTrend: value?.marketTrend,
+        regimeScore: value?.regimeScore,
+        riskOff: value?.riskOff
+      });
+      return value;
+    } catch (error) {
+      logger.error("smartMoney:market-context:auto:failed", toErrorContext(error));
+      cachedAutoMarketContext = {
+        expiresAt: Date.now() + 10 * 1000,
+        value: undefined
+      };
+      return undefined;
+    } finally {
+      autoMarketContextPromise = null;
+    }
+  })();
+
+  return autoMarketContextPromise;
 }
 
 function calculateRsi(closes: number[], period = 14): number | undefined {
@@ -198,6 +366,11 @@ function parseNaverChartXml(xml: string): ChartPoint[] {
 }
 
 async function fetchNaverChart(symbol: string, count = 500) {
+  logger.info("chart:load:start", {
+    symbol,
+    source: "naver",
+    count
+  });
   const naverSymbol = toNaverSymbol(symbol);
   if (!naverSymbol) {
     throw new Error(`Unsupported Naver symbol: ${symbol}`);
@@ -229,7 +402,7 @@ async function fetchNaverChart(symbol: string, count = 500) {
   const latestPoint = points.at(-1);
   const previousPoint = points.at(-2);
 
-  return {
+  const result = {
     quote: {
       currency: "KRW",
       exchangeName: "NAVER_FINANCE",
@@ -240,13 +413,38 @@ async function fetchNaverChart(symbol: string, count = 500) {
     chartPayload: undefined,
     points
   };
+
+  logger.info("chart:load:success", {
+    symbol,
+    source: "naver",
+    points: points.length,
+    latestDate: latestPoint?.date,
+    latestClose: latestPoint?.close
+  });
+
+  return result;
 }
 
 async function fetchQuoteAndChart(symbol: string, chartOptions?: { period1?: string; range?: string }) {
   if (isKoreanNumericSymbol(symbol) || /\.K[QS]$/.test(symbol)) {
-    return fetchNaverChart(symbol);
+    try {
+      return await fetchNaverChart(symbol);
+    } catch (error) {
+      logger.error("chart:load:failed", {
+        symbol,
+        source: "naver",
+        ...toErrorContext(error)
+      });
+      throw error;
+    }
   }
 
+  logger.info("chart:load:start", {
+    symbol,
+    source: "yahoo",
+    period1: chartOptions?.period1,
+    range: chartOptions?.range ?? "3mo"
+  });
   const quoteUrl = new URL("https://query1.finance.yahoo.com/v7/finance/quote");
   quoteUrl.searchParams.set("symbols", symbol);
 
@@ -267,27 +465,45 @@ async function fetchQuoteAndChart(symbol: string, chartOptions?: { period1?: str
     "Referer": "https://finance.yahoo.com/"
   };
 
-  const [quotePayload, chartPayload] = await Promise.all([
-    fetch(quoteUrl, { headers: requestHeaders }).then((response) => readJson<QuoteResponse>(response)),
-    fetch(chartUrl, { headers: requestHeaders }).then((response) => readJson<ChartResponse>(response))
-  ]);
+  try {
+    const [quotePayload, chartPayload] = await Promise.all([
+      fetch(quoteUrl, { headers: requestHeaders }).then((response) => readJson<QuoteResponse>(response)),
+      fetch(chartUrl, { headers: requestHeaders }).then((response) => readJson<ChartResponse>(response))
+    ]);
 
-  const yahooQuote = quotePayload.quoteResponse.result[0];
-  const quote: QuoteSummary | undefined = yahooQuote
-    ? {
-        currency: yahooQuote.currency,
-        exchangeName: yahooQuote.fullExchangeName,
-        shortName: yahooQuote.shortName,
-        regularMarketPrice: yahooQuote.regularMarketPrice,
-        regularMarketPreviousClose: yahooQuote.regularMarketPreviousClose
-      }
-    : undefined;
+    const yahooQuote = quotePayload.quoteResponse.result[0];
+    const quote: QuoteSummary | undefined = yahooQuote
+      ? {
+          currency: yahooQuote.currency,
+          exchangeName: yahooQuote.fullExchangeName,
+          shortName: yahooQuote.shortName,
+          regularMarketPrice: yahooQuote.regularMarketPrice,
+          regularMarketPreviousClose: yahooQuote.regularMarketPreviousClose
+        }
+      : undefined;
 
-  return {
-    quote,
-    chartPayload,
-    points: buildChartPoints(chartPayload)
-  };
+    const points = buildChartPoints(chartPayload);
+    logger.info("chart:load:success", {
+      symbol,
+      source: "yahoo",
+      points: points.length,
+      latestClose: quote?.regularMarketPrice ?? points.at(-1)?.close,
+      latestDate: points.at(-1)?.date
+    });
+
+    return {
+      quote,
+      chartPayload,
+      points
+    };
+  } catch (error) {
+    logger.error("chart:load:failed", {
+      symbol,
+      source: "yahoo",
+      ...toErrorContext(error)
+    });
+    throw error;
+  }
 }
 
 function describeTrend(params: {
@@ -334,6 +550,10 @@ function describeTrend(params: {
 
 export async function analyzeSymbol(rawSymbol: string): Promise<StockAnalysis> {
   const symbol = resolveFinanceSymbol(rawSymbol, config.yahooDefaultMarketSuffix);
+  logger.info("symbol:analyze:start", {
+    rawSymbol,
+    symbol
+  });
   const { quote, points } = await fetchQuoteAndChart(symbol, { range: "3mo" });
   const closes = points.map((point) => point.close);
 
@@ -353,7 +573,7 @@ export async function analyzeSymbol(rawSymbol: string): Promise<StockAnalysis> {
     rsi14
   });
 
-  return {
+  const analysis = {
     symbol: rawSymbol.toUpperCase(),
     resolvedSymbol: symbol,
     currency: quote.currency,
@@ -368,6 +588,16 @@ export async function analyzeSymbol(rawSymbol: string): Promise<StockAnalysis> {
     rsi14,
     ...trendInfo
   };
+
+  logger.info("symbol:analyze:success", {
+    rawSymbol,
+    symbol,
+    trend: analysis.trend,
+    price: analysis.price,
+    changePercent1d: analysis.changePercent1d
+  });
+
+  return analysis;
 }
 
 export async function analyzeSymbols(symbols: string[]) {
@@ -565,8 +795,10 @@ function buildEmptySmartMoneyPattern(referenceDate: string, windowPoints: ChartP
     matched: false,
     actionable: false,
     stage: "none",
+    status: "none",
     signal: "watch",
     patternScore: 0,
+    dangerScore: 0,
     referenceDate,
     windowStartDate: windowPoints[0]?.date,
     windowEndDate: windowPoints.at(-1)?.date,
@@ -595,13 +827,26 @@ function buildEmptySmartMoneyPattern(referenceDate: string, windowPoints: ChartP
     breakoutCloseVsLeadInPercent: undefined,
     referenceClose: undefined,
     referenceCloseVsBasePercent: undefined,
+    referenceCloseVsBreakoutLevelPercent: undefined,
     referenceCloseVsPeakPercent: undefined,
     referenceCloseVsLeadInPercent: undefined,
     referenceCloseVsLeadInHighPercent: undefined,
     pullbackSessions: 0,
+    riskFactors: [],
+    debugInfo: {
+      pullbackDays: 0,
+      breakoutStatus: "none",
+      supportStatus: "holding",
+      conditions: [],
+      summary: ["No smart-money entry pattern was found in the selected window."]
+    },
+    rejectionReasons: ["No smart-money entry pattern was found in the selected window."],
     pullbackMaxDrawdownPercent: undefined,
     breakout20d: false,
     closedNearHigh: false,
+    entryZoneLow: undefined,
+    entryZoneHigh: undefined,
+    invalidationPrice: undefined,
     reasons: ["No smart-money entry pattern was found in the selected window."],
     summary: "No smart-money entry pattern was found in the selected window."
   };
@@ -847,8 +1092,10 @@ function evaluateSmartMoneyPatternWindow(
         matched,
         actionable: matched,
         stage: "setup",
+        status: matched ? "pullback_ready" : "pivot_formed",
         signal: toSignal(patternScore),
         patternScore,
+        dangerScore: 0,
         referenceDate,
         windowStartDate: windowPoints[0]?.date,
         windowEndDate: windowPoints.at(-1)?.date,
@@ -877,13 +1124,26 @@ function evaluateSmartMoneyPatternWindow(
         breakoutCloseVsLeadInPercent: undefined,
         referenceClose: referencePoint.close,
         referenceCloseVsBasePercent,
+        referenceCloseVsBreakoutLevelPercent: undefined,
         referenceCloseVsPeakPercent: referenceCloseVsPeakPercent,
         referenceCloseVsLeadInPercent,
         referenceCloseVsLeadInHighPercent,
         pullbackSessions: pullbackPoints.length,
+        riskFactors: [],
+        debugInfo: {
+          pullbackDays: pullbackPoints.length,
+          breakoutStatus: "watch",
+          supportStatus: "holding",
+          conditions: [],
+          summary: []
+        },
+        rejectionReasons: [],
         pullbackMaxDrawdownPercent,
         breakout20d: false,
         closedNearHigh: false,
+        entryZoneLow: undefined,
+        entryZoneHigh: undefined,
+        invalidationPrice: undefined,
         reasons,
         summary: reasons.join(" ")
       };
@@ -1029,8 +1289,10 @@ function evaluateSmartMoneyPatternWindow(
         matched,
         actionable: matched && actionable,
         stage: "breakout",
+        status: matched && actionable ? "breakout_confirmed" : "breakout_ready",
         signal: toSignal(patternScore),
         patternScore,
+        dangerScore: 0,
         referenceDate,
         windowStartDate: windowPoints[0]?.date,
         windowEndDate: windowPoints.at(-1)?.date,
@@ -1053,13 +1315,26 @@ function evaluateSmartMoneyPatternWindow(
         breakoutVolumeRatio20d,
         breakoutCloseVsLeadInPercent,
         referenceClose: referencePoint?.close,
+        referenceCloseVsBreakoutLevelPercent: undefined,
         referenceCloseVsPeakPercent: referencePoint && breakoutPoint ? percentChange(referencePoint.close, breakoutPoint.close) : undefined,
         referenceCloseVsLeadInPercent,
         referenceCloseVsLeadInHighPercent,
         pullbackSessions: pullbackPoints.length,
+        riskFactors: [],
+        debugInfo: {
+          pullbackDays: pullbackPoints.length,
+          breakoutStatus: matched && actionable ? "confirmed" : "ready",
+          supportStatus: "holding",
+          conditions: [],
+          summary: []
+        },
+        rejectionReasons: [],
         pullbackMaxDrawdownPercent,
         breakout20d,
         closedNearHigh,
+        entryZoneLow: undefined,
+        entryZoneHigh: undefined,
+        invalidationPrice: undefined,
         reasons,
         summary: reasons.join(" ")
       };
@@ -1075,6 +1350,11 @@ function evaluateSmartMoneyPatternWindow(
 
 export async function analyzeRecommendation(input: RecommendationRequest): Promise<RecommendationAnalysis> {
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+  logger.info("recommendation:analyze:start", {
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    anchorDate: input.anchorDate
+  });
   const period1 = addDays(input.anchorDate, -40);
   const [chartResult, fundamentals] = await Promise.all([
     fetchQuoteAndChart(symbol, { period1 }),
@@ -1118,7 +1398,7 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
   const avgVolume20After = averageDefined(volumesAfterAnchor);
   const avgVolume20Latest = averageDefined(volumesLatest);
 
-  return {
+  const analysis = {
     name: input.name,
     symbol: input.symbol,
     resolvedSymbol: symbol,
@@ -1157,6 +1437,15 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     },
     fundamentals
   };
+
+  logger.info("recommendation:analyze:success", {
+    symbol: input.symbol,
+    tradingAnchorDate: analysis.tradingAnchorDate,
+    latestDate: analysis.latestDate,
+    returnSinceAnchor: analysis.returnSinceAnchor
+  });
+
+  return analysis;
 }
 
 export async function analyzeRecommendations(inputs: RecommendationRequest[]) {
@@ -1172,6 +1461,12 @@ export async function analyzeRecommendationPattern(
     ...overrides
   };
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+  logger.info("recommendationPattern:analyze:start", {
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    anchorDate: input.anchorDate,
+    lookbackTradingDays: filters.lookbackTradingDays
+  });
   const historyLookback = Math.max(90, filters.breakoutWindowDays + filters.lookbackTradingDays + 25);
   const period1 = addDays(input.anchorDate, -historyLookback);
   const { points } = await fetchQuoteAndChart(symbol, { period1 });
@@ -1188,7 +1483,7 @@ export async function analyzeRecommendationPattern(
   const anchorPoint = points[anchorIndex];
   const pattern = evaluatePreAnchorMomentumWindow(points, anchorIndex, filters);
 
-  return {
+  const analysis = {
     name: input.name,
     symbol: input.symbol,
     resolvedSymbol: symbol,
@@ -1198,6 +1493,16 @@ export async function analyzeRecommendationPattern(
     note: input.note,
     pattern
   };
+
+  logger.info("recommendationPattern:analyze:success", {
+    symbol: input.symbol,
+    tradingAnchorDate: analysis.tradingAnchorDate,
+    matched: pattern.matched,
+    signal: pattern.signal,
+    signalScore: pattern.signalScore
+  });
+
+  return analysis;
 }
 
 export async function analyzeRecommendationPatterns(
@@ -1207,9 +1512,10 @@ export async function analyzeRecommendationPatterns(
   return Promise.all(inputs.map((input) => analyzeRecommendationPattern(input, overrides)));
 }
 
-export async function analyzeSmartMoneyPattern(
+async function analyzeSmartMoneyPatternWithContext(
   input: SmartMoneyPatternRequest,
-  overrides?: Partial<SmartMoneyPatternFilters>
+  overrides?: Partial<SmartMoneyPatternFilters>,
+  resolvedMarketContext?: SmartMoneyMarketContext
 ): Promise<SmartMoneyPatternAnalysis> {
   const filters = resolveSmartMoneyPatternFilters({
     ...defaultSmartMoneyPatternFilters,
@@ -1217,6 +1523,16 @@ export async function analyzeSmartMoneyPattern(
   });
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
   const referenceDate = input.referenceDate ?? toIsoDate(new Date());
+  const marketContext = input.marketContext ?? resolvedMarketContext;
+  logger.info("smartMoney:analyze:start", {
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    referenceDate,
+    debug: input.debug ?? false,
+    marketContextApplied: Boolean(marketContext),
+    marketTrend: marketContext?.marketTrend,
+    regimeScore: marketContext?.regimeScore
+  });
   const maxLookbackWindow = Math.max(...filters.lookbackWindows);
   const historyLookback = Math.max(90, maxLookbackWindow + filters.breakoutLookbackDays + filters.maxPullbackSessions + 25);
   const period1 = addDays(referenceDate, -historyLookback);
@@ -1233,24 +1549,52 @@ export async function analyzeSmartMoneyPattern(
 
   const referencePoint = points[referenceIndex];
   const pattern = evaluateSmartMoneyPattern(points, referenceIndex, filters, {
-    marketContext: input.marketContext,
+    marketContext,
     debug: input.debug
   });
+  const backtestResult = calculateSmartMoneyBacktestResult(points, referenceIndex, pattern);
+  const enrichedPattern = {
+    ...pattern,
+    backtestResult
+  };
 
-  return {
+  const analysis = {
     name: input.name,
     symbol: input.symbol,
     resolvedSymbol: symbol,
     referenceDate: input.referenceDate,
     tradingReferenceDate: referencePoint.date,
     note: input.note,
-    pattern
+    pattern: enrichedPattern
   };
+
+  logger.info("smartMoney:analyze:success", {
+    symbol: input.symbol,
+    tradingReferenceDate: analysis.tradingReferenceDate,
+    stage: enrichedPattern.stage,
+    matched: enrichedPattern.matched,
+    actionable: enrichedPattern.actionable,
+    patternScore: enrichedPattern.patternScore,
+    signal: enrichedPattern.signal
+  });
+
+  return analysis;
+}
+
+export async function analyzeSmartMoneyPattern(
+  input: SmartMoneyPatternRequest,
+  overrides?: Partial<SmartMoneyPatternFilters>
+): Promise<SmartMoneyPatternAnalysis> {
+  const resolvedMarketContext = input.marketContext ?? (await getAutoSmartMoneyMarketContext());
+  return analyzeSmartMoneyPatternWithContext(input, overrides, resolvedMarketContext);
 }
 
 export async function analyzeSmartMoneyPatterns(
   inputs: SmartMoneyPatternRequest[],
   overrides?: Partial<SmartMoneyPatternFilters>
 ) {
-  return Promise.all(inputs.map((input) => analyzeSmartMoneyPattern(input, overrides)));
+  const sharedMarketContext = inputs.some((input) => !input.marketContext) ? await getAutoSmartMoneyMarketContext() : undefined;
+  return Promise.all(
+    inputs.map((input) => analyzeSmartMoneyPatternWithContext(input, overrides, input.marketContext ?? sharedMarketContext))
+  );
 }

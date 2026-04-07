@@ -10,12 +10,19 @@ type UniverseItem = Awaited<ReturnType<typeof getStockUniverse>>["items"][number
 function buildNote(pattern: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>>["pattern"]) {
   const stageLabel =
     pattern.stage === "breakout" ? "\uC2A4\uC719 \uC644\uC131\uD615 \uAC10\uC9C0" : "\uC2A4\uC719 \uC18C\uD654\uD615 \uAC10\uC9C0";
+  const buyPlanText = pattern.buyPlan
+    ? `\uB9E4\uC218 ${Math.round(pattern.buyPlan.firstBuyPrice)}/${Math.round(pattern.buyPlan.secondBuyPrice)}/${Math.round(pattern.buyPlan.thirdBuyPrice)}`
+    : `\uB9E4\uC218 ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
+  const resolvedStopPrice = pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice;
+  const stopText = `\uC190\uC808 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
 
   return [
     stageLabel,
     `\uC120\uD589 \uC218\uAE09 ${pattern.leadInDate ?? "-"}`,
     `\uAE09\uB4F1 \uD53C\uD06C ${pattern.surgePeakDate ?? pattern.breakoutDate ?? "-"}`,
     `\uB20C\uB9BC ${pattern.pullbackStartDate ?? "-"}~${pattern.pullbackEndDate ?? "-"}`,
+    buyPlanText,
+    stopText,
     `\uC810\uC218 ${pattern.finalRankScore ?? pattern.patternScore}`
   ].join(" | ");
 }
