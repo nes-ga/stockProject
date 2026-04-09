@@ -134,6 +134,8 @@ function formatSwingStatusLabel(status?: SmartMoneyPatternAnalysis["pattern"]["s
       return "\uB20C\uB9BC \uC900\uBE44";
     case "buy_ready":
       return "1\uCC28 \uB9E4\uC218 \uAD6C\uAC04";
+    case "breakout_extended":
+      return "\uCD94\uACA9 \uAE08\uC9C0";
     case "breakout_ready":
       return "\uB3CC\uD30C \uB300\uAE30";
     case "breakout_confirmed":
@@ -179,6 +181,46 @@ function formatEntryStrategy(entryStrategy?: SmartMoneyPatternAnalysis["pattern"
   }
 }
 
+function formatSwingStatusDisplay(status?: SmartMoneyPatternAnalysis["pattern"]["status"]): string {
+  switch (status) {
+    case "pivot_formed":
+      return "\uAE30\uC900\uBD09 \uD615\uC131";
+    case "pullback_early":
+      return "\uB20C\uB9BC \uCD08\uAE30";
+    case "pullback_deep":
+      return "\uAE4A\uC740 \uB20C\uB9BC";
+    case "pullback_ready":
+      return "\uB20C\uB9BC \uC644\uC131";
+    case "buy_ready":
+      return "1\uCC28\uB9E4\uC218 \uAC00\uB2A5";
+    case "breakout_extended":
+      return "\uCD94\uACA9 \uAE08\uC9C0";
+    case "breakout_ready":
+      return "\uB3CC\uD30C \uB300\uAE30";
+    case "breakout_confirmed":
+      return "\uB3CC\uD30C \uD655\uC778";
+    case "broken":
+      return "\uC774\uD0C8";
+    default:
+      return "\uAD00\uCC30";
+  }
+}
+
+function formatEntryStrategyDisplay(entryStrategy?: SmartMoneyPatternAnalysis["pattern"]["entryStrategy"]): string {
+  switch (entryStrategy) {
+    case "pullback_buy":
+      return "\uB20C\uB9BC \uB9E4\uC218";
+    case "no_chase":
+      return "\uCD94\uACA9 \uAE08\uC9C0";
+    case "breakout_ready":
+      return "\uB3CC\uD30C \uB300\uAE30";
+    case "breakout_confirmed":
+      return "\uB3CC\uD30C \uD655\uC778";
+    default:
+      return "-";
+  }
+}
+
 function formatPriceBand(low?: number, high?: number): string {
   if (low == null && high == null) {
     return "-";
@@ -195,6 +237,15 @@ function formatBuyPlan(buyPlan?: SmartMoneyPatternAnalysis["pattern"]["buyPlan"]
   }
 
   return `${formatNumber(buyPlan.firstBuyPrice, 0)}/${formatNumber(buyPlan.secondBuyPrice, 0)}/${formatNumber(buyPlan.thirdBuyPrice, 0)}`;
+}
+
+function formatStopReference(pattern: SmartMoneyPatternAnalysis["pattern"]): string {
+  if (!pattern.stopLossReferenceDate && !pattern.stopLossReferenceType) {
+    return "-";
+  }
+
+  const basis = pattern.stopLossReferenceType === "close_fallback" ? "close" : "low";
+  return `${pattern.stopLossReferenceDate ?? "-"} ${basis}`;
 }
 
 function buildRecommendationPatternLines(analyses: RecommendationPatternAnalysis[]) {
@@ -242,16 +293,19 @@ export function buildRecommendationPatternDiscordMessages(params: {
 function buildSmartMoneyPatternLines(analyses: SmartMoneyPatternAnalysis[]) {
   return analyses.map((item, index) => {
     const { pattern } = item;
+    const watchOnly = pattern.status === "breakout_extended" || pattern.entryStrategy === "no_chase";
     const parts = [
-      `${index + 1}. ${item.name ?? item.symbol} (${item.symbol})`,
+      `${index + 1}. ${watchOnly ? "[WATCH-ONLY] " : ""}${item.name ?? item.symbol} (${item.symbol})`,
       `status ${formatSwingStatusLabel(pattern.status)}`,
-      `style ${formatEntryStrategy(pattern.entryStrategy)}`,
+      `style ${formatEntryStrategyDisplay(pattern.entryStrategy)}`,
       `ref ${item.tradingReferenceDate}`,
       `lead ${pattern.leadInDate ?? "-"}`,
       `breakout ${pattern.breakoutDate ?? "-"}`,
       `entry ${formatPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh)}`,
+      `sma20 ${formatNumber(pattern.referenceSma20, 0)}`,
       `buy ${formatBuyPlan(pattern.buyPlan)}`,
       `stop ${formatNumber(pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice, 0)}`,
+      `stopRef ${formatStopReference(pattern)}`,
       `invalid ${formatNumber(pattern.invalidationPrice, 0)}`,
       `breakout ${formatPercent(pattern.breakoutPriceChangePercent)}`,
       `vol ${formatNumber(pattern.breakoutVolumeRatio20d)}x`
@@ -284,7 +338,28 @@ export function buildSmartMoneyPatternDiscordMessages(params: {
     return [`${header}\nNo symbols matched the smart-money entry pattern.`];
   }
 
-  return chunkMessages(buildSmartMoneyPatternLines(analyses), header);
+  const sortedAnalyses = [...analyses].sort((left, right) => {
+    const leftWatchOnly = left.pattern.status === "breakout_extended" || left.pattern.entryStrategy === "no_chase";
+    const rightWatchOnly = right.pattern.status === "breakout_extended" || right.pattern.entryStrategy === "no_chase";
+    if (leftWatchOnly !== rightWatchOnly) {
+      return leftWatchOnly ? 1 : -1;
+    }
+    const leftScore = left.pattern.finalRankScore ?? left.pattern.patternScore ?? 0;
+    const rightScore = right.pattern.finalRankScore ?? right.pattern.patternScore ?? 0;
+    return rightScore - leftScore;
+  });
+  const primaryAnalyses = sortedAnalyses.filter(
+    (item) => item.pattern.status !== "breakout_extended" && item.pattern.entryStrategy !== "no_chase"
+  );
+  const watchOnlyAnalyses = sortedAnalyses.filter(
+    (item) => item.pattern.status === "breakout_extended" || item.pattern.entryStrategy === "no_chase"
+  );
+  const lines = [
+    ...buildSmartMoneyPatternLines(primaryAnalyses),
+    ...(watchOnlyAnalyses.length ? ["Watch-only / no-chase", ...buildSmartMoneyPatternLines(watchOnlyAnalyses)] : [])
+  ];
+
+  return chunkMessages(lines, header);
 }
 
 export async function sendDiscordMessages(params: {

@@ -1,5 +1,6 @@
 import type { BusinessAreaSlice, FundamentalsPeriod, FundamentalsSummary } from "../types.js";
 
+const FUNDAMENTALS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const TABLE_MARKER = "\uC8FC\uC694\uC7AC\uBB34\uC815\uBCF4";
 const ANALYSIS_SECTION_MARKER = "section cop_analysis";
 const ANALYSIS_TABLE_CLASS = "tb_type1_ifrs";
@@ -64,6 +65,14 @@ const BUSINESS_AREA_RULES: BusinessAreaRule[] = [
   { label: "\uD1B5\uC2E0\u00B7\uB124\uD2B8\uC6CC\uD06C", keywords: ["\uD1B5\uC2E0", "5G", "\uB124\uD2B8\uC6CC\uD06C", "\uC911\uACC4\uAE30", "\uD1B5\uC2E0\uC7A5\uBE44"] },
   { label: "\uBC29\uC0B0\u00B7\uD56D\uACF5", keywords: ["\uBC29\uC0B0", "\uBBF8\uC0AC\uC77C", "\uB808\uC774\uB354", "\uD56D\uACF5", "\uC6B0\uC8FC", "\uAD70\uC218"] }
 ];
+
+const fundamentalsCache = new Map<
+  string,
+  {
+    fetchedAt: number;
+    value: FundamentalsSummary | undefined;
+  }
+>();
 
 function decodeHtml(text: string): string {
   return text
@@ -406,6 +415,11 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
     return undefined;
   }
 
+  const cached = fundamentalsCache.get(symbol);
+  if (cached && Date.now() - cached.fetchedAt < FUNDAMENTALS_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   try {
     const response = await fetch(`https://finance.naver.com/item/main.naver?code=${symbol}`, {
       headers: {
@@ -461,7 +475,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
           : undefined;
     }
 
-    return {
+    const result = {
       source: "Naver Finance",
       annual,
       quarterly,
@@ -472,7 +486,17 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
       businessSummary,
       businessAreas
     };
+    fundamentalsCache.set(symbol, {
+      fetchedAt: Date.now(),
+      value: result
+    });
+
+    return result;
   } catch {
+    fundamentalsCache.set(symbol, {
+      fetchedAt: Date.now(),
+      value: undefined
+    });
     return undefined;
   }
 }

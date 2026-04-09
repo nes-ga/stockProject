@@ -8,12 +8,25 @@
   createChart
 } from "/vendor/lightweight-charts/lightweight-charts.standalone.production.mjs";
 
-const STORAGE_KEY = "band-stock-recommendations-v2";
-const BAND_ACCESS_TOKEN_KEY = "band-access-token-v1";
+const STORAGE_KEY = "stock-project-recommendations-v2";
+const LEGACY_STORAGE_KEY = "band-stock-recommendations-v2";
+const UI_STATE_STORAGE_KEY = "stock-project-ui-state-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
+const DEFAULT_LONG_TERM_BUCKET = "buy";
+const DEFAULT_SWING_BUCKET = "execution";
 const SWING_LOOKBACK_DAYS = 15;
 const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
+const DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS = {
+  daily: 45,
+  weekly: 52,
+  yearly: 8
+};
+const SWING_STOCK_SNAPSHOT_REFRESH_INTERVAL_MS = 10 * 1000;
+const LONG_TERM_STOCK_SNAPSHOT_REFRESH_INTERVAL_MS = 30 * 1000;
+const ACTIVE_ANALYSIS_REFRESH_INTERVAL_MS = 5 * 1000;
+const APP_VIEWS = ["news", "index", "analysis", "movers"];
+const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -212,21 +225,23 @@ const swingScoreGuideText = [
   "화면에는 점수 대신 현재 상태와 진입 구간, 이탈 기준을 중심으로 표시합니다."
 ].join("\n");
 const defaultRecommendationBySymbol = new Map(defaultRecommendationCatalog.map((item) => [item.symbol, item]));
+const persistedUiState = loadUiState();
 
 let recommendationCatalog = loadCatalog();
-let currentCategory = DEFAULT_CATEGORY;
+let currentCategory = isValidCategory(persistedUiState?.currentCategory) ? persistedUiState.currentCategory : DEFAULT_CATEGORY;
+let currentLongTermBucket = isValidLongTermBucket(persistedUiState?.currentLongTermBucket)
+  ? persistedUiState.currentLongTermBucket
+  : DEFAULT_LONG_TERM_BUCKET;
+let currentSwingBucket = isValidSwingBucket(persistedUiState?.currentSwingBucket)
+  ? persistedUiState.currentSwingBucket
+  : DEFAULT_SWING_BUCKET;
 let currentAnalysis = null;
-let selectedKey = getFilteredInitialKey();
+let selectedKey = typeof persistedUiState?.selectedKey === "string" ? persistedUiState.selectedKey : getFilteredInitialKey();
 let activeChart = null;
 let resizeObserver = null;
-let itemsPerPage = 5;
-let currentPage = 1;
-let bandConfig = null;
-let bandAccessToken = loadBandAccessToken();
-let bandItems = [];
-let postItems = [];
-let selectedBandKey = null;
-let activeView = "index";
+let itemsPerPage = PAGE_SIZE_OPTIONS.has(Number(persistedUiState?.itemsPerPage)) ? Number(persistedUiState.itemsPerPage) : 5;
+let currentPage = Number.isInteger(persistedUiState?.currentPage) && persistedUiState.currentPage > 0 ? persistedUiState.currentPage : 1;
+let activeView = resolveInitialAppView(persistedUiState?.activeView);
 let hasLoadedMovers = false;
 let stockSearchQuery = "";
 let selectedStockOption = null;
@@ -244,13 +259,19 @@ let previousMarketWatchPrices = new Map();
 let stockModalPointerDownOnBackdrop = false;
 let serverSwingPicksLoaded = false;
 let swingPatternByKey = new Map();
+let realtimeStockSnapshots = new Map();
+let stockSnapshotRefreshTimer = null;
+let stockSnapshotLoading = false;
+let lastVisibleStockSnapshotSignature = "";
+let activeAnalysisRefreshTimer = null;
+let activeAnalysisRealtimeLoading = false;
 let latestRiseMovers = [];
 let latestFallMovers = [];
 
 const appTabs = document.querySelector("#appTabs");
 const newsView = document.querySelector("#newsView");
 const indexView = document.querySelector("#indexView");
-const bandView = document.querySelector("#bandView");
+const analysisView = document.querySelector("#analysisView");
 const moversView = document.querySelector("#moversView");
 const stockSelector = document.querySelector("#stockSelector");
 const results = document.querySelector("#results");
@@ -293,17 +314,12 @@ const stockSymbolInput = document.querySelector("#stockSymbolInput");
 const stockPriceInput = document.querySelector("#stockPriceInput");
 const stockDateInput = document.querySelector("#stockDateInput");
 const stockCategoryTabs = document.querySelector("#stockCategoryTabs");
+const longTermBucketTabs = document.querySelector("#longTermBucketTabs");
+const swingBucketTabs = document.querySelector("#swingBucketTabs");
 const stockCategorySelect = document.querySelector("#stockCategorySelect");
+const longTermBucketField = document.querySelector("#longTermBucketField");
+const longTermBucketSelect = document.querySelector("#longTermBucketSelect");
 const stockNoteInput = document.querySelector("#stockNoteInput");
-const bandConnectionStatus = document.querySelector("#bandConnectionStatus");
-const bandSetupNotice = document.querySelector("#bandSetupNotice");
-const bandLoginBtn = document.querySelector("#bandLoginBtn");
-const bandRefreshBandsBtn = document.querySelector("#bandRefreshBandsBtn");
-const bandLogoutBtn = document.querySelector("#bandLogoutBtn");
-const bandList = document.querySelector("#bandList");
-const postList = document.querySelector("#postList");
-const bandCountLabel = document.querySelector("#bandCountLabel");
-const postCountLabel = document.querySelector("#postCountLabel");
 const moversStatusBadge = document.querySelector("#moversStatusBadge");
 const moversSummaryBar = document.querySelector("#moversSummaryBar");
 const moversErrorBox = document.querySelector("#moversErrorBox");
@@ -333,6 +349,15 @@ appTabs?.addEventListener("click", (event) => {
   }
 
   switchAppView(view);
+});
+
+window.addEventListener("hashchange", () => {
+  const hashView = resolveHashAppView();
+  if (!hashView || hashView === activeView) {
+    return;
+  }
+
+  switchAppView(hashView);
 });
 
 indexWatchList?.addEventListener("click", (event) => {
@@ -413,19 +438,65 @@ stockCategoryTabs?.addEventListener("click", (event) => {
   currentCategory = category;
   currentPage = 1;
   selectedKey = getFilteredCatalog()[0]?.key ?? null;
+  startStockSnapshotAutoRefresh();
   renderCategoryTabs();
+  renderLongTermBucketTabs();
+  renderSwingBucketTabs();
   renderSelector();
   if (selectedKey) {
     void runAnalysisByKey(selectedKey);
     return;
   }
 
-  currentAnalysis = null;
-  cleanupChart();
-  showSummary("");
-  showError("");
-  results.classList.add("empty");
-  results.innerHTML = `<div class="empty-state"><p>${category === "swing" ? "스윙" : "중장기"} 탭에 종목을 추가하면 결과가 여기에 표시됩니다.</p></div>`;
+  renderEmptyResultsForCurrentFilter();
+});
+
+longTermBucketTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-long-term-bucket]");
+  if (!button || currentCategory !== DEFAULT_CATEGORY) {
+    return;
+  }
+
+  const nextBucket = button.dataset.longTermBucket;
+  if (!isValidLongTermBucket(nextBucket) || nextBucket === currentLongTermBucket) {
+    return;
+  }
+
+  currentLongTermBucket = nextBucket;
+  currentPage = 1;
+  selectedKey = getFilteredCatalog()[0]?.key ?? null;
+  renderLongTermBucketTabs();
+  renderSelector();
+  if (selectedKey) {
+    void runAnalysisByKey(selectedKey);
+    return;
+  }
+
+  renderEmptyResultsForCurrentFilter();
+});
+
+swingBucketTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-swing-bucket]");
+  if (!button || currentCategory !== "swing") {
+    return;
+  }
+
+  const nextBucket = button.dataset.swingBucket;
+  if (!isValidSwingBucket(nextBucket) || nextBucket === currentSwingBucket) {
+    return;
+  }
+
+  currentSwingBucket = nextBucket;
+  currentPage = 1;
+  selectedKey = getFilteredCatalog()[0]?.key ?? null;
+  renderSwingBucketTabs();
+  renderSelector();
+  if (selectedKey) {
+    void runAnalysisByKey(selectedKey);
+    return;
+  }
+
+  renderEmptyResultsForCurrentFilter();
 });
 
 prevPageBtn.addEventListener("click", () => {
@@ -496,14 +567,20 @@ stockForm.addEventListener("submit", async (event) => {
 
   recommendationCatalog = [...recommendationCatalog, item];
   currentCategory = item.category ?? DEFAULT_CATEGORY;
+  if (item.category !== "swing") {
+    currentLongTermBucket = item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET;
+  }
+  startStockSnapshotAutoRefresh();
   selectedKey = item.key;
-  currentPage = getTotalPagesForCount(recommendationCatalog.length);
+  currentPage = getTotalPagesForCount(getFilteredCatalog().length);
   saveCatalog();
   if (item.category === "swing") {
     await refreshSwingPatternSnapshots();
   }
   closeStockModal();
   renderCategoryTabs();
+  renderLongTermBucketTabs();
+  renderSwingBucketTabs();
   renderSelector();
   await runAnalysisByKey(item.key);
 });
@@ -517,6 +594,10 @@ stockSearchInput?.addEventListener("input", () => {
     clearSelectedStockOption();
   }
   renderStockSearchResults();
+});
+
+stockCategorySelect?.addEventListener("change", () => {
+  syncLongTermBucketField();
 });
 
 stockSearchResults?.addEventListener("click", (event) => {
@@ -538,50 +619,8 @@ stockSearchResults?.addEventListener("click", (event) => {
   selectStockOption(item);
 });
 
-bandLoginBtn?.addEventListener("click", async () => {
-  await startBandLogin();
-});
-
-bandRefreshBandsBtn?.addEventListener("click", async () => {
-  await refreshBandsAndPosts();
-});
-
-bandLogoutBtn?.addEventListener("click", () => {
-  disconnectBand();
-});
-
 refreshMoversBtn?.addEventListener("click", async () => {
   await loadMovers();
-});
-
-bandList?.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-band-key]");
-  if (!button) {
-    return;
-  }
-
-  const bandKey = button.dataset.bandKey;
-  if (!bandKey || bandKey === selectedBandKey) {
-    return;
-  }
-
-  selectedBandKey = bandKey;
-  renderBandList();
-  await loadPostsForSelectedBand();
-});
-
-postList?.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-post-key]");
-  if (!button) {
-    return;
-  }
-
-  const postKey = button.dataset.postKey;
-  if (!postKey) {
-    return;
-  }
-
-  await runBandPostAnalysis(postKey);
 });
 
 results.addEventListener("click", (event) => {
@@ -626,38 +665,29 @@ async function initializeApp() {
   stockSearchUniverse = buildStockSearchUniverse();
   await loadServerSwingPicks();
   await refreshSwingPatternSnapshots();
+  restoreUiState();
   applyScoreGuideTooltips();
   renderAppTabs();
   renderCategoryTabs();
+  renderLongTermBucketTabs();
+  renderSwingBucketTabs();
+  syncLongTermBucketField();
   renderIndexWatchList();
   renderMoversThemeLists();
   renderSelector();
-  renderBandList();
-  renderPostList();
   renderStockSearchResults();
-  renderBandSetupNotice(
-    "info",
-    '먼저 <code>.env</code>에 BAND 앱 정보를 넣고, 서버를 다시 시작한 뒤 <code>BAND 로그인</code> 버튼을 누르세요.'
-  );
-  setBandConnectionBadge("idle", "준비 중");
 
   if (selectedKey) {
     void runAnalysisByKey(selectedKey);
   }
 
-  await loadBandConfig();
-  await handleBandOAuthRedirect();
-
-  if (bandAccessToken) {
-    await refreshBandsAndPosts();
-  } else {
-    renderBandSetupState();
-  }
-
   void loadStockUniverse();
   void loadMarketWatch();
   void loadMovers({ background: true, preserveMoversUi: true });
+  void loadRealtimeStockSnapshots({ background: true });
   startMarketWatchAutoRefresh();
+  startStockSnapshotAutoRefresh();
+  startActiveAnalysisAutoRefresh();
 }
 
 function mergeRecommendations(baseItems, incomingItems) {
@@ -696,7 +726,17 @@ async function loadServerSwingPicks() {
       throw new Error(payload.error ?? "서버 스윙 종목을 불러오지 못했습니다.");
     }
 
-    const items = Array.isArray(payload.items) ? payload.items : [];
+    const executionItems = Array.isArray(payload.executionItems) ? payload.executionItems : [];
+    const watchItems = Array.isArray(payload.watchItems) ? payload.watchItems : [];
+    const items =
+      executionItems.length || watchItems.length
+        ? [
+            ...executionItems.map((item) => ({ ...item, bucket: "execution" })),
+            ...watchItems.map((item) => ({ ...item, bucket: "watch" }))
+          ]
+        : Array.isArray(payload.items)
+          ? payload.items
+          : [];
     recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items);
     saveCatalog();
 
@@ -707,7 +747,8 @@ async function loadServerSwingPicks() {
       }
     }
 
-    if (!selectedKey || !visibleKeys.has(selectedKey)) {
+    const filteredKeys = new Set(getFilteredCatalog().map((item) => item.key));
+    if (!selectedKey || !visibleKeys.has(selectedKey) || (currentCategory === "swing" && !filteredKeys.has(selectedKey))) {
       selectedKey = getFilteredInitialKey();
     }
   } catch (error) {
@@ -770,29 +811,29 @@ function renderAppTabs() {
 
   newsView?.classList.toggle("hidden", activeView !== "news");
   indexView?.classList.toggle("hidden", activeView !== "index");
-  bandView?.classList.toggle("hidden", activeView !== "band");
+  analysisView?.classList.toggle("hidden", activeView !== "analysis");
   moversView?.classList.toggle("hidden", activeView !== "movers");
 }
 
 function getMarketWatchMovingAverageConfig(timeframe) {
   if (timeframe === "weekly") {
     return [
-      { key: "fast", label: "5주선", period: 5, className: "fast-line", color: "#7c3aed" },
-      { key: "short", label: "20주선", period: 20, className: "short-line", color: "#d97706" },
+      { key: "fast", label: "5주선", period: 5, className: "fast-line", color: "#177245" },
+      { key: "short", label: "20주선", period: 20, className: "short-line", color: "#d84c3f" },
       { key: "long", label: "60주선", period: 60, className: "long-line", color: "#2563eb" }
     ];
   }
 
   if (timeframe === "yearly") {
     return [
-      { key: "short", label: "3년선", period: 3, className: "short-line", color: "#d97706" },
+      { key: "short", label: "3년선", period: 3, className: "short-line", color: "#d84c3f" },
       { key: "long", label: "5년선", period: 5, className: "long-line", color: "#2563eb" }
     ];
   }
 
   return [
-    { key: "fast", label: "5일선", period: 5, className: "fast-line", color: "#7c3aed" },
-    { key: "short", label: "20일선", period: 20, className: "short-line", color: "#d97706" },
+    { key: "fast", label: "5일선", period: 5, className: "fast-line", color: "#177245" },
+    { key: "short", label: "20일선", period: 20, className: "short-line", color: "#d84c3f" },
     { key: "long", label: "60일선", period: 60, className: "long-line", color: "#2563eb" }
   ];
 }
@@ -1053,8 +1094,14 @@ function renderMoversThemeList(container, themes, direction) {
 }
 
 function switchAppView(view) {
-  activeView = ["news", "index", "band", "movers"].includes(view) ? view : "band";
+  activeView = APP_VIEWS.includes(view) ? view : "analysis";
   renderAppTabs();
+  persistUiState();
+
+  if (activeView === "analysis") {
+    void loadRealtimeStockSnapshots({ background: true });
+    void refreshCurrentAnalysisRealtime({ background: true });
+  }
 
   if (activeView === "index") {
     if (!marketWatchLoaded && !marketWatchLoading) {
@@ -1100,6 +1147,9 @@ async function loadMarketWatch(options = {}) {
   } finally {
     marketWatchLoading = false;
     renderIndexWatchList();
+    if (activeMarketWatchKey && indexChartModal && !indexChartModal.classList.contains("hidden")) {
+      renderIndexChartModal();
+    }
   }
 }
 
@@ -1109,11 +1159,6 @@ function startMarketWatchAutoRefresh() {
   }
 
   marketWatchRefreshTimer = window.setInterval(() => {
-    const modalOpen = indexChartModal && !indexChartModal.classList.contains("hidden");
-    if (modalOpen) {
-      return;
-    }
-
     if (activeView !== "index") {
       return;
     }
@@ -1301,7 +1346,7 @@ function mountMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
     `;
   });
 
-  chart.timeScale().fitContent();
+  setDefaultMarketWatchVisibleRange(chart, points, timeframe);
 
   const resizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0];
@@ -1315,12 +1360,29 @@ function mountMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchCharts.push({ chart, resizeObserver });
 }
 
+function setDefaultMarketWatchVisibleRange(chart, points, timeframe) {
+  const visibleSessions = DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS[timeframe] ?? DEFAULT_VISIBLE_TRADING_SESSIONS;
+  if (!Array.isArray(points) || !points.length) {
+    chart.timeScale().fitContent();
+    return;
+  }
+
+  const endIndex = points.length - 1;
+  const startIndex = Math.max(0, points.length - visibleSessions);
+
+  chart.timeScale().setVisibleLogicalRange({
+    from: startIndex - 1,
+    to: endIndex + 0.5
+  });
+}
+
 function openIndexChartModal(key) {
   activeMarketWatchKey = key;
   indexChartModal?.classList.remove("hidden");
   window.requestAnimationFrame(() => {
     renderIndexChartModal();
   });
+  void loadMarketWatch({ background: true });
 }
 
 function closeIndexChartModal() {
@@ -1440,14 +1502,6 @@ function renderIndexChartModal() {
     snapshot,
     timeframe
   });
-}
-
-function loadBandAccessToken() {
-  try {
-    return localStorage.getItem(BAND_ACCESS_TOKEN_KEY);
-  } catch {
-    return null;
-  }
 }
 
 function normalizeSearchText(value) {
@@ -1707,415 +1761,6 @@ function clearSelectedStockOption() {
   }
 }
 
-function saveBandAccessToken(token) {
-  bandAccessToken = token;
-  localStorage.setItem(BAND_ACCESS_TOKEN_KEY, token);
-}
-
-function clearBandAccessToken() {
-  bandAccessToken = null;
-  localStorage.removeItem(BAND_ACCESS_TOKEN_KEY);
-}
-
-async function loadBandConfig() {
-  try {
-    const response = await fetch("/auth/band/config");
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "BAND 설정 정보를 불러오지 못했습니다.");
-    }
-
-    bandConfig = payload;
-  } catch (error) {
-    bandConfig = {
-      isConfigured: false,
-      redirectUri: null
-    };
-    renderBandSetupNotice(
-      "error",
-      error instanceof Error ? error.message : "BAND 설정 상태를 확인하지 못했습니다."
-    );
-  }
-
-  renderBandSetupState();
-}
-
-function renderBandSetupState() {
-  if (!bandConfig?.isConfigured) {
-    setBandConnectionBadge("error", "설정 필요");
-    renderBandSetupNotice(
-      "error",
-      '프로젝트 루트의 <code>.env</code> 파일에 <code>BAND_CLIENT_ID</code>, <code>BAND_CLIENT_SECRET</code>, <code>BAND_REDIRECT_URI</code>를 채워주세요. 기본 Redirect URI는 <code>http://localhost:3000/auth/band/callback</code> 입니다.'
-    );
-    return;
-  }
-
-  if (bandAccessToken) {
-    setBandConnectionBadge("done", "연결됨");
-    renderBandSetupNotice(
-      "success",
-      "BAND 계정 연결이 준비되었습니다. 밴드 목록을 읽고 원하는 게시글을 눌러 바로 분석할 수 있습니다."
-    );
-    return;
-  }
-
-  setBandConnectionBadge("idle", "로그인 대기");
-  renderBandSetupNotice(
-    "info",
-    `이제 <code>BAND 로그인</code> 버튼을 누르세요.${bandConfig.redirectUri ? ` Redirect URI: <code>${escapeHtml(bandConfig.redirectUri)}</code>` : ""}`
-  );
-}
-
-function setBandConnectionBadge(kind, text) {
-  if (!bandConnectionStatus) {
-    return;
-  }
-
-  bandConnectionStatus.className = `status-badge ${kind}`;
-  bandConnectionStatus.textContent = text;
-}
-
-function renderBandSetupNotice(kind, html) {
-  if (!bandSetupNotice) {
-    return;
-  }
-
-  bandSetupNotice.className = `setup-notice ${kind}`;
-  bandSetupNotice.innerHTML = html;
-}
-
-async function startBandLogin() {
-  if (!bandConfig?.isConfigured) {
-    renderBandSetupState();
-    return;
-  }
-
-  setBandConnectionBadge("loading", "로그인 이동 중");
-  renderBandSetupNotice(
-    "info",
-    "잠시 후 BAND 로그인 화면으로 이동합니다. 로그인과 권한 동의를 마치면 다시 이 화면으로 돌아옵니다."
-  );
-
-  try {
-    const response = await fetch("/auth/band/url");
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "BAND 로그인 URL을 만들지 못했습니다.");
-    }
-
-    window.location.href = payload.authorizeUrl;
-  } catch (error) {
-    setBandConnectionBadge("error", "로그인 실패");
-    renderBandSetupNotice(
-      "error",
-      error instanceof Error ? error.message : "BAND 로그인 URL을 만들지 못했습니다."
-    );
-  }
-}
-
-async function handleBandOAuthRedirect() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("band_code");
-  if (!code) {
-    return;
-  }
-
-  setBandConnectionBadge("loading", "토큰 교환 중");
-  renderBandSetupNotice("info", "BAND 로그인은 완료되었습니다. 접근 토큰을 발급받는 중입니다.");
-
-  try {
-    const response = await fetch("/auth/band/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ code })
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "BAND 토큰 발급에 실패했습니다.");
-    }
-
-    saveBandAccessToken(payload.access_token);
-    params.delete("band_code");
-    params.delete("state");
-    const query = params.toString();
-    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
-    window.history.replaceState({}, "", nextUrl);
-    renderBandSetupState();
-  } catch (error) {
-    clearBandAccessToken();
-    setBandConnectionBadge("error", "토큰 실패");
-    renderBandSetupNotice(
-      "error",
-      error instanceof Error ? error.message : "BAND 토큰 발급에 실패했습니다."
-    );
-  }
-}
-
-async function refreshBandsAndPosts() {
-  if (!bandAccessToken) {
-    renderBandSetupState();
-    return;
-  }
-
-  setBandConnectionBadge("loading", "밴드 조회 중");
-  renderBandSetupNotice("info", "내 BAND 목록을 불러오는 중입니다.");
-
-  try {
-    const response = await fetch(`/band/bands?accessToken=${encodeURIComponent(bandAccessToken)}`);
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "밴드 목록을 불러오지 못했습니다.");
-    }
-
-    bandItems = Array.isArray(payload.items) ? payload.items : [];
-    if (!bandItems.length) {
-      selectedBandKey = null;
-      postItems = [];
-      renderBandList();
-      renderPostList();
-      setBandConnectionBadge("done", "연결됨");
-      renderBandSetupNotice("info", "접근 가능한 밴드는 읽었지만 목록이 비어 있습니다.");
-      return;
-    }
-
-    if (!bandItems.some((item) => item.band_key === selectedBandKey)) {
-      selectedBandKey = bandItems[0].band_key;
-    }
-
-    renderBandList();
-    await loadPostsForSelectedBand();
-  } catch (error) {
-    setBandConnectionBadge("error", "조회 실패");
-    renderBandSetupNotice(
-      "error",
-      error instanceof Error ? error.message : "밴드 목록을 불러오지 못했습니다."
-    );
-  }
-}
-
-async function loadPostsForSelectedBand() {
-  if (!bandAccessToken || !selectedBandKey) {
-    postItems = [];
-    renderPostList();
-    return;
-  }
-
-  setBandConnectionBadge("loading", "게시글 조회 중");
-  renderBandSetupNotice("info", "선택한 밴드의 게시글을 불러오는 중입니다.");
-
-  try {
-    const response = await fetch(
-      `/band/posts?accessToken=${encodeURIComponent(bandAccessToken)}&bandKey=${encodeURIComponent(selectedBandKey)}&limit=15`
-    );
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "게시글 목록을 불러오지 못했습니다.");
-    }
-
-    postItems = Array.isArray(payload.items) ? payload.items : [];
-    renderPostList();
-    setBandConnectionBadge("done", "연결됨");
-    renderBandSetupNotice("success", "밴드와 게시글을 읽었습니다. 분석할 게시글을 눌러주세요.");
-  } catch (error) {
-    postItems = [];
-    renderPostList();
-    setBandConnectionBadge("error", "게시글 실패");
-    renderBandSetupNotice(
-      "error",
-      error instanceof Error ? error.message : "게시글 목록을 불러오지 못했습니다."
-    );
-  }
-}
-
-function disconnectBand() {
-  clearBandAccessToken();
-  bandItems = [];
-  postItems = [];
-  selectedBandKey = null;
-  renderBandList();
-  renderPostList();
-  renderBandSetupState();
-}
-
-function renderBandList() {
-  if (!bandList || !bandCountLabel) {
-    return;
-  }
-
-  bandCountLabel.textContent = `${bandItems.length}개`;
-  if (!bandItems.length) {
-    bandList.innerHTML = `<div class="empty-state"><p>로그인 후 밴드 목록을 불러오면 여기에 표시됩니다.</p></div>`;
-    return;
-  }
-
-  bandList.innerHTML = bandItems
-    .map((item) => {
-      const selected = item.band_key === selectedBandKey;
-      return `
-        <button class="band-item ${selected ? "selected" : ""}" type="button" data-band-key="${escapeHtml(item.band_key)}">
-          <span class="band-item-name">${escapeHtml(item.name ?? item.band_key)}</span>
-          <span class="band-item-meta">band_key: ${escapeHtml(item.band_key)}</span>
-          <span class="band-item-meta">멤버 ${formatNumber(item.member_count)}명</span>
-        </button>
-      `;
-    })
-    .join("");
-}
-
-function renderPostList() {
-  if (!postList || !postCountLabel) {
-    return;
-  }
-
-  postCountLabel.textContent = `${postItems.length}개`;
-  if (!postItems.length) {
-    postList.innerHTML = `<div class="empty-state"><p>밴드를 선택하면 최근 게시글을 여기에 보여드립니다.</p></div>`;
-    return;
-  }
-
-  postList.innerHTML = postItems
-    .map((item) => `
-      <button class="post-item" type="button" data-post-key="${escapeHtml(item.postKey ?? "")}">
-        <span class="post-item-title">${escapeHtml(item.author || "작성자 미상")}</span>
-        <span class="post-item-meta">${escapeHtml(formatBandPostDate(item.createdAt))}</span>
-        <span class="post-item-preview">${escapeHtml(buildPostPreview(item.content))}</span>
-      </button>
-    `)
-    .join("");
-}
-
-function buildPostPreview(content) {
-  if (!content) {
-    return "내용이 없는 게시글입니다.";
-  }
-
-  return content.length > 140 ? `${content.slice(0, 140)}...` : content;
-}
-
-function formatBandPostDate(value) {
-  if (!value) {
-    return "작성 시각 없음";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
-}
-
-async function runBandPostAnalysis(postKey) {
-  if (!bandAccessToken || !selectedBandKey) {
-    renderBandSetupState();
-    return;
-  }
-
-  setStatus("loading", "게시글 분석 중");
-  showSummary("");
-  showError("");
-  results.classList.remove("empty");
-  results.innerHTML = `<div class="empty-state"><p>BAND 게시글을 분석하는 중입니다...</p></div>`;
-
-  try {
-    const response = await fetch("/analysis/from-post", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        accessToken: bandAccessToken,
-        bandKey: selectedBandKey,
-        postKey
-      })
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "게시글 분석에 실패했습니다.");
-    }
-
-    currentAnalysis = null;
-    cleanupChart();
-    results.innerHTML = renderBandPostAnalysis(payload);
-    showSummary(`게시글에서 종목 ${payload.symbols?.length ?? 0}개를 추출해 분석했습니다.`);
-    setStatus("done", "분석 완료");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "게시글 분석 중 오류가 발생했습니다.";
-    setStatus("error", "분석 실패");
-    showError(message);
-    results.classList.add("empty");
-    results.innerHTML = `<div class="empty-state"><p>게시글 분석에 실패했습니다. 다시 시도해주세요.</p></div>`;
-  }
-}
-
-function renderBandPostAnalysis(payload) {
-  const symbols = Array.isArray(payload.symbols) ? payload.symbols : [];
-  const analyses = Array.isArray(payload.analyses) ? payload.analyses : [];
-  const post = payload.post ?? {};
-
-  return `
-    <article class="result-card">
-      <div class="post-analysis-header">
-        <h3>BAND 게시글 분석</h3>
-        <div class="meta-line">${escapeHtml(post.author || "작성자 미상")} / ${escapeHtml(formatBandPostDate(post.createdAt))}</div>
-      </div>
-      <div class="post-analysis-body">
-        <div class="post-content-box">${escapeHtml(post.content || "게시글 본문이 없습니다.")}</div>
-        <div class="symbol-chip-row">
-          ${symbols.length ? symbols.map((symbol) => `<span class="symbol-chip">${escapeHtml(symbol)}</span>`).join("") : '<span class="symbol-chip">추출된 종목 없음</span>'}
-        </div>
-        <div class="symbol-analysis-list">
-          ${analyses.map((analysis) => renderSymbolAnalysisCard(analysis)).join("")}
-        </div>
-      </div>
-    </article>
-  `;
-}
-
-function renderSymbolAnalysisCard(analysis) {
-  const trendClass =
-    analysis.trend === "bullish" ? "positive" : analysis.trend === "bearish" ? "negative" : "neutral";
-
-  return `
-    <article class="symbol-analysis-card">
-      <div class="symbol-analysis-head">
-        <div>
-          <h4>${escapeHtml(analysis.shortName || analysis.symbol)}</h4>
-          <div class="symbol-analysis-meta">${escapeHtml(analysis.symbol)} / ${escapeHtml(analysis.exchangeName || analysis.resolvedSymbol || "-")}</div>
-        </div>
-        <div class="return-pill ${trendClass}">${escapeHtml(analysis.trend)}</div>
-      </div>
-      <div class="metric-grid">
-        <div class="metric">
-          <span class="metric-label">현재가</span>
-          <span class="metric-value">${formatNumber(analysis.price)}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">1일 변동</span>
-          <span class="metric-value">${formatPercent(analysis.changePercent1d)}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">20일 변동</span>
-          <span class="metric-value">${formatPercent(analysis.changePercent20d)}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">RSI 14</span>
-          <span class="metric-value">${analysis.rsi14 == null ? "-" : analysis.rsi14.toFixed(1)}</span>
-        </div>
-      </div>
-      <div class="symbol-analysis-summary">${escapeHtml(analysis.summary || "")}</div>
-    </article>
-  `;
-}
-
 function getMoversFilters() {
   return {
     market: moversMarketSelect?.value || "all",
@@ -2295,19 +1940,41 @@ function renderSelector() {
       const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
       const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPattern) : null;
       const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern) : null;
+      const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
+      const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
+      const longTermBucketLabel = item.category === "swing" ? "" : getLongTermBucketLabel(item.longTermBucket);
+      const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(item.swingBucket) : "";
+      const realtimeLine = renderStockRealtimeLine(item);
       return `
         <article class="stock-card ${selected ? "selected" : ""}">
           <span class="stock-card-head">
             <button class="stock-card-select" type="button" data-stock-key="${escapeHtml(item.key)}">
-              <span class="stock-card-name">${escapeHtml(item.name)}</span>
-              <span class="stock-card-meta">${escapeHtml(item.symbol)}${item.category === "swing" ? "" : ` / ${escapeHtml(item.anchorDate)}`}</span>
+              <span class="stock-card-name">${escapeHtml(titleText)}</span>
+              ${metaText ? `<span class="stock-card-meta">${escapeHtml(metaText)}</span>` : ""}
+              ${realtimeLine}
+              ${longTermBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>` : ""}
+              ${swingBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>` : ""}
               ${
                 item.category === "swing" && swingTradePlan
                   ? `
                     <span class="stock-card-trade-grid">
                       <span class="stock-card-trade-item">
                         <span class="stock-card-trade-label">매수가</span>
-                        <span class="stock-card-trade-value">${escapeHtml(swingTradePlan.buy)}</span>
+                        <span class="stock-card-trade-value stock-card-trade-value-group">
+                          ${
+                            swingTradePlan.buyLevels.length
+                              ? `
+                                <span class="stock-card-trade-badges">
+                                  ${swingTradePlan.buyLevels
+                                    .map(
+                                      (level) => `<span class="stock-card-trade-badge">${escapeHtml(level)}</span>`
+                                    )
+                                    .join("")}
+                                </span>
+                              `
+                              : `<span class="stock-card-trade-summary">${escapeHtml(swingTradePlan.buySummary)}</span>`
+                          }
+                        </span>
                       </span>
                       <span class="stock-card-trade-item">
                         <span class="stock-card-trade-label">손절가</span>
@@ -2334,11 +2001,210 @@ function renderSelector() {
     .join("");
 
   if (!pagedItems.length) {
-    const categoryLabel = currentCategory === "swing" ? "스윙" : "중장기";
-    stockSelector.innerHTML = `<div class="empty-state"><p>${categoryLabel}  탭에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.</p></div>`;
+    stockSelector.innerHTML = `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
   }
 
   updatePaginationUi();
+  maybePrefetchVisibleRealtimeSnapshots();
+  persistUiState();
+}
+
+function isValidAppView(view) {
+  return APP_VIEWS.includes(view);
+}
+
+function resolveHashAppView() {
+  const hash = window.location.hash.replace(/^#/, "").trim();
+  return isValidAppView(hash) ? hash : null;
+}
+
+function resolveInitialAppView(savedView) {
+  const hashView = resolveHashAppView();
+  if (hashView) {
+    return hashView;
+  }
+
+  return isValidAppView(savedView) ? savedView : "analysis";
+}
+
+function syncAppViewHash(view) {
+  if (!isValidAppView(view)) {
+    return;
+  }
+
+  const nextHash = `#${view}`;
+  if (window.location.hash === nextHash) {
+    return;
+  }
+
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+}
+
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(UI_STATE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistUiState() {
+  const payload = {
+    activeView,
+    currentCategory,
+    currentLongTermBucket,
+    currentSwingBucket,
+    selectedKey,
+    itemsPerPage,
+    currentPage
+  };
+
+  try {
+    localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    return;
+  }
+
+  syncAppViewHash(activeView);
+}
+
+function restoreUiState() {
+  if (pageSizeSelect) {
+    pageSizeSelect.value = PAGE_SIZE_OPTIONS.has(itemsPerPage) ? String(itemsPerPage) : "5";
+  }
+
+  if (!getFilteredCatalog().some((item) => item.key === selectedKey)) {
+    selectedKey = getFilteredInitialKey();
+  }
+
+  currentPage = Math.min(Math.max(1, currentPage), getTotalPagesForCount(getFilteredCatalog().length));
+}
+
+function getRealtimeSnapshotKey(item) {
+  return item?.key ?? item?.symbol ?? "";
+}
+
+function getVisibleStockSnapshotSignature() {
+  return getPagedItems()
+    .map((item) => getRealtimeSnapshotKey(item))
+    .filter(Boolean)
+    .join("|");
+}
+
+function getStockSnapshotRefreshInterval() {
+  return currentCategory === "swing"
+    ? SWING_STOCK_SNAPSHOT_REFRESH_INTERVAL_MS
+    : LONG_TERM_STOCK_SNAPSHOT_REFRESH_INTERVAL_MS;
+}
+
+function renderStockRealtimeLine(item) {
+  const snapshot = realtimeStockSnapshots.get(getRealtimeSnapshotKey(item));
+  if (snapshot?.error) {
+    return `<span class="stock-card-live-row muted">${escapeHtml(snapshot.error)}</span>`;
+  }
+
+  if (typeof snapshot?.latestClose !== "number") {
+    return `<span class="stock-card-live-row muted">실시간 시세 대기</span>`;
+  }
+
+  const trendClass =
+    snapshot.changePercent > 0 ? "positive" : snapshot.changePercent < 0 ? "negative" : "neutral";
+  const changeText =
+    snapshot.changePercent == null
+      ? "-"
+      : `${formatPercent(snapshot.changePercent)} / ${formatSignedDecimal(snapshot.changeAmount ?? 0)}`;
+  const latestDateText = snapshot.latestDate ? `${escapeHtml(snapshot.latestDate)} 기준` : "실시간";
+
+  return `
+    <span class="stock-card-live-row ${trendClass}">
+      <span class="stock-card-live-price">${formatNumber(snapshot.latestClose)}원</span>
+      <span class="stock-card-live-change">${changeText}</span>
+      <span class="stock-card-live-stamp">${latestDateText}</span>
+    </span>
+  `;
+}
+
+function maybePrefetchVisibleRealtimeSnapshots() {
+  if (activeView !== "analysis") {
+    return;
+  }
+
+  const signature = getVisibleStockSnapshotSignature();
+  if (!signature || signature === lastVisibleStockSnapshotSignature) {
+    return;
+  }
+
+  void loadRealtimeStockSnapshots({ background: true });
+}
+
+async function loadRealtimeStockSnapshots(options = {}) {
+  if (stockSnapshotLoading) {
+    return;
+  }
+
+  const visibleItems = getPagedItems();
+  if (!visibleItems.length) {
+    realtimeStockSnapshots = new Map();
+    lastVisibleStockSnapshotSignature = "";
+    renderSelector();
+    return;
+  }
+
+  stockSnapshotLoading = true;
+  try {
+    const response = await fetch("/analysis/realtime-stocks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        items: visibleItems.map((item) => ({
+          key: item.key,
+          name: item.name,
+          symbol: item.symbol,
+          category: item.category ?? DEFAULT_CATEGORY
+        }))
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "실시간 시세를 불러오지 못했습니다.");
+    }
+
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    realtimeStockSnapshots = new Map(
+      items.map((item) => [item.key ?? item.symbol, item])
+    );
+    lastVisibleStockSnapshotSignature = getVisibleStockSnapshotSignature();
+    renderSelector();
+  } catch (error) {
+    console.error(error);
+    if (!options.background) {
+      showError(error instanceof Error ? error.message : "실시간 시세를 불러오지 못했습니다.");
+    }
+  } finally {
+    stockSnapshotLoading = false;
+  }
+}
+
+function startStockSnapshotAutoRefresh() {
+  if (stockSnapshotRefreshTimer) {
+    clearInterval(stockSnapshotRefreshTimer);
+  }
+
+  stockSnapshotRefreshTimer = window.setInterval(() => {
+    if (activeView !== "analysis") {
+      return;
+    }
+
+    void loadRealtimeStockSnapshots({ background: true });
+  }, getStockSnapshotRefreshInterval());
 }
 
 function renderCategoryTabs() {
@@ -2351,9 +2217,55 @@ function renderCategoryTabs() {
   }
 }
 
+function renderLongTermBucketTabs() {
+  if (!longTermBucketTabs) {
+    return;
+  }
+
+  const isVisible = currentCategory === DEFAULT_CATEGORY;
+  longTermBucketTabs.classList.toggle("hidden", !isVisible);
+  if (!isVisible) {
+    return;
+  }
+
+  const counts = getLongTermBucketCounts();
+  for (const tab of longTermBucketTabs.querySelectorAll("[data-long-term-bucket]")) {
+    const bucket = tab.dataset.longTermBucket;
+    if (!isValidLongTermBucket(bucket)) {
+      continue;
+    }
+
+    tab.classList.toggle("active", bucket === currentLongTermBucket);
+    tab.textContent = `${getLongTermBucketLabel(bucket)} ${counts[bucket]}개`;
+  }
+}
+
+function renderSwingBucketTabs() {
+  if (!swingBucketTabs) {
+    return;
+  }
+
+  const isVisible = currentCategory === "swing";
+  swingBucketTabs.classList.toggle("hidden", !isVisible);
+  if (!isVisible) {
+    return;
+  }
+
+  const counts = getSwingBucketCounts();
+  for (const tab of swingBucketTabs.querySelectorAll("[data-swing-bucket]")) {
+    const bucket = tab.dataset.swingBucket;
+    if (!isValidSwingBucket(bucket)) {
+      continue;
+    }
+
+    tab.classList.toggle("active", bucket === currentSwingBucket);
+    tab.textContent = `${getSwingBucketLabel(bucket)} ${counts[bucket]}개`;
+  }
+}
+
 function loadCatalog() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) {
       return defaultRecommendationCatalog.map(normalizeRecommendation);
     }
@@ -2365,6 +2277,9 @@ function loadCatalog() {
 
     const normalized = parsed.filter(isValidRecommendation).map(normalizeRecommendation).map(repairRecommendationText);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    if (localStorage.getItem(LEGACY_STORAGE_KEY)) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
     return normalized;
   } catch {
     return defaultRecommendationCatalog.map(normalizeRecommendation);
@@ -2386,10 +2301,67 @@ function isValidRecommendation(item) {
 }
 
 function normalizeRecommendation(item) {
+  const category = item?.category === "swing" ? "swing" : DEFAULT_CATEGORY;
   return {
     ...item,
-    category: item?.category === "swing" ? "swing" : DEFAULT_CATEGORY
+    category,
+    longTermBucket: category === "swing" ? undefined : resolveLongTermBucket(item),
+    swingBucket: category === "swing" ? resolveSwingBucket(item) : undefined
   };
+}
+
+function resolveLongTermBucket(item) {
+  if (item?.longTermBucket === "watch") {
+    return "watch";
+  }
+
+  if (item?.longTermBucket === "buy") {
+    return "buy";
+  }
+
+  return inferLongTermBucketFromNote(item?.note);
+}
+
+function inferLongTermBucketFromNote(note) {
+  const normalizedNote = typeof note === "string" ? note.toLowerCase() : "";
+  if (!normalizedNote) {
+    return DEFAULT_LONG_TERM_BUCKET;
+  }
+
+  const watchKeywords = ["관찰", "돌파 여부", "삭제 전 목록", "as 글", "언급"];
+  return watchKeywords.some((keyword) => normalizedNote.includes(keyword)) ? "watch" : "buy";
+}
+
+function isValidLongTermBucket(value) {
+  return value === "buy" || value === "watch";
+}
+
+function isValidCategory(value) {
+  return value === "swing" || value === DEFAULT_CATEGORY;
+}
+
+function resolveSwingBucket(item) {
+  if (item?.swingBucket === "watch" || item?.bucket === "watch") {
+    return "watch";
+  }
+
+  if (item?.swingBucket === "execution" || item?.bucket === "execution") {
+    return "execution";
+  }
+
+  return DEFAULT_SWING_BUCKET;
+}
+
+function isValidSwingBucket(value) {
+  return value === "execution" || value === "watch";
+}
+
+function getSwingBucketLabel(bucket) {
+  return bucket === "watch" ? "관심후보" : "실행후보";
+}
+
+function getLongTermBucketLabel(bucket) {
+  return bucket === "watch" ? "관찰군" : "매수후보군";
 }
 
 function looksCorruptedText(value) {
@@ -2429,11 +2401,21 @@ function repairRecommendationText(item, fallbackName) {
 }
 
 function getFilteredInitialKey() {
-  return recommendationCatalog.find((item) => (item.category ?? DEFAULT_CATEGORY) === currentCategory)?.key ?? null;
+  return getFilteredCatalog()[0]?.key ?? null;
 }
 
 function getFilteredCatalog() {
-  const filtered = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === currentCategory);
+  const filtered = recommendationCatalog.filter((item) => {
+    if ((item.category ?? DEFAULT_CATEGORY) !== currentCategory) {
+      return false;
+    }
+
+    if (currentCategory === "swing") {
+      return (item.swingBucket ?? DEFAULT_SWING_BUCKET) === currentSwingBucket;
+    }
+
+    return (item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET) === currentLongTermBucket;
+  });
   if (currentCategory !== "swing") {
     return filtered;
   }
@@ -2498,9 +2480,12 @@ function removeStock(key) {
 
   currentPage = Math.min(currentPage, getTotalPages());
   saveCatalog();
+  renderLongTermBucketTabs();
+  renderSwingBucketTabs();
   renderSelector();
   if (removedItem?.category === "swing") {
     void refreshSwingPatternSnapshots().then(() => {
+      renderSwingBucketTabs();
       renderSelector();
     });
   }
@@ -2514,6 +2499,10 @@ function openStockModal() {
   if (stockCategorySelect) {
     stockCategorySelect.value = currentCategory;
   }
+  if (longTermBucketSelect) {
+    longTermBucketSelect.value = currentLongTermBucket;
+  }
+  syncLongTermBucketField();
   stockSearchQuery = "";
   clearSelectedStockOption();
   if (stockSearchInput) {
@@ -2538,6 +2527,8 @@ function buildStockFromForm() {
   const symbol = stockSymbolInput.value.trim();
   const anchorDate = stockDateInput.value;
   const category = stockCategorySelect?.value === "swing" ? "swing" : DEFAULT_CATEGORY;
+  const longTermBucket = category === "swing" ? undefined : isValidLongTermBucket(longTermBucketSelect?.value) ? longTermBucketSelect.value : DEFAULT_LONG_TERM_BUCKET;
+  const swingBucket = category === "swing" ? currentSwingBucket : undefined;
   const recommendedPrice = Number(stockPriceInput.value);
   const extraNote = stockNoteInput.value.trim();
 
@@ -2557,9 +2548,67 @@ function buildStockFromForm() {
     name,
     symbol,
     category,
+    longTermBucket,
+    swingBucket,
     anchorDate,
     note: [formatNumber(recommendedPrice) + "원 기준", extraNote].filter(Boolean).join(" / ")
   };
+}
+
+function syncLongTermBucketField() {
+  const isLongTerm = stockCategorySelect?.value !== "swing";
+  longTermBucketField?.classList.toggle("hidden", !isLongTerm);
+  if (longTermBucketSelect) {
+    longTermBucketSelect.disabled = !isLongTerm;
+    if (isLongTerm && !isValidLongTermBucket(longTermBucketSelect.value)) {
+      longTermBucketSelect.value = DEFAULT_LONG_TERM_BUCKET;
+    }
+  }
+}
+
+function getLongTermBucketCounts() {
+  return recommendationCatalog
+    .filter((item) => (item.category ?? DEFAULT_CATEGORY) === DEFAULT_CATEGORY)
+    .reduce(
+      (counts, item) => {
+        const bucket = item.longTermBucket === "watch" ? "watch" : "buy";
+        counts[bucket] += 1;
+        return counts;
+      },
+      { buy: 0, watch: 0 }
+    );
+}
+
+function getSwingBucketCounts() {
+  return recommendationCatalog
+    .filter((item) => (item.category ?? DEFAULT_CATEGORY) === "swing")
+    .reduce(
+      (counts, item) => {
+        const bucket = item.swingBucket === "watch" ? "watch" : "execution";
+        counts[bucket] += 1;
+        return counts;
+      },
+      { execution: 0, watch: 0 }
+    );
+}
+
+function getCurrentFilterEmptyMessage() {
+  if (currentCategory === "swing") {
+    return currentSwingBucket === "watch"
+      ? "관심후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다."
+      : "실행후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.";
+  }
+
+  return `${getLongTermBucketLabel(currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;
+}
+
+function renderEmptyResultsForCurrentFilter() {
+  currentAnalysis = null;
+  cleanupChart();
+  showSummary("");
+  showError("");
+  results.classList.add("empty");
+  results.innerHTML = `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
 }
 
 function createRecommendationKey(name, symbol) {
@@ -2640,11 +2689,16 @@ async function runAnalysisByKey(key) {
       currentAnalysis.tradingAnchorDate,
       currentAnalysis.swingTradeOverlay
     );
+    void refreshCurrentAnalysisRealtime({ background: true });
     setStatus("done", "완료");
     if (item.category === "swing" && currentAnalysis.swingAssessment) {
       showSummary(
         `${item.name} 분석이 완료되었습니다. 최근 ${SWING_LOOKBACK_DAYS}거래일 기준 ${currentAnalysis.swingAssessment.label} 상태입니다.`
       );
+    } else if (item.category !== "swing" && currentAnalysis.longTermReview) {
+      const assessment = getLongTermReviewAssessment(currentAnalysis.longTermReview);
+      const passText = currentAnalysis.longTermReview.enginePass ? "엔진 통과" : "엔진 관찰/제외";
+      showSummary(`${item.name} 분석이 완료되었습니다. 중장기 엔진 기준 ${assessment.groupLabel} / ${passText} 상태입니다.`);
     } else {
       showSummary(`${item.name} 분석이 완료되었습니다. 확대/축소, 드래그 이동, 툴팁을 지원합니다.`);
     }
@@ -2661,14 +2715,14 @@ function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
   const daily = analysis.chartWindow.points;
   const swingPattern = swingPatternAnalysis?.pattern ?? null;
   return {
+    key: item.key,
     ...analysis,
     category: item.category ?? DEFAULT_CATEGORY,
+    longTermReview: analysis.longTermReview ?? null,
+    swingBucket: item.swingBucket,
     swingPatternAnalysis,
     swingAssessment: swingPattern ? getSwingAssessment(swingPattern) : null,
-    swingTradeOverlay:
-      (item.category ?? DEFAULT_CATEGORY) === "swing"
-        ? getSwingTradeOverlay(item.note, swingPattern)
-        : null,
+    swingTradeOverlay: getSwingTradeOverlay(item.note, swingPattern),
     chartSets: {
       daily: toChartPoints(daily),
       weekly: aggregateCandles(daily, "weekly"),
@@ -2676,6 +2730,173 @@ function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
     },
     activeTimeframe: "daily"
   };
+}
+
+function averageDefinedNumbers(values) {
+  const normalized = (Array.isArray(values) ? values : []).filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!normalized.length) {
+    return undefined;
+  }
+
+  return normalized.reduce((sum, value) => sum + value, 0) / normalized.length;
+}
+
+function ratioNumber(value, base) {
+  if (typeof value !== "number" || !Number.isFinite(value) || typeof base !== "number" || !Number.isFinite(base) || base === 0) {
+    return undefined;
+  }
+
+  return value / base;
+}
+
+function formatRealtimeSyncLabel(value) {
+  if (!value) {
+    return "실시간 시세 동기화 대기";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "실시간 시세 갱신 완료";
+  }
+
+  return `실시간 갱신 ${date.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  })}`;
+}
+
+function applyRealtimeDetailToAnalysis(analysis, detail) {
+  const dailyPoints = Array.isArray(detail?.chartWindow?.points) ? detail.chartWindow.points : [];
+  const latestPoint = dailyPoints.at(-1);
+  if (!latestPoint) {
+    return analysis;
+  }
+
+  const latestClose = typeof detail.latestClose === "number" ? detail.latestClose : latestPoint.close;
+
+  const afterAnchorPoints = dailyPoints.filter((point) => point.date >= analysis.tradingAnchorDate);
+  const referencePoints = afterAnchorPoints.length ? afterAnchorPoints : [latestPoint];
+  const highestPoint = referencePoints.reduce((best, point) => (point.close > best.close ? point : best), referencePoints[0]);
+  const lowestPoint = referencePoints.reduce((best, point) => (point.close < best.close ? point : best), referencePoints[0]);
+  const avgVolume20Latest = averageDefinedNumbers(dailyPoints.slice(-20).map((point) => point.volume));
+
+  return {
+    ...analysis,
+    resolvedSymbol: detail.resolvedSymbol ?? analysis.resolvedSymbol,
+    latestClose,
+    latestDate: detail.latestDate ?? latestPoint.date,
+    latestVolume: latestPoint.volume,
+    latestVolumeVs20d: ratioNumber(latestPoint.volume, avgVolume20Latest),
+    returnSinceAnchor: analysis.anchorClose ? ((latestClose - analysis.anchorClose) / analysis.anchorClose) * 100 : analysis.returnSinceAnchor,
+    maxGainPercent: analysis.anchorClose ? ((highestPoint.close - analysis.anchorClose) / analysis.anchorClose) * 100 : analysis.maxGainPercent,
+    maxDrawdownPercent: analysis.anchorClose ? ((lowestPoint.close - analysis.anchorClose) / analysis.anchorClose) * 100 : analysis.maxDrawdownPercent,
+    highestClose: {
+      date: highestPoint.date,
+      close: highestPoint.close
+    },
+    lowestClose: {
+      date: lowestPoint.date,
+      close: lowestPoint.close
+    },
+    chartWindow: detail.chartWindow,
+    chartSets: {
+      daily: toChartPoints(dailyPoints),
+      weekly: aggregateCandles(dailyPoints, "weekly"),
+      monthly: aggregateCandles(dailyPoints, "monthly")
+    }
+  };
+}
+
+function syncLiveMetric(selector, text) {
+  const node = results.querySelector(selector);
+  if (node) {
+    node.textContent = text;
+  }
+}
+
+function updateCurrentAnalysisDom(analysis, fetchedAt) {
+  const returnClass =
+    analysis.returnSinceAnchor > 0 ? "positive" : analysis.returnSinceAnchor < 0 ? "negative" : "neutral";
+  const activeRange = getChartSeriesRange(analysis.chartSets?.[analysis.activeTimeframe]);
+  const returnPill = results.querySelector("[data-live-return-pill]");
+  if (returnPill) {
+    returnPill.className = `return-pill ${returnClass}`;
+    returnPill.textContent = formatPercent(analysis.returnSinceAnchor);
+  }
+
+  syncLiveMetric("[data-live-current-price]", formatNumber(analysis.latestClose));
+  syncLiveMetric("[data-live-max-gain]", formatPercent(analysis.maxGainPercent));
+  syncLiveMetric("[data-live-max-drawdown]", formatPercent(analysis.maxDrawdownPercent));
+  syncLiveMetric("[data-live-highest-close]", formatNumber(analysis.highestClose.close));
+  syncLiveMetric("[data-live-lowest-close]", formatNumber(analysis.lowestClose.close));
+  syncLiveMetric("[data-live-latest-volume-ratio]", formatMultiplier(analysis.latestVolumeVs20d));
+  syncLiveMetric("[data-live-chart-start]", activeRange.startDate);
+  syncLiveMetric("[data-live-chart-end]", activeRange.endDate);
+  syncLiveMetric("[data-live-sync-line]", formatRealtimeSyncLabel(fetchedAt));
+
+  const fundamentalsPriceReference = results.querySelector(".fundamentals-price-reference");
+  if (fundamentalsPriceReference) {
+    fundamentalsPriceReference.textContent = `가격 기준: ${formatNumber(analysis.latestClose)}원 (${analysis.latestDate} 종가)`;
+  }
+}
+
+async function refreshCurrentAnalysisRealtime(options = {}) {
+  if (activeAnalysisRealtimeLoading || activeView !== "analysis" || !currentAnalysis || !selectedKey) {
+    return;
+  }
+
+  const item = recommendationCatalog.find((candidate) => candidate.key === selectedKey);
+  if (!item) {
+    return;
+  }
+
+  activeAnalysisRealtimeLoading = true;
+  try {
+    const response = await fetch("/analysis/realtime-stock-detail", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        key: item.key,
+        name: item.name,
+        symbol: item.symbol,
+        anchorDate: item.anchorDate,
+        category: item.category ?? DEFAULT_CATEGORY
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "실시간 차트를 불러오지 못했습니다.");
+    }
+
+    currentAnalysis = applyRealtimeDetailToAnalysis(currentAnalysis, payload);
+    updateCurrentAnalysisDom(currentAnalysis, payload.fetchedAt);
+    updateInteractiveChartData(
+      currentAnalysis.chartSets[currentAnalysis.activeTimeframe],
+      currentAnalysis.tradingAnchorDate,
+      currentAnalysis.swingTradeOverlay
+    );
+  } catch (error) {
+    console.error(error);
+    if (!options.background) {
+      showError(error instanceof Error ? error.message : "실시간 차트를 불러오지 못했습니다.");
+    }
+  } finally {
+    activeAnalysisRealtimeLoading = false;
+  }
+}
+
+function startActiveAnalysisAutoRefresh() {
+  if (activeAnalysisRefreshTimer) {
+    clearInterval(activeAnalysisRefreshTimer);
+  }
+
+  activeAnalysisRefreshTimer = window.setInterval(() => {
+    void refreshCurrentAnalysisRealtime({ background: true });
+  }, ACTIVE_ANALYSIS_REFRESH_INTERVAL_MS);
 }
 
 function toChartPoints(points) {
@@ -2857,9 +3078,181 @@ function showMoversError(text) {
   moversErrorBox.textContent = text;
 }
 
+function formatLongTermGroupLabel(group) {
+  return group === "buy candidate" ? "매수 가능 후보군" : "관찰 후보군";
+}
+
+function formatLongTermLabel(label) {
+  switch (label) {
+    case "leader correction watch":
+      return "대표주 조정 관찰";
+    case "deep value review":
+      return "깊은 조정 재검토";
+    case "base-forming candidate":
+      return "베이스 형성 후보";
+    case "needs more stabilization":
+      return "안정화 더 필요";
+    default:
+      return label ?? "-";
+  }
+}
+
+function formatLongTermFundamentalTrend(trend) {
+  switch (trend) {
+    case "improving":
+      return "개선";
+    case "weakening":
+      return "약화";
+    case "cyclical_downturn":
+      return "순환 둔화";
+    default:
+      return "-";
+  }
+}
+
+function getLongTermReviewAssessment(review) {
+  const candidate = review?.candidate;
+  if (!candidate) {
+    return {
+      className: "broken",
+      groupLabel: "관찰 제외",
+      statusLabel: "엔진 대상 아님",
+      action: "중장기 대표주 엔진 대상에서 제외",
+      summary: review?.filterReasons?.[0] ?? "평가 가능한 중장기 엔진 결과가 없습니다."
+    };
+  }
+
+  if (review.enginePass && candidate.candidateGroup === "buy candidate") {
+    return {
+      className: "ready",
+      groupLabel: "매수 가능 후보군",
+      statusLabel: formatLongTermLabel(candidate.label),
+      action: "분할매수 검토 가능",
+      summary: candidate.reasonSummary
+    };
+  }
+
+  return {
+    className: candidate.label === "deep value review" ? "caution" : "watch",
+    groupLabel: formatLongTermGroupLabel(candidate.candidateGroup),
+    statusLabel: formatLongTermLabel(candidate.label),
+    action: review.enginePass ? "관찰 유지" : "엔진 조건 미충족",
+    summary: candidate.reasonSummary
+  };
+}
+
+function renderLongTermReviewPanel(review) {
+  if (!review) {
+    return "";
+  }
+
+  const assessment = getLongTermReviewAssessment(review);
+  const candidate = review.candidate;
+  const filterReasonChips = Array.isArray(review.filterReasons)
+    ? review.filterReasons.map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`).join("")
+    : "";
+  const sourceLabel = review.seedSource === "curated" ? "엔진 시드" : "수동 추가 평가";
+
+  return `
+    <section class="swing-pattern-panel">
+      <div class="swing-pattern-head">
+        <div>
+          <h4>중장기 엔진 진단</h4>
+          <div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>
+        </div>
+        <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
+      </div>
+      <div class="swing-pattern-copy">${escapeHtml(assessment.statusLabel)} / ${escapeHtml(assessment.action)} / ${escapeHtml(sourceLabel)}</div>
+      ${
+        candidate
+          ? `
+            <div class="metric-grid swing-metric-grid">
+              <div class="metric">
+                <span class="metric-label">후보군</span>
+                <span class="metric-value">${escapeHtml(formatLongTermGroupLabel(candidate.candidateGroup))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">구조 라벨</span>
+                <span class="metric-value">${escapeHtml(formatLongTermLabel(candidate.label))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">총점</span>
+                <span class="metric-value">${candidate.scores.totalScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">고점 대비</span>
+                <span class="metric-value">${formatPercent(candidate.drawdownPct)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">MA120 기울기</span>
+                <span class="metric-value">${formatSignedDecimal(candidate.structure.ma120Slope)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">MA240 기울기</span>
+                <span class="metric-value">${formatSignedDecimal(candidate.structure.ma240Slope)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">최근 저점 경과</span>
+                <span class="metric-value">${formatNumber(candidate.baseStructure.daysSinceLastLowBreak)}일</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">저점 대비 거리</span>
+                <span class="metric-value">${formatPercent(candidate.baseStructure.distanceFromLowPct)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">대표성 점수</span>
+                <span class="metric-value">${candidate.scores.leaderScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">조정 점수</span>
+                <span class="metric-value">${candidate.scores.correctionScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">추세 점수</span>
+                <span class="metric-value">${candidate.scores.trendScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">안정화 점수</span>
+                <span class="metric-value">${candidate.scores.stabilizationScore}점</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">재무 점수</span>
+                  <span class="metric-value">${candidate.scores?.financialScore ?? "-"}${candidate.scores?.financialScore != null ? "점" : ""}</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">매출 추세</span>
+                  <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.revenueTrend ?? candidate.fundamentals?.revenueTrend))}</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">영업이익 추세</span>
+                  <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.operatingProfitTrend ?? candidate.fundamentals?.operatingProfitTrend))}</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">ROE / 부채비율</span>
+                  <span class="metric-value">${(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe) != null ? `${formatSignedDecimal(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe)}%` : "-"} / ${(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio) != null ? `${formatDecimal(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio)}%` : "-"}</span>
+                </div>
+              </div>
+            `
+            : ""
+        }
+      ${
+        filterReasonChips
+          ? `
+            <div class="swing-reason-list">
+              ${filterReasonChips}
+            </div>
+          `
+          : ""
+      }
+    </section>
+  `;
+}
+
 function renderCard(item) {
   const returnClass =
     item.returnSinceAnchor > 0 ? "positive" : item.returnSinceAnchor < 0 ? "negative" : "neutral";
+  const longTermAssessment =
+    item.category !== "swing" && item.longTermReview ? getLongTermReviewAssessment(item.longTermReview) : null;
 
   return `
     <article class="result-card">
@@ -2869,14 +3262,25 @@ function renderCard(item) {
           <div class="meta-line">
             ${escapeHtml(item.symbol)} / 기준일 ${escapeHtml(item.anchorDate)} / 실제 거래일 ${escapeHtml(item.tradingAnchorDate)}
           </div>
+          <div class="meta-line" data-live-sync-line>실시간 시세 동기화 대기</div>
           ${
             item.swingAssessment
               ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
               : ""
           }
+          ${
+            item.category === "swing"
+              ? `<div class="meta-line">스윙 버킷 ${escapeHtml(getSwingBucketLabel(item.swingBucket ?? DEFAULT_SWING_BUCKET))}</div>`
+              : ""
+          }
+          ${
+            longTermAssessment
+              ? `<div class="meta-line">중장기 엔진 ${escapeHtml(longTermAssessment.groupLabel)} / ${escapeHtml(longTermAssessment.statusLabel)}</div>`
+              : ""
+          }
           ${item.note ? `<div class="meta-line">${escapeHtml(item.note)}</div>` : ""}
         </div>
-        <div class="return-pill ${returnClass}">
+        <div class="return-pill ${returnClass}" data-live-return-pill>
           ${formatPercent(item.returnSinceAnchor)}
         </div>
       </div>
@@ -2888,23 +3292,23 @@ function renderCard(item) {
         </div>
         <div class="metric">
           <span class="metric-label">현재 종가</span>
-          <span class="metric-value">${formatNumber(item.latestClose)}</span>
+          <span class="metric-value" data-live-current-price>${formatNumber(item.latestClose)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">최대 상승</span>
-          <span class="metric-value">${formatPercent(item.maxGainPercent)}</span>
+          <span class="metric-value" data-live-max-gain>${formatPercent(item.maxGainPercent)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">최대 하락</span>
-          <span class="metric-value">${formatPercent(item.maxDrawdownPercent)}</span>
+          <span class="metric-value" data-live-max-drawdown>${formatPercent(item.maxDrawdownPercent)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">최고 종가</span>
-          <span class="metric-value">${formatNumber(item.highestClose.close)}</span>
+          <span class="metric-value" data-live-highest-close>${formatNumber(item.highestClose.close)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">최저 종가</span>
-          <span class="metric-value">${formatNumber(item.lowestClose.close)}</span>
+          <span class="metric-value" data-live-lowest-close>${formatNumber(item.lowestClose.close)}</span>
         </div>
         <div class="metric">
           <span class="metric-label">기준일 거래량 배수</span>
@@ -2912,7 +3316,7 @@ function renderCard(item) {
         </div>
         <div class="metric">
           <span class="metric-label">최근 거래량 배수</span>
-          <span class="metric-value">${formatMultiplier(item.latestVolumeVs20d)}</span>
+          <span class="metric-value" data-live-latest-volume-ratio>${formatMultiplier(item.latestVolumeVs20d)}</span>
         </div>
       </div>
 
@@ -2942,13 +3346,14 @@ function renderCard(item) {
           <div id="chartTooltip" class="chart-tooltip hidden"></div>
           <div class="chart-caption">
             <span class="timeframe-caption">${timeframeLabels[item.activeTimeframe]}</span>
-            <span>${escapeHtml(item.chartWindow.startDate)}</span>
-            <span>${escapeHtml(item.chartWindow.endDate)}</span>
+            <span data-live-chart-start>${escapeHtml(item.chartWindow.startDate)}</span>
+            <span data-live-chart-end>${escapeHtml(item.chartWindow.endDate)}</span>
           </div>
         </div>
       </div>
 
       ${renderSwingPatternPanel(item.swingPatternAnalysis, item.swingAssessment)}
+      ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview) : ""}
 
       <div class="fundamentals-wrap">
         ${renderFundamentals(item.fundamentals, {
@@ -2986,6 +3391,14 @@ function resolveLegacySwingStatus(pattern) {
   }
   if (pattern.stage === "breakout" && pattern.matched && pattern.actionable) {
     return "breakout_confirmed";
+  }
+  if (
+    pattern.stage === "breakout" &&
+    pattern.matched &&
+    typeof pattern.referenceCloseVsBreakoutLevelPercent === "number" &&
+    pattern.referenceCloseVsBreakoutLevelPercent > 8
+  ) {
+    return "breakout_extended";
   }
   if (pattern.stage === "breakout" && pattern.matched) {
     return "breakout_ready";
@@ -3041,6 +3454,13 @@ function getSwingAssessment(pattern) {
       rank: 6,
       description: "눌림이 충분히 진행됐고 현재 가격이 분할매수 구간 근처에서 버티는 상태입니다.",
       action: "1차 분할매수 가능"
+    },
+    breakout_extended: {
+      label: "추격 금지",
+      className: "caution",
+      rank: 2,
+      description: "돌파 구조 자체는 살아 있지만 가격이 너무 멀리 달아나 신규 진입은 불리한 상태입니다.",
+      action: "눌림 재형성 대기"
     },
     breakout_ready: {
       label: "재돌파 대기",
@@ -3117,10 +3537,94 @@ function parsePriceNumbers(text) {
     return [];
   }
 
-  const matches = text.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+  const matches = [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)];
   return matches
-    .map((value) => Number.parseFloat(value.replaceAll(",", "")))
+    .filter((match) => isLikelyPriceMatch(text, match[0], match.index ?? 0))
+    .map((match) => Number.parseFloat(match[0].replaceAll(",", "")))
     .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function isLikelyPriceMatch(text, rawValue, index) {
+  const normalized = String(rawValue ?? "").replaceAll(",", "");
+  if (!normalized) {
+    return false;
+  }
+
+  const nextText = text.slice(index + String(rawValue).length, index + String(rawValue).length + 2);
+  if (nextText.startsWith("원")) {
+    return true;
+  }
+
+  const integerPart = normalized.split(".")[0] ?? normalized;
+  return integerPart.length >= 4 || String(rawValue).includes(",");
+}
+
+function collectPriceMatches(text) {
+  if (typeof text !== "string" || !text.trim()) {
+    return [];
+  }
+
+  return [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map((match) => ({
+    value: Number.parseFloat(match[0].replaceAll(",", "")),
+    index: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+    raw: match[0]
+  })).filter((entry) => Number.isFinite(entry.value) && entry.value > 0 && isLikelyPriceMatch(text, entry.raw, entry.index));
+}
+
+function findPricesNearLabels(note, labels, options = {}) {
+  if (typeof note !== "string" || !note.trim()) {
+    return [];
+  }
+
+  const {
+    searchBefore = true,
+    searchAfter = true,
+    maxGapBefore = 10,
+    maxGapAfter = 10,
+    collectAll = false
+  } = options;
+  const numberMatches = collectPriceMatches(note);
+  if (!numberMatches.length) {
+    return [];
+  }
+
+  const candidates = [];
+  for (const label of labels) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escapedLabel, "g");
+    for (const match of note.matchAll(regex)) {
+      const labelIndex = match.index ?? 0;
+      const labelEnd = labelIndex + label.length;
+      const nearby = [];
+
+      if (searchBefore) {
+        const beforeMatches = numberMatches
+          .filter((entry) => entry.end <= labelIndex && labelIndex - entry.end <= maxGapBefore)
+          .sort((left, right) => right.end - left.end);
+        nearby.push(...beforeMatches);
+      }
+
+      if (searchAfter) {
+        const afterMatches = numberMatches
+          .filter((entry) => entry.index >= labelEnd && entry.index - labelEnd <= maxGapAfter)
+          .sort((left, right) => left.index - right.index);
+        nearby.push(...afterMatches);
+      }
+
+      if (!nearby.length) {
+        continue;
+      }
+
+      if (collectAll) {
+        candidates.push(...nearby.map((entry) => entry.value));
+      } else {
+        candidates.push(nearby[0].value);
+      }
+    }
+  }
+
+  return [...new Set(candidates)];
 }
 
 function parseSwingPlanNumbersFromNote(note) {
@@ -3130,60 +3634,136 @@ function parseSwingPlanNumbersFromNote(note) {
   const stopSegment =
     parseSwingPlanSegment(note, "손절가") ??
     parseSwingPlanSegment(note, "손절");
+  const buyPricesFromSegment = parsePriceNumbers(buySegment);
+  const stopPricesFromSegment = parsePriceNumbers(stopSegment);
+  const buyPricesFromNearby =
+    buyPricesFromSegment.length
+      ? []
+      : findPricesNearLabels(note, ["매수가", "매수"], {
+          searchBefore: true,
+          searchAfter: true,
+          maxGapBefore: 12,
+          maxGapAfter: 18,
+          collectAll: true
+        });
+  const stopPricesFromNearby =
+    stopPricesFromSegment.length
+      ? []
+      : findPricesNearLabels(note, ["손절가", "손절"], {
+          searchBefore: true,
+          searchAfter: true,
+          maxGapBefore: 4,
+          maxGapAfter: 12,
+          collectAll: false
+        });
 
   return {
-    buyPrices: [...new Set(parsePriceNumbers(buySegment))],
-    stopPrice: parsePriceNumbers(stopSegment)[0]
+    buyPrices: [...new Set([...buyPricesFromSegment, ...buyPricesFromNearby])],
+    stopPrice: [...stopPricesFromSegment, ...stopPricesFromNearby][0]
+  };
+}
+
+function sanitizeSwingTradeLevels(buyPrices, stopPrice) {
+  const normalizedStopPrice =
+    Number.isFinite(stopPrice) && stopPrice > 0
+      ? Math.round(stopPrice * 100) / 100
+      : undefined;
+  const normalizedBuyPrices = [...new Set(
+    (Array.isArray(buyPrices) ? buyPrices : [])
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .map((value) => Math.round(value * 100) / 100)
+  )]
+    .filter((value) => normalizedStopPrice == null || value > normalizedStopPrice)
+    .sort((left, right) => right - left);
+
+  return {
+    buyPrices: normalizedBuyPrices,
+    stopPrice: normalizedStopPrice
   };
 }
 
 function getSwingTradeOverlay(note, pattern) {
   const notePlan = parseSwingPlanNumbersFromNote(note);
-  const buyPlan = pattern?.buyPlan;
-  const buyPrices = notePlan.buyPrices.length
-    ? notePlan.buyPrices
-    : buyPlan
-      ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
-      : [];
-  const normalizedBuyPrices = [...new Set(
-    buyPrices
-      .filter((value) => Number.isFinite(value) && value > 0)
-      .map((value) => Math.round(value * 100) / 100)
-  )].sort((left, right) => right - left);
-  const stopPriceRaw = notePlan.stopPrice ?? buyPlan?.stopLossPrice ?? pattern?.invalidationPrice;
-  const stopPrice =
+  const patternBuyPrices =
+    pattern?.buyPlan
+      ? [pattern.buyPlan.firstBuyPrice, pattern.buyPlan.secondBuyPrice, pattern.buyPlan.thirdBuyPrice]
+      : pattern && (typeof pattern.entryZoneLow === "number" || typeof pattern.entryZoneHigh === "number")
+        ? [pattern.entryZoneHigh, pattern.entryZoneLow]
+        : [];
+  const buyPrices = notePlan.buyPrices.length ? notePlan.buyPrices : patternBuyPrices;
+  const stopPriceRaw = notePlan.stopPrice;
+  const stopPriceFromNote =
     Number.isFinite(stopPriceRaw) && stopPriceRaw > 0
       ? Math.round(stopPriceRaw * 100) / 100
       : undefined;
+  const stopPriceFromPattern =
+    pattern && typeof pattern.buyPlan?.stopLossPrice === "number" && pattern.buyPlan.stopLossPrice > 0
+      ? Math.round(pattern.buyPlan.stopLossPrice * 100) / 100
+      : pattern && typeof pattern.invalidationPrice === "number" && pattern.invalidationPrice > 0
+        ? Math.round(pattern.invalidationPrice * 100) / 100
+        : undefined;
+  const sanitized = sanitizeSwingTradeLevels(buyPrices, stopPriceFromNote ?? stopPriceFromPattern);
 
   return {
-    buyPrices: normalizedBuyPrices,
-    stopPrice
+    buyPrices: sanitized.buyPrices,
+    stopPrice: sanitized.stopPrice
   };
 }
 
 function getSwingCardTradePlan(note, pattern) {
   const overlay = getSwingTradeOverlay(note, pattern);
   const buyPlan = pattern?.buyPlan;
-  const buyFromPattern =
-    overlay.buyPrices.length
-      ? `${overlay.buyPrices.map((price) => formatNumber(price)).join(" / ")}원`
-      : buyPlan
-        ? `${formatNumber(buyPlan.firstBuyPrice)} / ${formatNumber(buyPlan.secondBuyPrice)} / ${formatNumber(buyPlan.thirdBuyPrice)}원`
-        : pattern
-          ? formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh)
-          : null;
+  const buyLevelsFromOverlay = overlay.buyPrices.map((price, index) => `${index + 1}차 ${formatNumber(price)}원`);
+  const buyLevelsFromPlan = buyPlan
+    ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
+      .filter((price) => Number.isFinite(price) && price > 0)
+      .map((price, index) => `${index + 1}차 ${formatNumber(price)}원`)
+    : [];
+  const buyFromNote = parseSwingPlanSegment(note, "매수가") ?? parseSwingPlanSegment(note, "매수");
+  const buyLevelsFromNote =
+    !buyLevelsFromOverlay.length && !buyLevelsFromPlan.length && buyFromNote
+      ? splitSwingTradeSegments(buyFromNote).map((segment, index) => formatSwingBuyLevel(segment, index))
+      : [];
+  const buySummaryFromPattern =
+    !buyLevelsFromOverlay.length && !buyLevelsFromPlan.length && pattern
+      ? `진입 구간 ${formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh)}`
+      : null;
   const stopFromPattern =
     typeof overlay.stopPrice === "number" && overlay.stopPrice > 0
       ? `${formatNumber(overlay.stopPrice)}원`
       : null;
-  const buyFromNote = parseSwingPlanSegment(note, "매수가") ?? parseSwingPlanSegment(note, "매수");
   const stopFromNote = parseSwingPlanSegment(note, "손절가") ?? parseSwingPlanSegment(note, "손절");
+  const buyLevels = buyLevelsFromOverlay.length ? buyLevelsFromOverlay : buyLevelsFromPlan.length ? buyLevelsFromPlan : buyLevelsFromNote;
 
   return {
-    buy: buyFromPattern ?? buyFromNote ?? "-",
+    buyLevels,
+    buySummary: buySummaryFromPattern ?? (buyLevels.length ? "-" : buyFromNote ?? "-"),
     stop: stopFromPattern ?? stopFromNote ?? "-"
   };
+}
+
+function splitSwingTradeSegments(text) {
+  if (typeof text !== "string" || !text.trim()) {
+    return [];
+  }
+
+  return text
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function formatSwingBuyLevel(segment, index) {
+  const trimmed = String(segment ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/[1-9]차/.test(trimmed) || /^진입\s*구간/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${index + 1}차 ${trimmed}`;
 }
 
 function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
@@ -3306,9 +3886,128 @@ function cleanupChart() {
     resizeObserver = null;
   }
   if (activeChart) {
+    clearInteractivePriceLines(activeChart);
     activeChart.priceChart.remove();
     activeChart.volumeChart.remove();
     activeChart = null;
+  }
+}
+
+function buildInteractiveCandleSeriesData(points) {
+  return points.map((point) =>
+    point.isWhitespace
+      ? {
+          time: point.time
+        }
+      : {
+          time: point.time,
+          open: point.open,
+          high: point.high,
+          low: point.low,
+          close: point.close
+        }
+  );
+}
+
+function buildInteractiveVolumeSeriesData(points) {
+  return points.map((point) =>
+    point.isWhitespace
+      ? {
+          time: point.time
+        }
+      : {
+          time: point.time,
+          value: point.value,
+          color: point.isHalted
+            ? "rgba(120, 128, 140, 0.22)"
+            : point.close >= point.open
+              ? "rgba(216,76,63,0.35)"
+              : "rgba(47,110,229,0.32)"
+        }
+  );
+}
+
+function clearInteractivePriceLines(chartEntry) {
+  if (!chartEntry?.priceLines?.length) {
+    chartEntry.priceLines = [];
+    return;
+  }
+
+  for (const priceLine of chartEntry.priceLines) {
+    chartEntry.candleSeries.removePriceLine(priceLine);
+  }
+  chartEntry.priceLines = [];
+}
+
+function applyInteractivePriceLines(chartEntry, points, anchorDate, swingTradeOverlay = null) {
+  clearInteractivePriceLines(chartEntry);
+
+  const buyPrices = Array.isArray(swingTradeOverlay?.buyPrices)
+    ? swingTradeOverlay.buyPrices.filter((price) => Number.isFinite(price) && price > 0)
+    : [];
+  const hasTradeOverlay = buyPrices.length > 0 || (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0);
+  const anchorPoint =
+    points.find((point) => point.time === anchorDate && !point.isWhitespace) ??
+    points.find((point) => !point.isWhitespace);
+
+  if (!hasTradeOverlay && anchorPoint?.close != null) {
+    chartEntry.priceLines.push(
+      chartEntry.candleSeries.createPriceLine({
+        price: anchorPoint.close,
+        color: "rgba(159,62,25,0.85)",
+        lineStyle: LineStyle.Dashed,
+        lineWidth: 1,
+        axisLabelVisible: true,
+        title: `기준일 ${anchorDate}`
+      })
+    );
+  }
+
+  buyPrices.forEach((price, index) => {
+    chartEntry.priceLines.push(
+      chartEntry.candleSeries.createPriceLine({
+        price,
+        color: "rgba(202, 138, 4, 0.95)",
+        lineStyle: LineStyle.Dashed,
+        lineWidth: 2,
+        axisLabelVisible: true,
+        title: buyPrices.length > 1 ? `${index + 1}차 매수` : "매수가"
+      })
+    );
+  });
+
+  if (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0) {
+    chartEntry.priceLines.push(
+      chartEntry.candleSeries.createPriceLine({
+        price: swingTradeOverlay.stopPrice,
+        color: "rgba(185, 28, 28, 0.95)",
+        lineStyle: LineStyle.Dotted,
+        lineWidth: 2,
+        axisLabelVisible: true,
+        title: "손절가"
+      })
+    );
+  }
+}
+
+function updateInteractiveChartData(points, anchorDate, swingTradeOverlay = null, options = {}) {
+  if (!activeChart) {
+    mountInteractiveChart(points, anchorDate, swingTradeOverlay);
+    return;
+  }
+
+  activeChart.chartState.points = points;
+  activeChart.anchorDate = anchorDate;
+  activeChart.swingTradeOverlay = swingTradeOverlay;
+  activeChart.candleSeries.setData(buildInteractiveCandleSeriesData(points));
+  activeChart.volumeSeries.setData(buildInteractiveVolumeSeriesData(points));
+  activeChart.ma5Series.setData(buildMovingAverage(points, 5));
+  activeChart.ma20Series.setData(buildMovingAverage(points, 20));
+  activeChart.ma60Series.setData(buildMovingAverage(points, 60));
+  applyInteractivePriceLines(activeChart, points, anchorDate, swingTradeOverlay);
+
+  if (options.resetVisibleRange) {
+    setDefaultVisibleTradingRange(activeChart.priceChart, points);
   }
 }
 
@@ -3398,100 +4097,32 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
   });
 
   const ma5Series = priceChart.addSeries(LineSeries, {
-    color: "#d97706",
+    color: "#177245",
     lineWidth: 2,
     priceLineVisible: false,
     lastValueVisible: false
   });
   const ma20Series = priceChart.addSeries(LineSeries, {
-    color: "#2563eb",
+    color: "#d84c3f",
     lineWidth: 2,
     priceLineVisible: false,
     lastValueVisible: false
   });
   const ma60Series = priceChart.addSeries(LineSeries, {
-    color: "#7c3aed",
+    color: "#2563eb",
     lineWidth: 2,
     priceLineVisible: false,
     lastValueVisible: false
   });
+  const chartState = {
+    points
+  };
 
-  candleSeries.setData(
-    points.map((point) =>
-      point.isWhitespace
-        ? {
-            time: point.time
-          }
-        : {
-            time: point.time,
-            open: point.open,
-            high: point.high,
-            low: point.low,
-            close: point.close
-          }
-    )
-  );
-
-  volumeSeries.setData(
-    points.map((point) =>
-      point.isWhitespace
-        ? {
-            time: point.time
-          }
-        : {
-            time: point.time,
-            value: point.value,
-            color: point.isHalted
-              ? "rgba(120, 128, 140, 0.22)"
-              : point.close >= point.open
-                ? "rgba(216,76,63,0.35)"
-                : "rgba(47,110,229,0.32)"
-          }
-    )
-  );
-
+  candleSeries.setData(buildInteractiveCandleSeriesData(points));
+  volumeSeries.setData(buildInteractiveVolumeSeriesData(points));
   ma5Series.setData(buildMovingAverage(points, 5));
   ma20Series.setData(buildMovingAverage(points, 20));
   ma60Series.setData(buildMovingAverage(points, 60));
-
-  const anchorPoint =
-    points.find((point) => point.time === anchorDate && !point.isWhitespace) ??
-    points.find((point) => !point.isWhitespace);
-  if (anchorPoint?.close != null) {
-    candleSeries.createPriceLine({
-      price: anchorPoint.close,
-      color: "rgba(159,62,25,0.85)",
-      lineStyle: LineStyle.Dashed,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: `기준일 ${anchorDate}`
-    });
-  }
-
-  const buyPrices = Array.isArray(swingTradeOverlay?.buyPrices)
-    ? swingTradeOverlay.buyPrices.filter((price) => Number.isFinite(price) && price > 0)
-    : [];
-  buyPrices.forEach((price, index) => {
-    candleSeries.createPriceLine({
-      price,
-      color: index === 0 ? "rgba(202, 138, 4, 0.95)" : "rgba(217, 119, 6, 0.8)",
-      lineStyle: LineStyle.Dashed,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: buyPrices.length > 1 ? `${index + 1}차 매수` : "매수가"
-    });
-  });
-
-  if (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0) {
-    candleSeries.createPriceLine({
-      price: swingTradeOverlay.stopPrice,
-      color: "rgba(185, 28, 28, 0.95)",
-      lineStyle: LineStyle.Dotted,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: "손절가"
-    });
-  }
 
   let syncingRange = false;
   const syncVisibleRange = (sourceChart, targetChart) => {
@@ -3513,9 +4144,10 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
       return;
     }
 
+    const currentPoints = activeChart?.chartState?.points ?? chartState.points;
     const candleData = param.seriesData.get(candleSeries);
     if (!candleData || !("open" in candleData)) {
-      const point = points.find((candidate) => candidate.time === String(param.time));
+      const point = currentPoints.find((candidate) => candidate.time === String(param.time));
       if (!point?.isWhitespace) {
         tooltip.classList.add("hidden");
         return;
@@ -3533,7 +4165,7 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
       return;
     }
 
-    const point = points.find((candidate) => candidate.time === String(param.time));
+    const point = currentPoints.find((candidate) => candidate.time === String(param.time));
 
     const left = Math.min(param.point.x + 18, priceContainer.clientWidth - 180);
     const top = Math.max(param.point.y - 18, 12);
@@ -3564,7 +4196,22 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
   });
   resizeObserver.observe(stack);
 
-  activeChart = { priceChart, volumeChart, priceContainer, volumeContainer };
+  activeChart = {
+    priceChart,
+    volumeChart,
+    priceContainer,
+    volumeContainer,
+    candleSeries,
+    volumeSeries,
+    ma5Series,
+    ma20Series,
+    ma60Series,
+    chartState,
+    anchorDate,
+    swingTradeOverlay,
+    priceLines: []
+  };
+  applyInteractivePriceLines(activeChart, points, anchorDate, swingTradeOverlay);
 }
 
 function buildMovingAverage(points, period) {
@@ -3604,6 +4251,14 @@ function setDefaultVisibleTradingRange(priceChart, points, visibleSessions = DEF
   });
 }
 
+function getChartSeriesRange(points) {
+  const normalized = Array.isArray(points) ? points.filter((point) => point?.time) : [];
+  return {
+    startDate: normalized[0]?.time ?? "-",
+    endDate: normalized.at(-1)?.time ?? "-"
+  };
+}
+
 function updateChartView(timeframe) {
   if (!currentAnalysis) {
     return;
@@ -3617,11 +4272,15 @@ function updateChartView(timeframe) {
   if (caption) {
     caption.textContent = timeframeLabels[timeframe];
   }
+  const range = getChartSeriesRange(currentAnalysis.chartSets[timeframe]);
+  syncLiveMetric("[data-live-chart-start]", range.startDate);
+  syncLiveMetric("[data-live-chart-end]", range.endDate);
 
-  mountInteractiveChart(
+  updateInteractiveChartData(
     currentAnalysis.chartSets[timeframe],
     currentAnalysis.tradingAnchorDate,
-    currentAnalysis.swingTradeOverlay
+    currentAnalysis.swingTradeOverlay,
+    { resetVisibleRange: true }
   );
 }
 

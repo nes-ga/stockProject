@@ -1,29 +1,33 @@
 import { config } from "../config.js";
+import { formatDateInTimeZone, getCurrentIsoDate, SEOUL_TIME_ZONE } from "../lib/dates.js";
 import { readJson } from "../lib/http.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
 import type {
   ChartPoint,
+  RealtimeStockDetail,
+  RealtimeStockRequest,
   RecommendationAnalysis,
   RecommendationPatternAnalysis,
   RecommendationPatternFilters,
   RecommendationPatternMatch,
   RecommendationRequest,
-  SmartMoneyPatternAnalysis,
   SmartMoneyCandidateSummary,
+  SmartMoneyMarketContext,
+  SmartMoneyPatternAnalysis,
   SmartMoneyPatternFilters,
   SmartMoneyPatternMatch,
   SmartMoneyPatternRequest,
-  SmartMoneyMarketContext,
-  MarketWatchSnapshot,
   SmartMoneyPullbackType,
   SmartMoneyRejectReason,
   StockAnalysis
 } from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
-import { getMarketWatchSnapshots } from "./marketWatch.js";
+import { analyzeLongTermCandidate } from "./longTermEngine.js";
 import { calculateSmartMoneyBacktestResult } from "./smartMoneyBacktest.js";
 import { evaluateSmartMoneyPattern, resolveSmartMoneyPatternFilters } from "./smartMoneyEngine.js";
+import { getAutoSmartMoneyMarketContext } from "./smartMoney/marketContext.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
+
 const logger = createLogger("stockAnalysis");
 
 type QuoteResponse = {
@@ -45,6 +49,7 @@ type ChartResponse = {
       timestamp?: number[];
       meta?: {
         currency?: string;
+        exchangeTimezoneName?: string;
         exchangeName?: string;
         shortName?: string;
         regularMarketPrice?: number;
@@ -70,6 +75,12 @@ type QuoteSummary = {
   regularMarketPreviousClose?: number;
 };
 
+type QuoteAndChartResult = {
+  quote?: QuoteSummary;
+  chartPayload?: ChartResponse;
+  points: ChartPoint[];
+};
+
 function isKoreanNumericSymbol(symbol: string): boolean {
   return /^\d{6}$/.test(symbol);
 }
@@ -85,169 +96,6 @@ function average(values: number[]): number | undefined {
   }
 
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-const AUTO_MARKET_CONTEXT_TTL_MS = 60 * 1000;
-
-let cachedAutoMarketContext:
-  | {
-      expiresAt: number;
-      value?: SmartMoneyMarketContext;
-    }
-  | null = null;
-let autoMarketContextPromise: Promise<SmartMoneyMarketContext | undefined> | null = null;
-
-function getMovingAverage(points: ChartPoint[], period: number): number | undefined {
-  if (points.length < period) {
-    return undefined;
-  }
-
-  return average(points.slice(-period).map((point) => point.close));
-}
-
-function getPriorClose(points: ChartPoint[], sessionsAgo: number): number | undefined {
-  const index = points.length - 1 - sessionsAgo;
-  return index >= 0 ? points[index]?.close : undefined;
-}
-
-function deriveSnapshotTrend(snapshot?: MarketWatchSnapshot) {
-  if (!snapshot) {
-    return null;
-  }
-
-  const points = snapshot.chartSets?.daily?.points ?? [];
-  const latestPoint = points.at(-1);
-  if (!latestPoint) {
-    return null;
-  }
-
-  const sma20 = getMovingAverage(points, 20);
-  const sma50 = getMovingAverage(points, 50);
-  const change20d = percentChange(latestPoint.close, getPriorClose(points, 20));
-  const aboveSma20 = sma20 == null ? undefined : latestPoint.close >= sma20;
-  const aboveSma50 = sma50 == null ? undefined : latestPoint.close >= sma50;
-  const strengthScore = clamp(
-    50 +
-      (aboveSma20 == null ? 0 : aboveSma20 ? 12 : -12) +
-      (aboveSma50 == null ? 0 : aboveSma50 ? 10 : -10) +
-      (change20d == null ? 0 : change20d >= 6 ? 12 : change20d >= 0 ? 6 : change20d >= -5 ? -8 : -16),
-    10,
-    90
-  );
-
-  return {
-    snapshot,
-    latestDate: latestPoint.date,
-    price: latestPoint.close,
-    change20d,
-    sma20,
-    sma50,
-    aboveSma20,
-    aboveSma50,
-    strengthScore,
-    trend: strengthScore >= 62 ? "bullish" : strengthScore <= 38 ? "bearish" : "neutral"
-  } as const;
-}
-
-function buildAutoSmartMoneyMarketContext(items: MarketWatchSnapshot[]): SmartMoneyMarketContext | undefined {
-  const kospi = deriveSnapshotTrend(items.find((item) => item.key === "KOSPI"));
-  const kosdaq = deriveSnapshotTrend(items.find((item) => item.key === "KOSDAQ"));
-  const usdkrw = deriveSnapshotTrend(items.find((item) => item.key === "USDKRW"));
-  const gold = deriveSnapshotTrend(items.find((item) => item.key === "GOLD"));
-  const indexHealth = [kospi, kosdaq].filter((item): item is NonNullable<typeof kospi> => Boolean(item));
-
-  if (!indexHealth.length) {
-    return undefined;
-  }
-
-  const averageStrength = average(indexHealth.map((item) => item.strengthScore)) ?? 50;
-  const advancingCount = indexHealth.filter((item) => item.aboveSma20).length;
-  const decliningCount = Math.max(1, indexHealth.length - advancingCount);
-  const advancingPercent = (advancingCount / indexHealth.length) * 100;
-  const breadthScore = clamp(
-    Math.round(averageStrength * 0.55 + advancingPercent * 0.45),
-    15,
-    85
-  );
-  const averageChange20d = average(indexHealth.map((item) => item.change20d).filter((value): value is number => value != null)) ?? 0;
-  const momentumCondition = averageChange20d >= 4 ? "strong" : averageChange20d <= -3 ? "weak" : "neutral";
-  const marketTrend = averageStrength >= 62 ? "bullish" : averageStrength <= 40 ? "bearish" : "neutral";
-  const usdkrwChange20d = usdkrw?.change20d;
-  const goldChange20d = gold?.change20d;
-  const riskOff =
-    (indexHealth.every((item) => item.aboveSma20 === false) && averageChange20d < 0) ||
-    averageChange20d <= -4 ||
-    ((usdkrwChange20d ?? 0) >= 2.5 && averageStrength < 52) ||
-    ((goldChange20d ?? 0) >= 5 && averageStrength < 50);
-  const asOfDate = [kospi?.latestDate, kosdaq?.latestDate, usdkrw?.latestDate, gold?.latestDate].find(Boolean);
-
-  return {
-    asOfDate,
-    marketTrend,
-    marketBreadth: {
-      score: breadthScore,
-      advanceDeclineRatio: advancingCount / decliningCount,
-      advancingPercent
-    },
-    momentumCondition,
-    leaderPersistenceScore: Math.round(averageStrength),
-    regimeScore: Math.round(clamp(averageStrength + (riskOff ? -6 : 0), 0, 100)),
-    marketContextScore: breadthScore,
-    riskScore: Math.round(clamp((riskOff ? 34 : 62) + averageChange20d * 1.6, 10, 90)),
-    riskOff,
-    benchmark: {
-      symbol: kospi?.snapshot.symbol ?? "^KS11",
-      trend: kospi?.trend ?? marketTrend,
-      changePercent20d: kospi?.change20d,
-      aboveSma20: kospi?.aboveSma20,
-      aboveSma50: kospi?.aboveSma50
-    },
-    notes: [
-      `Auto market context from KOSPI/KOSDAQ as of ${asOfDate ?? "-"}.`,
-      `Average 20-session index change is ${averageChange20d.toFixed(1)}%.`,
-      usdkrwChange20d != null ? `USD/KRW 20-session change ${usdkrwChange20d.toFixed(1)}%.` : "USD/KRW context unavailable."
-    ]
-  };
-}
-
-async function getAutoSmartMoneyMarketContext() {
-  if (cachedAutoMarketContext && cachedAutoMarketContext.expiresAt > Date.now()) {
-    return cachedAutoMarketContext.value;
-  }
-
-  if (autoMarketContextPromise) {
-    return autoMarketContextPromise;
-  }
-
-  autoMarketContextPromise = (async () => {
-    try {
-      const snapshots = await getMarketWatchSnapshots();
-      const value = buildAutoSmartMoneyMarketContext(snapshots.items);
-      cachedAutoMarketContext = {
-        expiresAt: Date.now() + AUTO_MARKET_CONTEXT_TTL_MS,
-        value
-      };
-      logger.info("smartMoney:market-context:auto:ready", {
-        applied: Boolean(value),
-        asOfDate: value?.asOfDate,
-        marketTrend: value?.marketTrend,
-        regimeScore: value?.regimeScore,
-        riskOff: value?.riskOff
-      });
-      return value;
-    } catch (error) {
-      logger.error("smartMoney:market-context:auto:failed", toErrorContext(error));
-      cachedAutoMarketContext = {
-        expiresAt: Date.now() + 10 * 1000,
-        value: undefined
-      };
-      return undefined;
-    } finally {
-      autoMarketContextPromise = null;
-    }
-  })();
-
-  return autoMarketContextPromise;
 }
 
 function calculateRsi(closes: number[], period = 14): number | undefined {
@@ -286,7 +134,7 @@ function percentChange(current: number, previous?: number): number | undefined {
 }
 
 function toIsoDate(value: Date): string {
-  return value.toISOString().slice(0, 10);
+  return formatDateInTimeZone(value, "UTC");
 }
 
 function addDays(dateText: string, days: number): string {
@@ -320,6 +168,7 @@ function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
   const result = chartPayload.chart.result?.[0];
   const quote = result?.indicators.quote[0];
   const timestamps = result?.timestamp ?? [];
+  const exchangeTimeZone = result?.meta?.exchangeTimezoneName;
   const points: ChartPoint[] = [];
 
   for (const [index, timestamp] of timestamps.entries()) {
@@ -329,7 +178,7 @@ function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
     }
 
     points.push({
-      date: toIsoDate(new Date(timestamp * 1000)),
+      date: formatDateInTimeZone(new Date(timestamp * 1000), exchangeTimeZone),
       open: quote?.open?.[index] ?? undefined,
       high: quote?.high?.[index] ?? undefined,
       low: quote?.low?.[index] ?? undefined,
@@ -365,7 +214,7 @@ function parseNaverChartXml(xml: string): ChartPoint[] {
   return points;
 }
 
-async function fetchNaverChart(symbol: string, count = 500) {
+async function fetchNaverChart(symbol: string, count = 500): Promise<QuoteAndChartResult> {
   logger.info("chart:load:start", {
     symbol,
     source: "naver",
@@ -425,7 +274,10 @@ async function fetchNaverChart(symbol: string, count = 500) {
   return result;
 }
 
-async function fetchQuoteAndChart(symbol: string, chartOptions?: { period1?: string; range?: string }) {
+async function fetchQuoteAndChart(
+  symbol: string,
+  chartOptions?: { period1?: string; range?: string }
+): Promise<QuoteAndChartResult> {
   if (isKoreanNumericSymbol(symbol) || /\.K[QS]$/.test(symbol)) {
     try {
       return await fetchNaverChart(symbol);
@@ -611,6 +463,68 @@ function getQuoteSummary(quote: QuoteSummary | undefined, points: ChartPoint[]) 
     exchangeName: quote?.exchangeName,
     shortName: quote?.shortName,
     latestClose: quote?.regularMarketPrice ?? latestPoint?.close
+  };
+}
+
+function buildChartWindow(points: ChartPoint[]) {
+  const latestPoint = points.at(-1);
+  return {
+    startDate: points[0]?.date ?? "",
+    endDate: latestPoint?.date ?? points[0]?.date ?? "",
+    points
+  };
+}
+
+function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
+  if (!points.length || typeof latestClose !== "number" || !Number.isFinite(latestClose)) {
+    return points;
+  }
+
+  const latestPoint = points.at(-1);
+  if (!latestPoint) {
+    return points;
+  }
+
+  const nextLatestPoint: ChartPoint = {
+    ...latestPoint,
+    close: latestClose,
+    open: latestPoint.open ?? latestClose,
+    high: Math.max(latestPoint.high ?? latestClose, latestClose),
+    low: Math.min(latestPoint.low ?? latestClose, latestClose)
+  };
+
+  return [...points.slice(0, -1), nextLatestPoint];
+}
+
+export async function loadRealtimeStockDetail(input: RealtimeStockRequest): Promise<RealtimeStockDetail> {
+  const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+  const period1 = input.anchorDate ? addDays(input.anchorDate, -40) : undefined;
+  const { quote, points } = await fetchQuoteAndChart(symbol, period1 ? { period1 } : { range: "3mo" });
+  const latestCloseFromQuote = quote?.regularMarketPrice;
+  const syncedPoints = syncLatestPointWithQuote(points, latestCloseFromQuote);
+  const latestPoint = syncedPoints.at(-1);
+
+  if (!latestPoint) {
+    throw new Error(`No realtime chart data available for ${symbol}`);
+  }
+
+  const previousPoint = syncedPoints.at(-2);
+  const latestClose = latestCloseFromQuote ?? latestPoint.close;
+  const previousClose = quote?.regularMarketPreviousClose ?? previousPoint?.close;
+
+  return {
+    key: input.key,
+    name: input.name,
+    symbol: input.symbol,
+    resolvedSymbol: symbol,
+    category: input.category,
+    latestClose,
+    previousClose,
+    changeAmount: previousClose != null ? latestClose - previousClose : undefined,
+    changePercent: percentChange(latestClose, previousClose),
+    latestDate: latestPoint.date,
+    chartWindow: buildChartWindow(syncedPoints),
+    fetchedAt: new Date().toISOString()
   };
 }
 
@@ -1360,6 +1274,14 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     fetchQuoteAndChart(symbol, { period1 }),
     fetchFundamentals(input.symbol)
   ]);
+  const longTermReview =
+    input.category === "swing"
+      ? undefined
+      : await analyzeLongTermCandidate({
+          symbol: input.symbol,
+          name: input.name,
+          fundamentals
+        });
   const { quote, points } = chartResult;
 
   if (!points.length) {
@@ -1402,6 +1324,7 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     name: input.name,
     symbol: input.symbol,
     resolvedSymbol: symbol,
+    category: input.category,
     anchorDate: input.anchorDate,
     tradingAnchorDate: anchorPoint.date,
     latestMentionDate: input.latestMentionDate,
@@ -1430,12 +1353,9 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     anchorVolumeVs20dBefore: ratio(anchorPoint.volume, avgVolume20Before),
     latestVolume: latestPoint.volume,
     latestVolumeVs20d: ratio(latestPoint.volume, avgVolume20Latest),
-    chartWindow: {
-      startDate: points[0].date,
-      endDate: latestPoint.date,
-      points
-    },
-    fundamentals
+    chartWindow: buildChartWindow(points),
+    fundamentals,
+    longTermReview
   };
 
   logger.info("recommendation:analyze:success", {
@@ -1522,7 +1442,7 @@ async function analyzeSmartMoneyPatternWithContext(
     ...overrides
   });
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
-  const referenceDate = input.referenceDate ?? toIsoDate(new Date());
+  const referenceDate = input.referenceDate ?? getCurrentIsoDate(SEOUL_TIME_ZONE);
   const marketContext = input.marketContext ?? resolvedMarketContext;
   logger.info("smartMoney:analyze:start", {
     symbol: input.symbol,
@@ -1550,7 +1470,11 @@ async function analyzeSmartMoneyPatternWithContext(
   const referencePoint = points[referenceIndex];
   const pattern = evaluateSmartMoneyPattern(points, referenceIndex, filters, {
     marketContext,
-    debug: input.debug
+    debug: input.debug,
+    pricingContext: {
+      symbol: input.symbol,
+      name: input.name
+    }
   });
   const backtestResult = calculateSmartMoneyBacktestResult(points, referenceIndex, pattern);
   const enrichedPattern = {

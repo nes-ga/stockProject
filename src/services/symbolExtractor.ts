@@ -2,7 +2,6 @@ const stopWords = new Set([
   "BUY",
   "SELL",
   "HOLD",
-  "BAND",
   "POST",
   "API",
   "USD",

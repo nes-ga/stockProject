@@ -3,9 +3,8 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLogger, toErrorContext } from "./lib/logger.js";
+import { initializeNewsSignalCollector } from "./services/newsSignals.js";
 import { alertRoutes } from "./routes/alertRoutes.js";
-import { authRoutes } from "./routes/authRoutes.js";
-import { bandRoutes } from "./routes/bandRoutes.js";
 import { analysisRoutes } from "./routes/analysisRoutes.js";
 
 export const app = express();
@@ -13,6 +12,10 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, "../public");
 const lightweightChartsDir = path.resolve(currentDir, "../node_modules/lightweight-charts/dist");
 const logger = createLogger("app");
+
+void initializeNewsSignalCollector().catch((error) => {
+  logger.error("news-signals:init-failed", toErrorContext(error));
+});
 
 function setUtf8StaticHeaders(response: express.Response, filePath: string) {
   if (filePath.endsWith(".html")) {
@@ -79,8 +82,6 @@ app.get("/", (_request, response) => {
   response.sendFile(path.join(publicDir, "index.html"));
 });
 
-app.use("/auth", authRoutes);
-app.use("/band", bandRoutes);
 app.use("/analysis", analysisRoutes);
 app.use("/alerts", alertRoutes);
 

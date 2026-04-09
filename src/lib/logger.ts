@@ -2,6 +2,33 @@ type LogLevel = "INFO" | "WARN" | "ERROR";
 
 type LogContext = Record<string, unknown> | undefined;
 
+const LOG_TIME_ZONE = "Asia/Seoul";
+const LOG_TIME_ZONE_OFFSET = "+09:00";
+const timestampFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: LOG_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+  hour12: false,
+  hourCycle: "h23"
+});
+
+function formatTimestamp(date: Date): string {
+  const values: Record<string, string> = {};
+
+  for (const part of timestampFormatter.formatToParts(date)) {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  }
+
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}.${values.fractionalSecond}${LOG_TIME_ZONE_OFFSET}`;
+}
+
 function truncateText(value: string, maxLength = 180): string {
   if (value.length <= maxLength) {
     return value;
@@ -56,7 +83,7 @@ function formatContext(context: LogContext): string {
 }
 
 function writeLog(level: LogLevel, scope: string, message: string, context?: LogContext) {
-  const prefix = `[${new Date().toISOString()}] ${level} ${scope} ${message}`;
+  const prefix = `[${formatTimestamp(new Date())}] ${level} ${scope} ${message}`;
   const suffix = formatContext(context);
   const line = suffix ? `${prefix} ${suffix}` : prefix;
 

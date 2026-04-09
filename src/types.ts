@@ -1,12 +1,3 @@
-export type BandPost = {
-  postKey?: string;
-  content: string;
-  author?: string;
-  createdAt?: string;
-  photos?: string[];
-  raw?: unknown;
-};
-
 export type StockAnalysis = {
   symbol: string;
   resolvedSymbol: string;
@@ -30,6 +21,38 @@ export type RecommendationRequest = {
   anchorDate: string;
   latestMentionDate?: string;
   note?: string;
+  category?: "longTerm" | "swing";
+};
+
+export type RealtimeStockRequest = {
+  key?: string;
+  name?: string;
+  symbol: string;
+  anchorDate?: string;
+  category?: "longTerm" | "swing";
+};
+
+export type RealtimeStockSnapshot = {
+  key?: string;
+  name?: string;
+  symbol: string;
+  resolvedSymbol: string;
+  category?: "longTerm" | "swing";
+  latestClose?: number;
+  previousClose?: number;
+  changeAmount?: number;
+  changePercent?: number;
+  latestDate?: string;
+  error?: string;
+};
+
+export type RealtimeStockDetail = RealtimeStockSnapshot & {
+  chartWindow: {
+    startDate: string;
+    endDate: string;
+    points: ChartPoint[];
+  };
+  fetchedAt: string;
 };
 
 export type RecommendationPatternFilters = {
@@ -122,6 +145,8 @@ export type SmartMoneyPatternFilters = {
   minPullbackBuyDistanceBelowBreakoutPercent: number;
   minTightPullbackBuyLeadInPriceChangePercent: number;
   pullbackBuyStartPercentFromPeak: number;
+  firstBuySma20ProximityPercent: number;
+  stopLossLookbackSessions: number;
   tightPullbackBuyZoneLowRetracementRatio: number;
   tightPullbackBuyZoneHighRetracementRatio: number;
   timeCorrectionBuyZoneLowRetracementRatio: number;
@@ -141,7 +166,9 @@ export type SmartMoneyPullbackType = "price_pullback" | "time_correction";
 
 export type SmartMoneySetupType = "tight_price_pullback" | "time_correction" | "volatile_power_digestion";
 
-export type SmartMoneyEntryStrategy = "pullback_buy" | "breakout_ready" | "breakout_confirmed";
+export type SmartMoneyEntryStrategy = "pullback_buy" | "breakout_ready" | "breakout_confirmed" | "no_chase";
+
+export type SmartMoneyStopLossReferenceType = "session_low" | "close_fallback";
 
 export type SmartMoneyBuyPlan = {
   firstBuyPrice: number;
@@ -157,6 +184,7 @@ export type SmartMoneyWorkflowStatus =
   | "pullback_deep"
   | "pullback_ready"
   | "buy_ready"
+  | "breakout_extended"
   | "breakout_ready"
   | "breakout_confirmed"
   | "broken";
@@ -289,6 +317,9 @@ export type SmartMoneyCandidateSummary = {
   status: SmartMoneyWorkflowStatus;
   entryStrategy?: SmartMoneyEntryStrategy;
   buyPlan?: SmartMoneyBuyPlan;
+  referenceSma20?: number;
+  stopLossReferenceDate?: string;
+  stopLossReferenceType?: SmartMoneyStopLossReferenceType;
   lookbackWindowDays: number;
   matched: boolean;
   actionable: boolean;
@@ -337,6 +368,9 @@ export type SmartMoneyPatternMatch = {
   status: SmartMoneyWorkflowStatus;
   entryStrategy?: SmartMoneyEntryStrategy;
   buyPlan?: SmartMoneyBuyPlan;
+  referenceSma20?: number;
+  stopLossReferenceDate?: string;
+  stopLossReferenceType?: SmartMoneyStopLossReferenceType;
   signal: KoreanMoverSignal;
   patternScore: number;
   referenceDate: string;
@@ -447,6 +481,7 @@ export type RecommendationAnalysis = {
   name?: string;
   symbol: string;
   resolvedSymbol: string;
+  category?: "longTerm" | "swing";
   anchorDate: string;
   tradingAnchorDate: string;
   latestMentionDate?: string;
@@ -481,6 +516,7 @@ export type RecommendationAnalysis = {
     points: ChartPoint[];
   };
   fundamentals?: FundamentalsSummary;
+  longTermReview?: LongTermReviewAnalysis;
 };
 
 export type KoreanMoverMarket = "KOSPI" | "KOSDAQ";
@@ -606,4 +642,221 @@ export type FundamentalsSummary = {
   businessAreasSource?: string;
   businessSummary?: string;
   businessAreas?: BusinessAreaSlice[];
+};
+
+export type LongTermLeaderTier = "core" | "primary" | "secondary";
+
+export type LongTermLeaderBucket =
+  | "core_leader"
+  | "growth_leader"
+  | "content_game"
+  | "defensive_consumer"
+  | "secondary_candidate";
+
+export type LongTermScanLabel =
+  | "leader correction watch"
+  | "deep value review"
+  | "base-forming candidate"
+  | "needs more stabilization";
+
+export type LongTermCandidateGroup = "buy candidate" | "watch candidate";
+
+export type LongTermUniverseSeed = {
+  symbol: string;
+  name: string;
+  bucket: LongTermLeaderBucket;
+  tier: LongTermLeaderTier;
+};
+
+export type LongTermScoreBreakdown = {
+  totalScore: number;
+  leaderScore: number;
+  correctionScore: number;
+  trendScore: number;
+  liquidityScore: number;
+  stabilizationScore: number;
+  financialScore: number;
+  durabilityScore?: number;
+};
+
+export type LongTermStructureSnapshot = {
+  ma60?: number;
+  ma120?: number;
+  ma240?: number;
+  ma120Slope?: number;
+  ma240Slope?: number;
+  priceVsMA120Pct?: number;
+  priceVsMA240Pct?: number;
+};
+
+export type LongTermBaseStructure = {
+  recentLow?: number;
+  distanceFromLowPct?: number;
+  higherLowCount: number;
+  daysSinceLastLowBreak: number;
+  isStabilizing: boolean;
+};
+
+export type LongTermLiquiditySnapshot = {
+  avgTurnover20?: number;
+  avgTurnover60?: number;
+  volumeConsistency?: number;
+};
+
+export type LongTermFinancialTrend = "improving" | "weakening" | "cyclical_downturn";
+
+export type LongTermEarningsState = "profitable" | "temporary_loss" | "persistent_loss";
+
+export type LongTermRoeState = "strong" | "normal" | "weak" | "negative";
+
+export type LongTermRoeTrend = "improving" | "stable" | "deteriorating";
+
+export type LongTermDebtState = "safe" | "manageable" | "high" | "dangerous";
+
+export type LongTermDebtTrend = "improving" | "stable" | "worsening";
+
+export type LongTermBusinessClarity = "clear_core_business" | "diversified" | "unclear";
+
+export type LongTermFinancialMomentum = "improving" | "stabilizing" | "deteriorating";
+
+export type LongTermFinancialSnapshot = {
+  revenueTrend: LongTermFinancialTrend;
+  operatingProfitTrend: LongTermFinancialTrend;
+  netIncomeTrend: LongTermFinancialTrend;
+  earningsState: LongTermEarningsState;
+  roeState: LongTermRoeState;
+  roeTrend: LongTermRoeTrend;
+  debtState: LongTermDebtState;
+  debtTrend: LongTermDebtTrend;
+  businessClarity: LongTermBusinessClarity;
+  financialMomentum: LongTermFinancialMomentum;
+  structuralRiskFlags: string[];
+  latestRoe?: number;
+  latestDebtRatio?: number;
+  latestPer?: number;
+  latestPbr?: number;
+};
+
+export type LongTermScanCandidate = {
+  symbol: string;
+  name: string;
+  sector?: string;
+  price: number;
+  high52w?: number;
+  high2y?: number;
+  high5y?: number;
+  drawdownPct?: number;
+  drawdown5yPct?: number;
+  drawdownReference?: "52w" | "2y" | "5y";
+  scores: LongTermScoreBreakdown;
+  structure: LongTermStructureSnapshot;
+  baseStructure: LongTermBaseStructure;
+  liquidity: LongTermLiquiditySnapshot;
+  financials?: LongTermFinancialSnapshot;
+  fundamentals?: LongTermFinancialSnapshot;
+  candidateGroup: LongTermCandidateGroup;
+  label: LongTermScanLabel;
+  reasonSummary: string;
+};
+
+export type LongTermScanFilters = {
+  historySessions: number;
+  recentBaseWindow: number;
+  slopeLookbackSessions: number;
+  higherLowLookbackWindow: number;
+  higherLowPivotSpan: number;
+  minimumBaseDays: number;
+  minimumTradableTurnover20: number;
+  minimumTradableTurnover60: number;
+  minimumDrawdownPct: number;
+  strongDrawdownPct: number;
+  deepDrawdownPct: number;
+  longCycleSupplementDrawdownPct: number;
+  longCycleRecoveryThresholdPct: number;
+  nearHighPenaltyPct: number;
+  overextendedVsMa120Pct: number;
+  farBelowMa240Pct: number;
+  lowBreakPenaltyDays: number;
+  coolingVolumeRatioThreshold: number;
+  leaderWeight: number;
+  correctionWeight: number;
+  trendWeight: number;
+  liquidityWeight: number;
+  stabilizationWeight: number;
+  financialWeight: number;
+  durabilityWeight?: number;
+};
+
+export type LongTermScanResult = {
+  asOfDate: string;
+  universeSize: number;
+  filters: LongTermScanFilters;
+  candidates: LongTermScanCandidate[];
+  groupedCandidates: {
+    buyCandidates: LongTermScanCandidate[];
+    watchCandidates: LongTermScanCandidate[];
+  };
+};
+
+export type LongTermReviewAnalysis = {
+  symbol: string;
+  name?: string;
+  market?: StockUniverseItem["market"];
+  sector?: string;
+  seedSource: "curated" | "ad_hoc";
+  enginePass: boolean;
+  filterReasons: string[];
+  candidate?: LongTermScanCandidate;
+};
+
+export type NewsMetadata = {
+  title: string;
+  source: string;
+  publishedAt: string;
+  url: string;
+};
+
+export type NewsEventType =
+  | "EARNINGS"
+  | "CONTRACT"
+  | "M&A"
+  | "POLICY"
+  | "CAPEX"
+  | "SHAREHOLDER"
+  | "RISK";
+
+export type NewsSignalSentiment = "positive" | "negative";
+
+export type NewsSignalCard = {
+  ticker: string;
+  companyName: string;
+  eventType: NewsEventType;
+  score: number;
+  sentiment: NewsSignalSentiment;
+  articleCount: number;
+  sources: string[];
+  timestamp: string;
+  summary: string;
+  newsList: NewsMetadata[];
+  sector?: string;
+};
+
+export type NewsSignalSectorSummary = {
+  sector: string;
+  signalCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  totalScore: number;
+  leadTicker: string;
+  leadCompanyName: string;
+};
+
+export type NewsSignalDashboardPayload = {
+  generatedAt: string;
+  lastUpdatedAt: string;
+  refreshIntervalMinutes: number;
+  articleCount: number;
+  signalCount: number;
+  signals: NewsSignalCard[];
+  sectors: NewsSignalSectorSummary[];
 };

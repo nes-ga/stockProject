@@ -9,11 +9,33 @@ import type {
   SmartMoneyPatternFilters,
   SmartMoneyPatternMatch,
   SmartMoneyPullbackType,
+  SmartMoneyStopLossReferenceType,
   SmartMoneyTradePlan,
   SmartMoneySetupType,
   SmartMoneyRejectReason
 } from "../types.js";
 import { enhanceSmartMoneyMatch } from "./smartMoneyEnhancer.js";
+import { MARKET_CONTEXT_SETTINGS, resolveSmartMoneyPatternFilters } from "./smartMoney/config.js";
+import {
+  average,
+  averageNumberSeries,
+  clamp,
+  getAverageCloseThrough,
+  getAverageVolumeBefore,
+  getHighestCloseBefore,
+  getPointHigh,
+  getPointLow,
+  getStageRank,
+  getTurnoverValue,
+  getWorkflowStatusRank,
+  percentChange,
+  ratio,
+  resolveWorkflowStatus,
+  toSignal
+} from "./smartMoney/utils.js";
+import { type SmartMoneyPricingContext, normalizePriceByTick, resolveSmartMoneyTickSize } from "./smartMoney/pricing.js";
+
+export { resolveSmartMoneyPatternFilters } from "./smartMoney/config.js";
 
 type SmartMoneyStage = Exclude<SmartMoneyPatternMatch["stage"], "none">;
 
@@ -40,6 +62,8 @@ type PullbackAssessment = {
   setupType?: SmartMoneySetupType;
   breakoutLevel: number;
   pullbackLow: number;
+  pullbackLowDate?: string;
+  pullbackLowType?: SmartMoneyStopLossReferenceType;
   pullbackVolumeRatioToLeadIn?: number;
   pullbackRangePercent: number;
   closeRangePercent: number;
@@ -48,192 +72,50 @@ type PullbackAssessment = {
   rejectReasons: string[];
 };
 
-const MARKET_CONTEXT_SETTINGS = {
-  scoreAdjustmentWeight: 0.24,
-  scoreAdjustmentCap: 8,
-  entryAdjustmentCapPercent: 6,
-  weakRegimeThreshold: 38,
-  strongRegimeThreshold: 68,
-  weakBreakoutThreshold: 42,
-  weakBreadthThreshold: 40,
-  weakMomentumThreshold: 38,
-  strongMomentumThreshold: 65,
-  setupPenalty: 1,
-  breakoutPenalty: 2,
-  breakoutRelief: -1,
-  neutralScore: 50
-} as const;
+type StopLossReference = {
+  price: number;
+  date?: string;
+  type: SmartMoneyStopLossReferenceType;
+};
 
-function average(values: number[]): number | undefined {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
-}
-
-function averageNumberSeries(values: Array<number | undefined>): number | undefined {
-  return average(values.filter((value): value is number => typeof value === "number"));
-}
-
-function ratio(value?: number, base?: number): number | undefined {
-  if (value == null || base == null || base === 0) {
+function getLowestPointReference(points: ChartPoint[], startIndex: number, endIndex: number): StopLossReference | undefined {
+  if (startIndex > endIndex || endIndex < 0 || !points.length) {
     return undefined;
   }
-  return value / base;
-}
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
+  const slice = points.slice(Math.max(0, startIndex), endIndex + 1);
+  const lowCandidates = slice
+    .map((point) => ({
+      date: point.date,
+      value: getPointLow(point)
+    }))
+    .filter((item) => item.value > 0);
 
-function percentChange(current: number, previous?: number): number | undefined {
-  if (!previous || previous === 0) {
+  if (lowCandidates.length) {
+    const price = Math.min(...lowCandidates.map((item) => item.value));
+    return {
+      price,
+      date: [...lowCandidates].reverse().find((item) => item.value === price)?.date,
+      type: "session_low"
+    };
+  }
+
+  const closeCandidates = slice
+    .map((point) => ({
+      date: point.date,
+      value: point.close
+    }))
+    .filter((item) => item.value > 0);
+  if (!closeCandidates.length) {
     return undefined;
   }
-  return ((current - previous) / previous) * 100;
-}
 
-function getPointHigh(point: ChartPoint): number {
-  return point.high ?? point.close;
-}
-
-function getPointLow(point: ChartPoint): number {
-  return point.low ?? point.close;
-}
-
-function getTurnoverValue(point: ChartPoint): number | undefined {
-  return point.volume != null ? point.close * point.volume : undefined;
-}
-
-function getAverageVolumeBefore(points: ChartPoint[], index: number, period = 20): number | undefined {
-  return averageNumberSeries(points.slice(Math.max(0, index - period), index).map((point) => point.volume));
-}
-
-function getHighestCloseBefore(points: ChartPoint[], index: number, period: number): number | undefined {
-  const closes = points.slice(Math.max(0, index - period), index).map((point) => point.close);
-  return closes.length ? Math.max(...closes) : undefined;
-}
-
-function getStageRank(stage: SmartMoneyPatternMatch["stage"]): number {
-  return stage === "breakout" ? 2 : stage === "setup" ? 1 : 0;
-}
-
-function getWorkflowStatusRank(status: SmartMoneyPatternMatch["status"]): number {
-  switch (status) {
-    case "breakout_confirmed":
-      return 7;
-    case "buy_ready":
-      return 6;
-    case "breakout_ready":
-      return 5;
-    case "pullback_ready":
-      return 4;
-    case "pullback_deep":
-      return 3;
-    case "pullback_early":
-      return 2;
-    case "pivot_formed":
-      return 1;
-    case "broken":
-      return 0;
-    default:
-      return 0;
-  }
-}
-
-function toSignal(score: number): SmartMoneyPatternMatch["signal"] {
-  if (score >= 85) {
-    return "explosive";
-  }
-  if (score >= 65) {
-    return "strong";
-  }
-  return "watch";
-}
-
-function uniqueSortedNumbers(values: number[]): number[] {
-  return [...new Set(values.filter((value) => Number.isFinite(value) && value > 0).map((value) => Math.round(value)))].sort(
-    (left, right) => left - right
-  );
-}
-
-export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPatternFilters>): SmartMoneyPatternFilters {
-  const defaults: SmartMoneyPatternFilters = {
-    lookbackTradingDays: 15,
-    lookbackWindows: [10, 15, 20, 30],
-    breakoutLookbackDays: 20,
-    minLeadInPriceChangePercent: 10,
-    minLeadInVolumeRatio: 2.5,
-    minTurnoverValue: 1_500_000_000,
-    minBreakoutTurnoverValue: 2_500_000_000,
-    minBreakoutPriceChangePercent: 8,
-    minBreakoutVolumeRatio: 3.5,
-    minPullbackSessions: 1,
-    maxPullbackSessions: 30,
-    minSetupPullbackSessions: 3,
-    minSetupDownSessions: 2,
-    minTimeCorrectionSessions: 4,
-    minPullbackDrawdownPercent: 1.5,
-    maxPullbackDrawdownPercent: 6.5,
-    maxPullbackRangePercent: 10,
-    maxSetupPullbackDrawdownPercent: 35,
-    maxSetupPullbackRangePercent: 35,
-    maxTimeCorrectionDrawdownPercent: 4,
-    maxTimeCorrectionRangePercent: 8,
-    maxTimeCorrectionCloseRangePercent: 4.5,
-    minTimeCorrectionTightClosePercent: -5,
-    maxVolatileDigestionDrawdownPercent: 30,
-    maxVolatileDigestionRangePercent: 55,
-    maxVolatileDigestionAvgVolumeRatio: 0.18,
-    minVolatileDigestionReferenceCloseVsLeadInPercent: -20,
-    minVolatileDigestionBaseAdvancePercent: 35,
-    volatileDigestionSetupScoreBoost: 14,
-    maxPullbackAvgVolumeRatio: 0.65,
-    minPatternScore: 60,
-    minSetupPatternScore: 60,
-    minBreakoutPatternScore: 68,
-    minSetupSurgeAdvancePercent: 15,
-    minSetupContinuationSessions: 1,
-    minReferenceCloseVsBasePercent: 0,
-    maxSetupCloseVsPeakPercent: -1,
-    minReferenceCloseVsLeadInPercent: -4,
-    closeNearHighRatio: 0.985,
-    breakoutHoldTolerancePercent: 2,
-    maxBreakoutFailurePercent: 3.5,
-    maxBreakoutExtensionPercent: 8,
-    maxSetupDistanceBelowBreakoutLevelPercent: 6,
-    minPullbackBuyDrawdownPercent: 12,
-    minPullbackBuyDistanceBelowBreakoutPercent: 12,
-    minTightPullbackBuyLeadInPriceChangePercent: 20,
-    pullbackBuyStartPercentFromPeak: 20,
-    tightPullbackBuyZoneLowRetracementRatio: 0.18,
-    tightPullbackBuyZoneHighRetracementRatio: 0.72,
-    timeCorrectionBuyZoneLowRetracementRatio: 0.45,
-    timeCorrectionBuyZoneHighRetracementRatio: 0.95,
-    volatileDigestionBuyZoneLowRetracementRatio: 0.08,
-    volatileDigestionBuyZoneHighRetracementRatio: 0.58,
-    minActionableValidityScore: 55,
-    minExecutionReadinessScore: 55,
-    regimeScoreWeight: 0.18,
-    minRegimeScoreForActionable: 40,
-    blockActionableOnRiskOff: true,
-    recentSignalSessions: 2,
-    debugTopCandidateLimit: 5
+  const price = Math.min(...closeCandidates.map((item) => item.value));
+  return {
+    price,
+    date: [...closeCandidates].reverse().find((item) => item.value === price)?.date,
+    type: "close_fallback"
   };
-
-  const merged: SmartMoneyPatternFilters = {
-    ...defaults,
-    ...overrides,
-    lookbackWindows: uniqueSortedNumbers(
-      overrides?.lookbackWindows?.length
-        ? overrides.lookbackWindows
-        : [...defaults.lookbackWindows, overrides?.lookbackTradingDays ?? defaults.lookbackTradingDays]
-    )
-  };
-
-  if (!merged.lookbackWindows.includes(merged.lookbackTradingDays)) {
-    merged.lookbackWindows = uniqueSortedNumbers([...merged.lookbackWindows, merged.lookbackTradingDays]);
-  }
-
-  merged.minBreakoutTurnoverValue = overrides?.minBreakoutTurnoverValue ?? Math.max(merged.minTurnoverValue, merged.minBreakoutTurnoverValue);
-  return merged;
 }
 
 function buildEmptyMatch(referenceDate: string, windowPoints: ChartPoint[], lookbackWindowDays?: number): SmartMoneyPatternMatch {
@@ -346,8 +228,8 @@ function isWithinBand(value: number, low?: number, high?: number): boolean {
   return low != null && high != null && value >= low && value <= high;
 }
 
-function roundPriceLevel(value: number): number {
-  return Math.round(value * 100) / 100;
+function roundPriceLevel(value: number, pricingContext?: SmartMoneyPricingContext, mode: "nearest" | "up" | "down" = "nearest"): number {
+  return normalizePriceByTick(value, pricingContext, mode) ?? value;
 }
 
 function resolveEntryPriceAdjustmentPercent(market: MarketEvaluation): number {
@@ -381,7 +263,8 @@ function adjustEntryZoneForMarket(
   entryZoneLow: number | undefined,
   entryZoneHigh: number | undefined,
   stopLossPrice: number | undefined,
-  market: MarketEvaluation
+  market: MarketEvaluation,
+  pricingContext?: SmartMoneyPricingContext
 ) {
   if (entryZoneLow == null || entryZoneHigh == null) {
     return {
@@ -406,20 +289,25 @@ function adjustEntryZoneForMarket(
 
   if (stopLossPrice == null || stopLossPrice <= 0) {
     return {
-      entryZoneLow: roundPriceLevel(shiftedLow),
-      entryZoneHigh: roundPriceLevel(Math.max(shiftedHigh, shiftedLow * 1.01))
+      entryZoneLow: roundPriceLevel(shiftedLow, pricingContext, "down"),
+      entryZoneHigh: roundPriceLevel(Math.max(shiftedHigh, shiftedLow * 1.01), pricingContext, "down")
     };
   }
 
   const safeLow = Math.max(shiftedLow, stopLossPrice * 1.015);
   const safeHigh = Math.max(shiftedHigh, safeLow * 1.01, stopLossPrice * 1.04);
   return {
-    entryZoneLow: roundPriceLevel(safeLow),
-    entryZoneHigh: roundPriceLevel(safeHigh)
+    entryZoneLow: roundPriceLevel(safeLow, pricingContext, "down"),
+    entryZoneHigh: roundPriceLevel(safeHigh, pricingContext, "down")
   };
 }
 
-function buildBuyPlan(entryZoneLow?: number, entryZoneHigh?: number, stopLossPrice?: number): SmartMoneyBuyPlan | undefined {
+function buildBuyPlan(
+  entryZoneLow?: number,
+  entryZoneHigh?: number,
+  stopLossPrice?: number,
+  pricingContext?: SmartMoneyPricingContext
+): SmartMoneyBuyPlan | undefined {
   if (entryZoneLow == null || entryZoneHigh == null) {
     return undefined;
   }
@@ -428,38 +316,70 @@ function buildBuyPlan(entryZoneLow?: number, entryZoneHigh?: number, stopLossPri
   const high = Math.max(entryZoneLow, entryZoneHigh);
   const mid = (low + high) / 2;
   const normalizedStopLossPrice = stopLossPrice != null && stopLossPrice > 0 ? stopLossPrice : low;
+  const minimumRiskTick = resolveSmartMoneyTickSize(Math.max(normalizedStopLossPrice, low, high), pricingContext);
+  const firstBuyPrice = roundPriceLevel(high, pricingContext, "down");
+  const secondBuyPrice = roundPriceLevel(mid, pricingContext, "down");
+  const roundedStopLossPrice = roundPriceLevel(normalizedStopLossPrice, pricingContext, "down");
+  const thirdBuyPrice = Math.max(
+    roundPriceLevel(low, pricingContext, "down"),
+    roundPriceLevel(roundedStopLossPrice + minimumRiskTick, pricingContext, "up")
+  );
+
+  if (roundedStopLossPrice >= firstBuyPrice) {
+    return undefined;
+  }
+  if (thirdBuyPrice > firstBuyPrice) {
+    return undefined;
+  }
+
   return {
-    firstBuyPrice: roundPriceLevel(high),
-    secondBuyPrice: roundPriceLevel(mid),
-    thirdBuyPrice: roundPriceLevel(low),
-    stopLossPrice: roundPriceLevel(normalizedStopLossPrice)
+    firstBuyPrice,
+    secondBuyPrice: Math.max(secondBuyPrice, thirdBuyPrice),
+    thirdBuyPrice,
+    stopLossPrice: roundedStopLossPrice
   };
 }
 
 function resolvePullbackBuyPlan(params: {
-  breakoutLevel: number;
+  referenceSma20?: number;
   invalidationPrice: number;
-  filters: SmartMoneyPatternFilters;
+  pricingContext?: SmartMoneyPricingContext;
 }): SmartMoneyBuyPlan | undefined {
-  const firstBuyPrice = params.breakoutLevel * (1 - params.filters.pullbackBuyStartPercentFromPeak / 100);
-  if (firstBuyPrice <= 0) {
+  const firstBuyPrice = params.referenceSma20;
+  if (firstBuyPrice == null || firstBuyPrice <= 0) {
     return undefined;
   }
 
   const stopLossPrice =
     params.invalidationPrice > 0 && params.invalidationPrice < firstBuyPrice
       ? params.invalidationPrice
-      : firstBuyPrice * (1 - params.filters.maxSetupDistanceBelowBreakoutLevelPercent / 100);
-  if (stopLossPrice <= 0 || stopLossPrice >= firstBuyPrice) {
+      : undefined;
+  if (stopLossPrice == null || stopLossPrice <= 0 || stopLossPrice >= firstBuyPrice) {
     return undefined;
   }
 
   const riskBand = firstBuyPrice - stopLossPrice;
+  const minimumRiskTick = resolveSmartMoneyTickSize(firstBuyPrice, params.pricingContext);
+  const roundedFirstBuyPrice = roundPriceLevel(firstBuyPrice, params.pricingContext, "down");
+  const roundedSecondBuyPrice = roundPriceLevel(stopLossPrice + riskBand * 0.58, params.pricingContext, "down");
+  const roundedStopLossPrice = roundPriceLevel(stopLossPrice, params.pricingContext, "down");
+  const roundedThirdBuyPrice = Math.max(
+    roundPriceLevel(stopLossPrice + riskBand * 0.26, params.pricingContext, "down"),
+    roundPriceLevel(roundedStopLossPrice + minimumRiskTick, params.pricingContext, "up")
+  );
+
+  if (roundedStopLossPrice >= roundedFirstBuyPrice) {
+    return undefined;
+  }
+  if (roundedThirdBuyPrice > roundedFirstBuyPrice) {
+    return undefined;
+  }
+
   return {
-    firstBuyPrice: roundPriceLevel(firstBuyPrice),
-    secondBuyPrice: roundPriceLevel(stopLossPrice + riskBand * 0.58),
-    thirdBuyPrice: roundPriceLevel(stopLossPrice + riskBand * 0.26),
-    stopLossPrice: roundPriceLevel(stopLossPrice)
+    firstBuyPrice: roundedFirstBuyPrice,
+    secondBuyPrice: Math.max(roundedSecondBuyPrice, roundedThirdBuyPrice),
+    thirdBuyPrice: roundedThirdBuyPrice,
+    stopLossPrice: roundedStopLossPrice
   };
 }
 
@@ -470,6 +390,10 @@ function isPullbackBuySetup(params: {
   referenceCloseVsBreakoutLevelPercent?: number;
   filters: SmartMoneyPatternFilters;
 }) {
+  if (params.pullbackMaxDrawdownPercent < params.filters.pullbackBuyStartPercentFromPeak) {
+    return false;
+  }
+
   if (params.setupType === "volatile_power_digestion") {
     return true;
   }
@@ -481,12 +405,25 @@ function isPullbackBuySetup(params: {
   const distanceBelowBreakout = Math.abs(Math.min(params.referenceCloseVsBreakoutLevelPercent ?? 0, 0));
   return (
     params.leadInPriceChangePercent >= params.filters.minTightPullbackBuyLeadInPriceChangePercent &&
-    params.pullbackMaxDrawdownPercent >= params.filters.minPullbackBuyDrawdownPercent &&
+    params.pullbackMaxDrawdownPercent >= Math.max(params.filters.minPullbackBuyDrawdownPercent, params.filters.pullbackBuyStartPercentFromPeak) &&
     distanceBelowBreakout >= params.filters.minPullbackBuyDistanceBelowBreakoutPercent
   );
 }
 
-function isPullbackBuyActionable(referenceClose: number, buyPlan: SmartMoneyBuyPlan | undefined, invalidationPrice?: number) {
+function hasReachedSma20BuyZone(referenceClose: number, buyPlan: SmartMoneyBuyPlan | undefined, proximityPercent: number) {
+  if (!buyPlan) {
+    return false;
+  }
+
+  return referenceClose <= buyPlan.firstBuyPrice * (1 + proximityPercent / 100);
+}
+
+function isPullbackBuyActionable(
+  referenceClose: number,
+  buyPlan: SmartMoneyBuyPlan | undefined,
+  invalidationPrice: number | undefined,
+  proximityPercent: number
+) {
   if (!buyPlan) {
     return false;
   }
@@ -495,73 +432,23 @@ function isPullbackBuyActionable(referenceClose: number, buyPlan: SmartMoneyBuyP
     return false;
   }
 
-  return referenceClose <= buyPlan.firstBuyPrice && referenceClose > buyPlan.stopLossPrice;
+  return hasReachedSma20BuyZone(referenceClose, buyPlan, proximityPercent) && referenceClose > buyPlan.stopLossPrice;
 }
 
 function deriveEntryStrategy(stage: SmartMoneyPatternMatch["stage"], status: SmartMoneyPatternMatch["status"]): SmartMoneyEntryStrategy | undefined {
   if (stage === "breakout") {
+    if (status === "breakout_extended") {
+      return "no_chase";
+    }
     return status === "breakout_confirmed" ? "breakout_confirmed" : "breakout_ready";
+  }
+  if (stage === "setup" && status === "breakout_extended") {
+    return "no_chase";
   }
   if (stage === "setup" && status === "buy_ready") {
     return "pullback_buy";
   }
   return undefined;
-}
-
-function resolveWorkflowStatus(params: {
-  stage: SmartMoneyPatternMatch["stage"];
-  matched: boolean;
-  actionable: boolean;
-  referenceClose: number;
-  breakoutLevel?: number;
-  invalidationPrice?: number;
-  referenceCloseVsBreakoutLevelPercent?: number;
-  pullbackSessions: number;
-  sessionsSinceBreakout?: number;
-  minSetupPullbackSessions: number;
-  breakoutHoldTolerancePercent: number;
-}) {
-  const { breakoutLevel, invalidationPrice, referenceClose } = params;
-  if (invalidationPrice != null && referenceClose < invalidationPrice) {
-    return "broken" as const;
-  }
-
-  if (
-    params.stage === "breakout" &&
-    breakoutLevel != null &&
-    referenceClose < breakoutLevel * (1 - params.breakoutHoldTolerancePercent / 100)
-  ) {
-    return "broken" as const;
-  }
-
-  if (params.stage === "breakout") {
-    if (params.matched && params.actionable) {
-      return "breakout_confirmed" as const;
-    }
-    return "breakout_ready" as const;
-  }
-
-  if (params.stage === "setup") {
-    const distance = params.referenceCloseVsBreakoutLevelPercent ?? -100;
-    if (!params.matched) {
-      return "pivot_formed" as const;
-    }
-    if (params.pullbackSessions < params.minSetupPullbackSessions + 1) {
-      return "pullback_early" as const;
-    }
-    if (params.actionable && distance <= 1.5) {
-      return "buy_ready" as const;
-    }
-    if (distance > 1.5) {
-      return "breakout_ready" as const;
-    }
-    if (distance >= -8) {
-      return "pullback_ready" as const;
-    }
-    return "pullback_deep" as const;
-  }
-
-  return "none" as const;
 }
 
 function scoreVolumeQuality(point: ChartPoint, averageVolume20: number | undefined, minVolumeRatio: number, minTurnoverValue: number) {
@@ -778,14 +665,29 @@ function classifyPullback(
   baseClose: number
 ): PullbackAssessment {
   const highestHigh = Math.max(...pullbackPoints.map((point) => getPointHigh(point)));
-  const lowestLow = Math.min(...pullbackPoints.map((point) => getPointLow(point)));
+  const lowCandidates = pullbackPoints
+    .map((point) => ({
+      date: point.date,
+      value: getPointLow(point)
+    }))
+    .filter((item) => item.value > 0);
+  const closeCandidates = pullbackPoints.map((point) => ({
+    date: point.date,
+    value: point.close
+  }));
+  const lowestLow = lowCandidates.length ? Math.min(...lowCandidates.map((item) => item.value)) : undefined;
   const lowestClose = Math.min(...pullbackPoints.map((point) => point.close));
   const highestClose = Math.max(...pullbackPoints.map((point) => point.close));
-  const normalizedPullbackLow = lowestLow > 0 ? lowestLow : lowestClose;
+  const stopLossReferenceType: SmartMoneyStopLossReferenceType = lowestLow != null ? "session_low" : "close_fallback";
+  const stopLossReferencePrice = lowestLow ?? lowestClose;
+  const stopLossReferenceDate =
+    stopLossReferenceType === "session_low"
+      ? [...lowCandidates].reverse().find((item) => item.value === lowestLow)?.date
+      : [...closeCandidates].reverse().find((item) => item.value === lowestClose)?.date;
   const pullbackAvgVolume = averageNumberSeries(pullbackPoints.map((point) => point.volume));
   const pullbackVolumeRatioToLeadIn = ratio(pullbackAvgVolume, Math.max(leadInPoint.volume ?? 0, surgePeakPoint.volume ?? 0) || undefined);
   const pullbackMaxDrawdownPercent = Math.abs(percentChange(lowestClose, surgePeakPoint.close) ?? 0);
-  const pullbackRangePercent = Math.abs(percentChange(highestHigh, lowestLow) ?? 0);
+  const pullbackRangePercent = Math.abs(percentChange(highestHigh, stopLossReferencePrice) ?? 0);
   const closeRangePercent = Math.abs(percentChange(highestClose, lowestClose) ?? 0);
   const pullbackDownSessions = pullbackPoints.reduce((count, point, index) => count + (point.close < (index === 0 ? surgePeakPoint.close : pullbackPoints[index - 1].close) ? 1 : 0), 0);
   const referenceCloseVsPeakPercent = percentChange(referencePoint.close, surgePeakPoint.close) ?? -100;
@@ -838,7 +740,9 @@ function classifyPullback(
           : undefined,
     setupType,
     breakoutLevel: Math.max(getPointHigh(surgePeakPoint), highestHigh),
-    pullbackLow: normalizedPullbackLow,
+    pullbackLow: stopLossReferencePrice,
+    pullbackLowDate: stopLossReferenceDate,
+    pullbackLowType: stopLossReferenceType,
     pullbackVolumeRatioToLeadIn,
     pullbackRangePercent,
     closeRangePercent,
@@ -876,6 +780,9 @@ function toSummary(match: SmartMoneyPatternMatch, rejectReasons: string[]): Smar
     status: match.status,
     entryStrategy: match.entryStrategy,
     buyPlan: match.buyPlan,
+    referenceSma20: match.referenceSma20,
+    stopLossReferenceDate: match.stopLossReferenceDate,
+    stopLossReferenceType: match.stopLossReferenceType,
     lookbackWindowDays: match.lookbackWindowDays ?? 0,
     matched: match.matched,
     actionable: match.actionable,
@@ -950,10 +857,15 @@ function buildCandidateMatch(params: {
   entryZoneLow?: number;
   entryZoneHigh?: number;
   invalidationPrice?: number;
+  buyPlan?: SmartMoneyBuyPlan;
   buyPlanEligible?: boolean;
+  referenceSma20?: number;
+  stopLossReference?: StopLossReference;
   minSetupPullbackSessions: number;
   breakoutHoldTolerancePercent: number;
+  maxBreakoutExtensionPercent: number;
   regimeScoreWeight: number;
+  pricingContext?: SmartMoneyPricingContext;
 }): SmartMoneyPatternMatch {
   const rawScore = params.stage === "breakout" ? params.breakoutScore : params.setupScore;
   const regimeAdjustedScore = clamp(
@@ -976,10 +888,15 @@ function buildCandidateMatch(params: {
     pullbackSessions: params.pullbackPoints.length,
     sessionsSinceBreakout: params.breakoutPoint ? params.windowPoints.length - 1 - params.windowPoints.findIndex((point) => point.date === params.breakoutPoint?.date) : undefined,
     minSetupPullbackSessions: params.minSetupPullbackSessions,
-    breakoutHoldTolerancePercent: params.breakoutHoldTolerancePercent
+    breakoutHoldTolerancePercent: params.breakoutHoldTolerancePercent,
+    maxBreakoutExtensionPercent: params.maxBreakoutExtensionPercent
   });
   const entryStrategy = deriveEntryStrategy(params.stage, status);
-  const buyPlan = params.buyPlanEligible ? buildBuyPlan(params.entryZoneLow, params.entryZoneHigh, params.invalidationPrice) : undefined;
+  const buyPlan =
+    params.buyPlan ??
+    (params.buyPlanEligible
+      ? buildBuyPlan(params.entryZoneLow, params.entryZoneHigh, params.invalidationPrice, params.pricingContext)
+      : undefined);
   return {
     matched: params.matched,
     actionable: params.actionable,
@@ -987,6 +904,9 @@ function buildCandidateMatch(params: {
     status,
     entryStrategy,
     buyPlan,
+    referenceSma20: params.referenceSma20,
+    stopLossReferenceDate: params.stopLossReference?.date,
+    stopLossReferenceType: params.stopLossReference?.type,
     signal: toSignal(rawScore),
     patternScore: rawScore,
     setupScore: params.setupScore,
@@ -1068,11 +988,17 @@ export function evaluateSmartMoneyPattern(
   points: ChartPoint[],
   referenceIndex: number,
   filtersInput: SmartMoneyPatternFilters,
-  options?: { marketContext?: SmartMoneyMarketContext; debug?: boolean }
+  options?: { marketContext?: SmartMoneyMarketContext; debug?: boolean; pricingContext?: SmartMoneyPricingContext }
 ): SmartMoneyPatternMatch {
   const filters = resolveSmartMoneyPatternFilters(filtersInput);
   const referencePoint = points[referenceIndex];
   const referenceDate = referencePoint?.date ?? "";
+  const referenceSma20 = getAverageCloseThrough(points, referenceIndex, 20);
+  const visibleStopLossReference = getLowestPointReference(
+    points,
+    Math.max(0, referenceIndex - filters.stopLossLookbackSessions + 1),
+    referenceIndex
+  );
   const allCandidates: CandidateEvaluation[] = [];
   const rejected: SmartMoneyRejectReason[] = [];
   const market = evaluateMarketContext(options?.marketContext, filters);
@@ -1151,29 +1077,51 @@ export function evaluateSmartMoneyPattern(
           referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
           filters
         });
+        const stopLossReference =
+          visibleStopLossReference && visibleStopLossReference.price > 0
+            ? visibleStopLossReference
+            : {
+                price: setupPullback.pullbackLow,
+                date: setupPullback.pullbackLowDate,
+                type: setupPullback.pullbackLowType ?? "close_fallback"
+              };
         const pullbackBuyPlan =
           pullbackBuyEligible
             ? resolvePullbackBuyPlan({
-                breakoutLevel: setupPullback.breakoutLevel,
-                invalidationPrice: setupPullback.pullbackLow,
-                filters
+                referenceSma20,
+                invalidationPrice: stopLossReference.price,
+                pricingContext: options?.pricingContext
               })
             : undefined;
-        const adjustedSetupEntryZone = adjustEntryZoneForMarket(
-          pullbackBuyPlan?.thirdBuyPrice ?? setupEntryZone.entryZoneLow,
-          pullbackBuyPlan?.firstBuyPrice ?? setupEntryZone.entryZoneHigh,
-          setupPullback.pullbackLow,
-          market
-        );
+        const adjustedSetupEntryZone = pullbackBuyPlan
+          ? {
+              entryZoneLow: pullbackBuyPlan.thirdBuyPrice,
+              entryZoneHigh: pullbackBuyPlan.firstBuyPrice
+            }
+          : adjustEntryZoneForMarket(
+              setupEntryZone.entryZoneLow,
+              setupEntryZone.entryZoneHigh,
+              setupPullback.pullbackLow,
+              market,
+              options?.pricingContext
+            );
         const effectiveEntryZoneLow = adjustedSetupEntryZone.entryZoneLow;
         const effectiveEntryZoneHigh = adjustedSetupEntryZone.entryZoneHigh;
         const withinSetupEntryZone =
           pullbackBuyEligible && isWithinBand(referencePoint.close, effectiveEntryZoneLow, effectiveEntryZoneHigh);
         const belowSetupEntryZone =
           pullbackBuyEligible && effectiveEntryZoneLow != null && referencePoint.close < effectiveEntryZoneLow;
-        const pullbackBuyActionable = isPullbackBuyActionable(referencePoint.close, pullbackBuyPlan, setupPullback.pullbackLow);
-        const pullbackBuyStarted =
-          pullbackBuyPlan != null && referencePoint.close <= pullbackBuyPlan.firstBuyPrice;
+        const pullbackBuyActionable = isPullbackBuyActionable(
+          referencePoint.close,
+          pullbackBuyPlan,
+          stopLossReference.price,
+          filters.firstBuySma20ProximityPercent
+        );
+        const pullbackBuyStarted = hasReachedSma20BuyZone(
+          referencePoint.close,
+          pullbackBuyPlan,
+          filters.firstBuySma20ProximityPercent
+        );
         const pullbackBuyStillValid =
           pullbackBuyPlan != null && referencePoint.close > pullbackBuyPlan.stopLossPrice;
         const validityScore =
@@ -1184,6 +1132,8 @@ export function evaluateSmartMoneyPattern(
                 ? 84
                 : 68
             : referencePoint.close < setupPullback.pullbackLow
+              ? 10
+              : referencePoint.close < stopLossReference.price
               ? 10
               : withinSetupEntryZone
                 ? 88
@@ -1200,6 +1150,8 @@ export function evaluateSmartMoneyPattern(
                 ? 82
                 : 48
             : referencePoint.close < setupPullback.pullbackLow
+              ? 8
+              : referencePoint.close < stopLossReference.price
               ? 8
               : withinSetupEntryZone
                 ? 90
@@ -1228,6 +1180,8 @@ export function evaluateSmartMoneyPattern(
           100
         );
         const matched = setupScore >= setupThresholdScore;
+        // A setup is not executable just because it "matched".
+        // It only becomes actionable after the staged-buy logic says the first SMA20 buy area is live.
         const actionable =
           matched &&
           pullbackBuyEligible &&
@@ -1271,21 +1225,26 @@ export function evaluateSmartMoneyPattern(
           actionable,
           entryZoneLow: effectiveEntryZoneLow,
           entryZoneHigh: effectiveEntryZoneHigh,
-          invalidationPrice: setupPullback.pullbackLow,
+          invalidationPrice: stopLossReference.price,
+          buyPlan: pullbackBuyPlan,
           buyPlanEligible: pullbackBuyEligible,
+          referenceSma20,
+          stopLossReference,
           minSetupPullbackSessions: filters.minSetupPullbackSessions,
           breakoutHoldTolerancePercent: filters.breakoutHoldTolerancePercent,
+          maxBreakoutExtensionPercent: filters.maxBreakoutExtensionPercent,
           regimeScoreWeight: filters.regimeScoreWeight,
+          pricingContext: options?.pricingContext,
           reasons: [
             `Lead-in on ${leadInPoint.date} printed ${leadInPriceChangePercent.toFixed(1)}% with solid turnover support.`,
             `The stock formed a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile power digestion" : setupPullback.pullbackType === "time_correction" ? "time correction" : "tight price pullback"} with volume cooling to ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor and close compression of ${setupPullback.closeRangePercent.toFixed(1)}%.`,
             !pullbackBuyEligible
-              ? `Current structure is a ${setupPullback.setupType === "time_correction" ? "re-breakout watch" : "setup watch"} rather than a pullback-buy zone because the drawdown and distance profile do not fit the staged-buy archetype.`
+              ? `Current structure is a ${setupPullback.setupType === "time_correction" ? "re-breakout watch" : "setup watch"} rather than a pullback-buy zone because the drawdown, distance, or funded-peak damage do not fit the staged-buy archetype.`
               : pullbackBuyActionable
-                ? `Current price is inside the staged pullback-buy zone (${effectiveEntryZoneLow?.toFixed(0)}-${effectiveEntryZoneHigh?.toFixed(0)}) that starts after a ${filters.pullbackBuyStartPercentFromPeak}% drawdown from the funded peak.`
+                ? `Current price has approached the 20-day moving average (${referenceSma20?.toFixed(0) ?? "-"}) after a ${filters.pullbackBuyStartPercentFromPeak}%+ drawdown from the funded peak, so 1st-buy conditions are active with stop anchored to the visible ${filters.stopLossLookbackSessions}-session low on ${stopLossReference.date ?? "the prior low"} (${stopLossReference.price.toFixed(0)}).`
                 : pullbackBuyStarted
-                  ? `Current price is below the 1st buy trigger but too close to or below the protective stop zone (${setupPullback.pullbackLow.toFixed(0)}), so the setup stays under caution.`
-                  : `Current price is ${setupDistancePercent.toFixed(1)}% from the structural breakout level; pullback buy only starts once the stock trades at least ${filters.pullbackBuyStartPercentFromPeak}% below the funded peak and above the stop zone (${setupPullback.pullbackLow.toFixed(0)}).`
+                  ? `Current price has touched the SMA20-based 1st-buy area but is now too close to the protective stop at ${stopLossReference.price.toFixed(0)} from visible-window low ${stopLossReference.date ?? "the prior low"}, so the setup stays under caution.`
+                  : `Pullback-buy observation started after a ${filters.pullbackBuyStartPercentFromPeak}%+ drawdown from the funded peak, but 1st buy still waits for price to come within ${filters.firstBuySma20ProximityPercent}% of the 20-day moving average (${referenceSma20?.toFixed(0) ?? "-"}) while staying above the visible ${filters.stopLossLookbackSessions}-session low (${stopLossReference.price.toFixed(0)}).`
           ]
         });
         const enhancedSetupMatch = enhanceSmartMoneyMatch({
@@ -1293,6 +1252,7 @@ export function evaluateSmartMoneyPattern(
           points,
           referenceIndex,
           filters,
+          pricingContext: options?.pricingContext,
           rejectionReasons: !matched
             ? [`Setup score ${setupScore} was below the active threshold ${setupThresholdScore}.`]
             : actionable
@@ -1334,7 +1294,8 @@ export function evaluateSmartMoneyPattern(
             breakoutEntryZone.entryZoneLow,
             breakoutEntryZone.entryZoneHigh,
             setupPullback.pullbackLow,
-            market
+            market,
+            options?.pricingContext
           );
           const breakoutStrengthScore = clamp(Math.round(Math.min(100, (breakoutPriceChangePercent / filters.minBreakoutPriceChangePercent) * 45) * 0.35 + breakoutVolume.volumeQualityScore * 0.35 + (closedNearHigh ? 92 : 60) * 0.15 + clamp((percentChange(breakoutPoint.close, setupPullback.breakoutLevel) ?? 0) * 10 + 60, 0, 100) * 0.15), 0, 100);
           const breakoutScore = clamp(Math.round(setupScore * 0.35 + breakoutStrengthScore * 0.45 + (100 - breakoutFailureRiskScore) * 0.2), 0, 100);
@@ -1381,10 +1342,14 @@ export function evaluateSmartMoneyPattern(
             actionable: actionableBreakout,
             entryZoneLow: adjustedBreakoutEntryZone.entryZoneLow,
             entryZoneHigh: adjustedBreakoutEntryZone.entryZoneHigh,
-            invalidationPrice: setupPullback.pullbackLow,
+            invalidationPrice: stopLossReference.price,
+            referenceSma20,
+            stopLossReference,
             minSetupPullbackSessions: filters.minSetupPullbackSessions,
             breakoutHoldTolerancePercent: filters.breakoutHoldTolerancePercent,
+            maxBreakoutExtensionPercent: filters.maxBreakoutExtensionPercent,
             regimeScoreWeight: filters.regimeScoreWeight,
+            pricingContext: options?.pricingContext,
             reasons: [
               `Setup from ${leadInPoint.date} to ${surgePeakPoint.date} provided the base for a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile-power-digestion" : setupPullback.pullbackType === "time_correction" ? "time-correction" : "price-pullback"} breakout.`,
               `Breakout on ${breakoutPoint.date} cleared ${setupPullback.breakoutLevel.toFixed(2)} with ${breakoutPriceChangePercent.toFixed(1)}% price expansion and ${breakoutVolume.volumeQualityScore} volume-quality points.`,
@@ -1396,6 +1361,7 @@ export function evaluateSmartMoneyPattern(
             points,
             referenceIndex,
             filters,
+            pricingContext: options?.pricingContext,
             rejectionReasons: !matchedBreakout
               ? [`Breakout score ${breakoutScore} was below the active threshold ${breakoutThresholdScore}.`]
               : actionableBreakout
@@ -1427,6 +1393,7 @@ export function evaluateSmartMoneyPattern(
       points,
       referenceIndex,
       filters,
+      pricingContext: options?.pricingContext,
       rejectionReasons:
         rejected.slice(0, 5).map((item) => item.reason).filter(Boolean).length > 0
           ? rejected.slice(0, 5).map((item) => item.reason)
@@ -1442,7 +1409,7 @@ export function evaluateSmartMoneyPattern(
     evaluatedCandidateCount: allCandidates.length,
     rejectedCandidateCount: rejected.length,
     marketContextApplied: Boolean(options.marketContext),
-    selectionPolicy: "actionable > matched > breakout over setup > finalRankScore > patternScore"
+    selectionPolicy: "status > actionable > matched > breakout over setup > danger-adjusted finalRankScore > patternScore"
   };
 
   return {

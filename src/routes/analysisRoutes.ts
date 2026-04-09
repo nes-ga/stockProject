@@ -7,44 +7,46 @@ import {
   buildSmartMoneyPatternDiscordMessages,
   sendDiscordMessages
 } from "../services/discord.js";
-import { fetchBandPost } from "../services/bandClient.js";
 import { analyzeKoreanMovers } from "../services/koreanMovers.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
-import { readServerSwingPicks, writeServerSwingPicks } from "../services/serverSwingPicks.js";
+import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
+import { readServerLongTermPicks, writeServerLongTermPicks } from "../services/serverLongTermPicks.js";
+import { readServerSwingPickPayload, writeServerSwingPicks } from "../services/serverSwingPicks.js";
 import { getStockUniverse } from "../services/stockUniverse.js";
 import {
   analyzeRecommendationPatterns,
   analyzeRecommendations,
-  analyzeSmartMoneyPatterns,
-  analyzeSymbols
+  analyzeSmartMoneyPatterns
 } from "../services/stockAnalysis.js";
+import { getNewsSignalDashboard } from "../services/newsSignals.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
-import { extractStockSymbols } from "../services/symbolExtractor.js";
 
 export const analysisRoutes = Router();
 const logger = createLogger("analysisRoutes");
-
-const analysisSchema = z
-  .object({
-    accessToken: z.string().min(1).optional(),
-    bandKey: z.string().min(1).optional(),
-    postKey: z.string().min(1).optional(),
-    postText: z.string().min(1).optional()
-  })
-  .refine((value) => Boolean(value.postText || (value.accessToken && value.bandKey && value.postKey)), {
-    message: "Provide postText or accessToken + bandKey + postKey"
-  });
 
 const recommendationSchema = z.object({
   name: z.string().min(1).optional(),
   symbol: z.string().min(1),
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  note: z.string().min(1).optional()
+  note: z.string().min(1).optional(),
+  category: z.enum(["longTerm", "swing"]).optional()
 });
 
 const recommendationBatchSchema = z.object({
   items: z.array(recommendationSchema).min(1)
+});
+
+const realtimeStockSchema = z.object({
+  key: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  symbol: z.string().min(1),
+  anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  category: z.enum(["longTerm", "swing"]).optional()
+});
+
+const realtimeStockBatchSchema = z.object({
+  items: z.array(realtimeStockSchema).min(1).max(100)
 });
 
 const smartMoneyItemSchema = z.object({
@@ -167,6 +169,8 @@ const smartMoneyPatternSchema = z.object({
       minPullbackBuyDistanceBelowBreakoutPercent: z.coerce.number().min(0).max(40).optional(),
       minTightPullbackBuyLeadInPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       pullbackBuyStartPercentFromPeak: z.coerce.number().min(0).max(50).optional(),
+      firstBuySma20ProximityPercent: z.coerce.number().min(0).max(10).optional(),
+      stopLossLookbackSessions: z.coerce.number().int().min(20).max(90).optional(),
       tightPullbackBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       tightPullbackBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       timeCorrectionBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
@@ -213,11 +217,30 @@ const serverSwingPickSchema = z.object({
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
+  bucket: z.enum(["execution", "watch"]).optional(),
   category: z.literal("swing")
 });
 
 const serverSwingPickBatchSchema = z.object({
-  items: z.array(serverSwingPickSchema)
+  items: z.array(serverSwingPickSchema).optional(),
+  executionItems: z.array(serverSwingPickSchema).optional(),
+  watchItems: z.array(serverSwingPickSchema).optional()
+}).refine((value) => Array.isArray(value.items) || Array.isArray(value.executionItems) || Array.isArray(value.watchItems), {
+  message: "At least one swing pick list is required."
+});
+
+const serverLongTermPickSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  symbol: z.string().min(1),
+  anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  note: z.string().min(1).optional(),
+  category: z.literal("longTerm")
+});
+
+const serverLongTermPickBatchSchema = z.object({
+  items: z.array(serverLongTermPickSchema)
 });
 
 const moversDiscordSchema = z.object({
@@ -230,47 +253,6 @@ const moversDiscordSchema = z.object({
   webhookUrl: z.string().url().optional(),
   username: z.string().min(1).max(80).optional(),
   mention: z.string().min(1).max(200).optional()
-});
-
-analysisRoutes.post("/from-post", async (request, response, next) => {
-  try {
-    logger.info("from-post:start");
-    const input = analysisSchema.parse(request.body);
-    const post =
-      input.postText != null
-        ? {
-            postKey: input.postKey,
-            content: input.postText
-          }
-        : await fetchBandPost({
-            accessToken: input.accessToken!,
-            bandKey: input.bandKey!,
-            postKey: input.postKey!
-          });
-
-    const symbols = extractStockSymbols(post.content);
-    if (!symbols.length) {
-      response.status(422).json({
-        error: "No stock symbols found in the post",
-        post
-      });
-      return;
-    }
-
-    const analyses = await analyzeSymbols(symbols);
-    logger.info("from-post:success", {
-      symbolCount: symbols.length,
-      analysisCount: analyses.length
-    });
-    response.json({
-      post,
-      symbols,
-      analyses
-    });
-  } catch (error) {
-    logger.error("from-post:failed", toErrorContext(error));
-    next(error);
-  }
 });
 
 analysisRoutes.post("/recommendations", async (request, response, next) => {
@@ -429,13 +411,19 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
 
 analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
   try {
-    const items = await readServerSwingPicks();
+    const payload = await readServerSwingPickPayload();
     logger.info("server-swing-picks:get:success", {
-      count: items.length
+      count: payload.items.length,
+      executionCount: payload.executionItems.length,
+      watchCount: payload.watchItems.length
     });
     response.json({
-      count: items.length,
-      items
+      count: payload.items.length,
+      executionCount: payload.executionItems.length,
+      watchCount: payload.watchItems.length,
+      items: payload.items,
+      executionItems: payload.executionItems,
+      watchItems: payload.watchItems
     });
   } catch (error) {
     logger.error("server-swing-picks:get:failed", toErrorContext(error));
@@ -446,8 +434,48 @@ analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
 analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
   try {
     const input = serverSwingPickBatchSchema.parse(request.body);
-    const items = await writeServerSwingPicks(input.items);
+    const payload = await writeServerSwingPicks(input);
     logger.info("server-swing-picks:save:success", {
+      count: payload.items.length,
+      executionCount: payload.executionItems.length,
+      watchCount: payload.watchItems.length
+    });
+    response.json({
+      ok: true,
+      count: payload.items.length,
+      executionCount: payload.executionItems.length,
+      watchCount: payload.watchItems.length,
+      items: payload.items,
+      executionItems: payload.executionItems,
+      watchItems: payload.watchItems
+    });
+  } catch (error) {
+    logger.error("server-swing-picks:save:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/server-long-term-picks", async (_request, response, next) => {
+  try {
+    const items = await readServerLongTermPicks();
+    logger.info("server-long-term-picks:get:success", {
+      count: items.length
+    });
+    response.json({
+      count: items.length,
+      items
+    });
+  } catch (error) {
+    logger.error("server-long-term-picks:get:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/server-long-term-picks", async (request, response, next) => {
+  try {
+    const input = serverLongTermPickBatchSchema.parse(request.body);
+    const items = await writeServerLongTermPicks(input.items);
+    logger.info("server-long-term-picks:save:success", {
       count: items.length
     });
     response.json({
@@ -456,7 +484,7 @@ analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
       items
     });
   } catch (error) {
-    logger.error("server-swing-picks:save:failed", toErrorContext(error));
+    logger.error("server-long-term-picks:save:failed", toErrorContext(error));
     next(error);
   }
 });
@@ -471,6 +499,51 @@ analysisRoutes.get("/market-watch", async (request, response, next) => {
     response.json(payload);
   } catch (error) {
     logger.error("market-watch:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/realtime-stocks", async (request, response, next) => {
+  try {
+    const input = realtimeStockBatchSchema.parse(request.body);
+    const payload = await getRealtimeStockSnapshots(input.items);
+    logger.info("realtime-stocks:success", {
+      count: payload.count,
+      fetchedAt: payload.fetchedAt
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("realtime-stocks:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/realtime-stock-detail", async (request, response, next) => {
+  try {
+    const input = realtimeStockSchema.parse(request.body);
+    const payload = await getRealtimeStockDetail(input);
+    logger.info("realtime-stock-detail:success", {
+      symbol: payload.symbol,
+      latestDate: payload.latestDate,
+      fetchedAt: payload.fetchedAt
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("realtime-stock-detail:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/news-signals", (_request, response, next) => {
+  try {
+    const payload = getNewsSignalDashboard();
+    logger.info("news-signals:success", {
+      articleCount: payload.articleCount,
+      signalCount: payload.signalCount
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("news-signals:failed", toErrorContext(error));
     next(error);
   }
 });

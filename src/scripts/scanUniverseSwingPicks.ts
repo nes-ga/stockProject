@@ -9,20 +9,29 @@ type UniverseItem = Awaited<ReturnType<typeof getStockUniverse>>["items"][number
 
 function buildNote(pattern: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>>["pattern"]) {
   const stageLabel =
-    pattern.stage === "breakout" ? "\uC2A4\uC719 \uC644\uC131\uD615 \uAC10\uC9C0" : "\uC2A4\uC719 \uC18C\uD654\uD615 \uAC10\uC9C0";
+    pattern.status === "breakout_extended"
+      ? "\uC2A4\uC719 \uCD94\uACA9 \uAE08\uC9C0 \uAC10\uC9C0"
+      : pattern.stage === "breakout"
+      ? "\uC2A4\uC719 \uC644\uC131\uD615 \uAC10\uC9C0"
+      : pattern.status === "buy_ready"
+        ? "\uC2A4\uC719 1\uCC28\uB9E4\uC218 \uAD6C\uAC04 \uAC10\uC9C0"
+        : "\uC2A4\uC719 \uC18C\uD654\uD615 \uAC10\uC9C0";
   const buyPlanText = pattern.buyPlan
     ? `\uB9E4\uC218 ${Math.round(pattern.buyPlan.firstBuyPrice)}/${Math.round(pattern.buyPlan.secondBuyPrice)}/${Math.round(pattern.buyPlan.thirdBuyPrice)}`
     : `\uB9E4\uC218 ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
   const resolvedStopPrice = pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice;
   const stopText = `\uC190\uC808 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
+  const stopRefText = `\uC190\uC808\uAE30\uC900 ${pattern.stopLossReferenceDate ?? "-"} ${pattern.stopLossReferenceType === "close_fallback" ? "close" : "low"}`;
 
   return [
     stageLabel,
     `\uC120\uD589 \uC218\uAE09 ${pattern.leadInDate ?? "-"}`,
     `\uAE09\uB4F1 \uD53C\uD06C ${pattern.surgePeakDate ?? pattern.breakoutDate ?? "-"}`,
     `\uB20C\uB9BC ${pattern.pullbackStartDate ?? "-"}~${pattern.pullbackEndDate ?? "-"}`,
+    `SMA20 ${pattern.referenceSma20 != null ? Math.round(pattern.referenceSma20) : "-"}`,
     buyPlanText,
     stopText,
+    stopRefText,
     `\uC810\uC218 ${pattern.finalRankScore ?? pattern.patternScore}`
   ].join(" | ");
 }
@@ -37,6 +46,7 @@ function toServerSwingPick(item: UniverseItem, analysis: Awaited<ReturnType<type
         ? analysis.pattern.breakoutDate ?? analysis.tradingReferenceDate
         : analysis.tradingReferenceDate,
     note: buildNote(analysis.pattern),
+    bucket: analysis.pattern.actionable ? ("execution" as const) : ("watch" as const),
     category: "swing" as const
   };
 }
@@ -72,13 +82,17 @@ async function scanChunk(chunk: UniverseItem[]) {
     }))
   );
 
-  const matched: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
+  const actionable: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
+  const watch: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
   let failures = 0;
 
   for (const result of settled) {
     if (result.status === "fulfilled") {
-      if (result.value.analysis.pattern.matched) {
-        matched.push(result.value);
+      // The saved swing list is an execution list, not a watchlist.
+      if (result.value.analysis.pattern.actionable) {
+        actionable.push(result.value);
+      } else if (result.value.analysis.pattern.matched) {
+        watch.push(result.value);
       }
     } else {
       failures += 1;
@@ -86,7 +100,8 @@ async function scanChunk(chunk: UniverseItem[]) {
   }
 
   return {
-    matched,
+    actionable,
+    watch,
     failures
   };
 }
@@ -94,7 +109,8 @@ async function scanChunk(chunk: UniverseItem[]) {
 async function main() {
   const universe = await getStockUniverse({ forceRefresh: true });
   const targets = universe.items.filter((item) => TARGET_MARKETS.has(item.market));
-  const matched: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
+  const actionable: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
+  const watch: Array<{ item: UniverseItem; analysis: Awaited<ReturnType<typeof analyzeSmartMoneyPattern>> }> = [];
   let failures = 0;
 
   console.log(`Scanning ${targets.length} symbols across KOSPI/KOSDAQ with chunk size ${CHUNK_SIZE}...`);
@@ -102,20 +118,28 @@ async function main() {
   for (let index = 0; index < targets.length; index += CHUNK_SIZE) {
     const chunk = targets.slice(index, index + CHUNK_SIZE);
     const result = await scanChunk(chunk);
-    matched.push(...result.matched);
+    actionable.push(...result.actionable);
+    watch.push(...result.watch);
     failures += result.failures;
     console.log(
-      `Processed ${Math.min(index + chunk.length, targets.length)}/${targets.length} | matched ${matched.length} | failures ${failures}`
+      `Processed ${Math.min(index + chunk.length, targets.length)}/${targets.length} | actionable ${actionable.length} | watch ${watch.length} | failures ${failures}`
     );
   }
 
-  matched.sort(compareAnalyses);
+  actionable.sort(compareAnalyses);
+  watch.sort(compareAnalyses);
 
-  const items = matched.map(({ item, analysis }) => toServerSwingPick(item, analysis));
-  await writeServerSwingPicks(items);
+  const executionItems = actionable.map(({ item, analysis }) => toServerSwingPick(item, analysis));
+  const watchItems = watch.map(({ item, analysis }) => toServerSwingPick(item, analysis));
+  const payload = await writeServerSwingPicks({
+    executionItems,
+    watchItems
+  });
 
-  console.log(`Completed universe scan: ${items.length} matched / ${targets.length} scanned / ${failures} failed`);
-  for (const item of items.slice(0, 30)) {
+  console.log(
+    `Completed universe scan: ${payload.executionItems.length} actionable / ${payload.watchItems.length} watch / ${targets.length} scanned / ${failures} failed`
+  );
+  for (const item of payload.executionItems.slice(0, 30)) {
     console.log(`- ${item.name} (${item.symbol}) :: ${item.note}`);
   }
 }

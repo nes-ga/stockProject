@@ -7,12 +7,14 @@ import type {
   SmartMoneyRiskFactor,
   SmartMoneyTradePlan
 } from "../types.js";
+import { type SmartMoneyPricingContext, normalizePriceByTick } from "./smartMoney/pricing.js";
 
 type EnhanceSmartMoneyMatchInput = {
   match: SmartMoneyPatternMatch;
   points: ChartPoint[];
   referenceIndex: number;
   filters: SmartMoneyPatternFilters;
+  pricingContext?: SmartMoneyPricingContext;
   rejectionReasons?: string[];
 };
 
@@ -32,18 +34,23 @@ const DANGER_SCORE_SETTINGS = {
   setupValidityRiskWeight: 0.14,
   setupPeakDamageWeight: 0.6,
   setupBaseRiskCap: 22,
-  applyPenaltyToRank: false,
-  finalPenaltyWeight: 0.12,
-  finalPenaltyCap: 12,
+  applyPenaltyToRank: true,
+  finalPenaltyWeight: 0.18,
+  finalPenaltyCap: 18,
+  actionableBlockThreshold: 60,
   rejectionAmplifierThreshold: 78
+} as const;
+
+const EXECUTION_GUARD_SETTINGS = {
+  minimumRiskRewardRatio: 1.8
 } as const;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function roundPrice(value?: number): number | undefined {
-  return value == null || !Number.isFinite(value) ? undefined : Math.round(value * 100) / 100;
+function roundPrice(value?: number, pricingContext?: SmartMoneyPricingContext): number | undefined {
+  return normalizePriceByTick(value, pricingContext);
 }
 
 function average(values: number[]): number | undefined {
@@ -90,6 +97,9 @@ function deriveBreakoutStatus(match: SmartMoneyPatternMatch): SmartMoneyDebugInf
   if (match.status === "breakout_confirmed") {
     return "confirmed";
   }
+  if (match.status === "breakout_extended") {
+    return "watch";
+  }
   if (match.status === "breakout_ready" || match.stage === "breakout") {
     return "ready";
   }
@@ -115,20 +125,22 @@ function deriveSupportStatus(match: SmartMoneyPatternMatch): SmartMoneyDebugInfo
   return "holding";
 }
 
-function buildTradePlan(match: SmartMoneyPatternMatch): SmartMoneyTradePlan | undefined {
-  const zoneLow = roundPrice(match.buyPlan?.thirdBuyPrice ?? match.entryZoneLow);
-  const zoneHigh = roundPrice(match.buyPlan?.firstBuyPrice ?? match.entryZoneHigh);
-  const breakoutPrice = roundPrice(match.breakoutLevel ?? match.surgePeakHigh ?? match.referenceClose);
-  const invalidationPrice = roundPrice(match.invalidationPrice);
-  const stopLoss = roundPrice(match.buyPlan?.stopLossPrice ?? invalidationPrice);
-  const technicalEntry = zoneLow != null && zoneHigh != null ? (zoneLow + zoneHigh) / 2 : match.referenceClose;
+function buildTradePlan(match: SmartMoneyPatternMatch, pricingContext?: SmartMoneyPricingContext): SmartMoneyTradePlan | undefined {
+  const zoneLow = normalizePriceByTick(match.buyPlan?.thirdBuyPrice ?? match.entryZoneLow, pricingContext, "down");
+  const zoneHigh = normalizePriceByTick(match.buyPlan?.firstBuyPrice ?? match.entryZoneHigh, pricingContext, "down");
+  const breakoutPrice = normalizePriceByTick(match.breakoutLevel ?? match.surgePeakHigh ?? match.referenceClose, pricingContext, "up");
+  const invalidationPrice = normalizePriceByTick(match.invalidationPrice, pricingContext, "down");
+  const stopLoss = normalizePriceByTick(match.buyPlan?.stopLossPrice ?? invalidationPrice, pricingContext, "down");
+  const technicalEntry = zoneLow != null && zoneHigh != null ? (zoneLow + zoneHigh) / 2 : undefined;
   const riskPerShare =
     technicalEntry != null && stopLoss != null && technicalEntry > stopLoss ? technicalEntry - stopLoss : undefined;
   const targetPrice =
     breakoutPrice != null && riskPerShare != null && riskPerShare > 0
-      ? roundPrice(
+      ? normalizePriceByTick(
           (match.stage === "setup" ? Math.max(technicalEntry ?? breakoutPrice, breakoutPrice) : Math.max(match.referenceClose ?? breakoutPrice, breakoutPrice)) +
-            riskPerShare * 2
+            riskPerShare * 2,
+          pricingContext,
+          "down"
         )
       : undefined;
   const riskRewardRatio =
@@ -137,7 +149,9 @@ function buildTradePlan(match: SmartMoneyPatternMatch): SmartMoneyTradePlan | un
       : undefined;
 
   const notes = [
-    match.stage === "breakout"
+    match.entryStrategy === "no_chase"
+      ? "Breakout structure exists, but price is already extended beyond the preferred chase threshold."
+      : match.stage === "breakout"
       ? "Breakout price is the structural trigger; prefer entries that do not stretch far above it."
       : "Buy zone is derived from the pullback structure and existing staged-buy logic.",
     invalidationPrice != null
@@ -174,6 +188,32 @@ function buildTradePlan(match: SmartMoneyPatternMatch): SmartMoneyTradePlan | un
   };
 }
 
+function resolveExecutionRiskRewardRatio(match: SmartMoneyPatternMatch): number | undefined {
+  const idealBuyZone = match.tradePlan?.idealBuyZone;
+  const stopLoss = match.tradePlan?.stopLoss ?? match.tradePlan?.invalidationPrice;
+  if (!idealBuyZone || stopLoss == null) {
+    return undefined;
+  }
+
+  const entryPrice = (idealBuyZone.low + idealBuyZone.high) / 2;
+  if (entryPrice <= stopLoss) {
+    return undefined;
+  }
+
+  const riskPerShare = entryPrice - stopLoss;
+  const rewardReference =
+    match.stage === "setup"
+      ? match.tradePlan?.breakoutPrice
+      : match.tradePlan?.breakoutPrice != null
+        ? match.tradePlan.breakoutPrice + riskPerShare
+        : match.tradePlan?.targetPrice;
+  if (rewardReference == null || rewardReference <= entryPrice) {
+    return undefined;
+  }
+
+  return Math.round(((rewardReference - entryPrice) / riskPerShare) * 100) / 100;
+}
+
 function addRiskFactor(
   riskFactors: SmartMoneyRiskFactor[],
   params: Omit<SmartMoneyRiskFactor, "metrics"> & { metrics?: SmartMoneyRiskFactor["metrics"] }
@@ -191,7 +231,8 @@ function addRiskFactor(
 function evaluateRiskFactors(
   match: SmartMoneyPatternMatch,
   points: ChartPoint[],
-  referenceIndex: number
+  referenceIndex: number,
+  pricingContext?: SmartMoneyPricingContext
 ): { dangerScore: number; dangerPenalty: number; riskFactors: SmartMoneyRiskFactor[] } {
   if (match.stage === "none") {
     return {
@@ -283,7 +324,7 @@ function evaluateRiskFactors(
         scoreImpact: DANGER_SCORE_SETTINGS.weakBounceImpact,
         description: "Price keeps revisiting the support area but rebounds are shallow, which can precede a breakdown if demand does not step in.",
         metrics: {
-          supportPrice: roundPrice(supportPrice),
+          supportPrice: roundPrice(supportPrice, pricingContext),
           weakBounceCount
         }
       });
@@ -305,7 +346,7 @@ function evaluateRiskFactors(
             : DANGER_SCORE_SETTINGS.failedBreakoutMediumImpact,
         description: "The stock keeps probing the peak/breakout area but cannot hold above it, which weakens the quality of the pattern.",
         metrics: {
-          breakoutReference: roundPrice(breakoutReference),
+          breakoutReference: roundPrice(breakoutReference, pricingContext),
           failedAttemptCount
         }
       });
@@ -328,9 +369,9 @@ function evaluateRiskFactors(
           ? "Price already closed below the lower support/invalidation area, so the structure is close to invalid."
           : "Intraday tests have started to undercut the lower box/support area, which raises failure risk.",
         metrics: {
-          supportPrice: roundPrice(supportPrice),
-          latestLow: roundPrice(getPointLow(latestBreak)),
-          latestClose: roundPrice(latestBreak.close)
+          supportPrice: roundPrice(supportPrice, pricingContext),
+          latestLow: roundPrice(getPointLow(latestBreak), pricingContext),
+          latestClose: roundPrice(latestBreak.close, pricingContext)
         }
       });
     }
@@ -405,7 +446,8 @@ function buildConditionChecks(
   match: SmartMoneyPatternMatch,
   filters: SmartMoneyPatternFilters,
   supportStatus: SmartMoneyDebugInfo["supportStatus"],
-  breakoutStatus: SmartMoneyDebugInfo["breakoutStatus"]
+  breakoutStatus: SmartMoneyDebugInfo["breakoutStatus"],
+  dangerScore: number
 ): SmartMoneyConditionCheck[] {
   const scoreThreshold =
     match.stage === "breakout"
@@ -490,6 +532,15 @@ function buildConditionChecks(
           : `Setup is ${match.referenceCloseVsBreakoutLevelPercent?.toFixed(1) ?? "-"}% from the breakout line and breakout status is ${breakoutStatus}.`
     },
     {
+      key: "danger_score",
+      label: "Danger score",
+      passed: dangerScore < DANGER_SCORE_SETTINGS.actionableBlockThreshold,
+      actual: dangerScore,
+      threshold: DANGER_SCORE_SETTINGS.actionableBlockThreshold - 1,
+      comparator: "<=",
+      details: `Danger score ${dangerScore} is compared against the watch-only threshold ${DANGER_SCORE_SETTINGS.actionableBlockThreshold}.`
+    },
+    {
       key: "score_threshold",
       label: "Pattern score threshold",
       passed: match.patternScore >= scoreThreshold,
@@ -508,6 +559,109 @@ function buildConditionChecks(
       details: `Market adjustment is ${match.marketContext?.marketScoreAdjustment ?? 0} and actionable permission is ${match.marketContext?.actionableAllowed ? "on" : "off"}.`
     }
   ];
+}
+
+function applyDangerControls(match: SmartMoneyPatternMatch, dangerScore: number) {
+  const dangerManaged = dangerScore >= DANGER_SCORE_SETTINGS.actionableBlockThreshold;
+  if (!dangerManaged) {
+    return {
+      actionable: match.actionable,
+      status: match.status,
+      entryStrategy: match.entryStrategy,
+      reason: undefined
+    };
+  }
+
+  let status = match.status;
+  let entryStrategy = match.entryStrategy;
+
+  if (status === "buy_ready") {
+    status = "pullback_ready";
+    entryStrategy = undefined;
+  } else if (status === "breakout_confirmed") {
+    status = "breakout_ready";
+    entryStrategy = "breakout_ready";
+  }
+
+  return {
+    actionable: false,
+    status,
+    entryStrategy,
+    reason: `Danger score ${dangerScore} exceeded ${DANGER_SCORE_SETTINGS.actionableBlockThreshold}, so the setup was downgraded to watch-only.`
+  };
+}
+
+function applyExecutionGuards(match: SmartMoneyPatternMatch): {
+  match: SmartMoneyPatternMatch;
+  reasons: string[];
+} {
+  const stopLoss = match.buyPlan?.stopLossPrice ?? match.tradePlan?.stopLoss ?? match.tradePlan?.invalidationPrice ?? match.invalidationPrice;
+  const reasons: string[] = [];
+  let buyPlan = match.buyPlan;
+  let entryZoneLow = match.entryZoneLow;
+  let entryZoneHigh = match.entryZoneHigh;
+
+  if (buyPlan && stopLoss != null) {
+    const buyPrices = [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice].filter(
+      (value): value is number => typeof value === "number" && Number.isFinite(value)
+    );
+    if (buyPrices.some((value) => value <= stopLoss)) {
+      reasons.push(`Buy plan is invalid because at least one staged buy price is not above the stop-loss line ${stopLoss.toFixed(2)}.`);
+      buyPlan = undefined;
+    }
+  }
+
+  const effectiveEntryZoneLow = buyPlan?.thirdBuyPrice ?? match.tradePlan?.idealBuyZone?.low ?? entryZoneLow;
+  const effectiveEntryZoneHigh = buyPlan?.firstBuyPrice ?? match.tradePlan?.idealBuyZone?.high ?? entryZoneHigh;
+  if (
+    stopLoss != null &&
+    effectiveEntryZoneLow != null &&
+    effectiveEntryZoneHigh != null &&
+    (effectiveEntryZoneLow <= stopLoss || effectiveEntryZoneHigh <= stopLoss)
+  ) {
+    reasons.push(`Entry zone is invalid because it overlaps or falls below the stop-loss line ${stopLoss.toFixed(2)}.`);
+    entryZoneLow = undefined;
+    entryZoneHigh = undefined;
+  }
+
+  const executionRiskRewardRatio = resolveExecutionRiskRewardRatio(match);
+  if (executionRiskRewardRatio == null || executionRiskRewardRatio < EXECUTION_GUARD_SETTINGS.minimumRiskRewardRatio) {
+    reasons.push(
+      `Execution risk-reward ratio ${executionRiskRewardRatio?.toFixed(2) ?? "-"} is below the minimum actionable threshold ${EXECUTION_GUARD_SETTINGS.minimumRiskRewardRatio.toFixed(1)}.`
+    );
+  }
+
+  if (!reasons.length) {
+    return {
+      match,
+      reasons
+    };
+  }
+
+  let status = match.status;
+  let entryStrategy = match.entryStrategy;
+  if (match.actionable) {
+    if (status === "buy_ready") {
+      status = "pullback_ready";
+      entryStrategy = undefined;
+    } else if (status === "breakout_confirmed") {
+      status = "breakout_ready";
+      entryStrategy = "breakout_ready";
+    }
+  }
+
+  return {
+    match: {
+      ...match,
+      actionable: false,
+      status,
+      entryStrategy,
+      buyPlan,
+      entryZoneLow,
+      entryZoneHigh
+    },
+    reasons
+  };
 }
 
 function buildDebugInfo(
@@ -579,25 +733,59 @@ function deriveRejectionReasons(
 }
 
 export function enhanceSmartMoneyMatch(input: EnhanceSmartMoneyMatchInput): SmartMoneyPatternMatch {
-  const tradePlan = buildTradePlan(input.match);
-  const workingMatch: SmartMoneyPatternMatch = {
+  const initialTradePlan = buildTradePlan(input.match, input.pricingContext);
+  const scoringMatch: SmartMoneyPatternMatch = {
     ...input.match,
-    tradePlan
+    tradePlan: initialTradePlan
   };
-  const { dangerScore, dangerPenalty, riskFactors } = evaluateRiskFactors(workingMatch, input.points, input.referenceIndex);
-  const conditions = buildConditionChecks(workingMatch, input.filters, deriveSupportStatus(workingMatch), deriveBreakoutStatus(workingMatch));
-  const rejectionReasons = deriveRejectionReasons(
+  const { dangerScore, dangerPenalty, riskFactors } = evaluateRiskFactors(
+    scoringMatch,
+    input.points,
+    input.referenceIndex,
+    input.pricingContext
+  );
+  const managed = applyDangerControls(scoringMatch, dangerScore);
+  const workingMatch: SmartMoneyPatternMatch = {
+    ...scoringMatch,
+    actionable: managed.actionable,
+    status: managed.status,
+    entryStrategy: managed.entryStrategy
+  };
+  const tradePlan = buildTradePlan(
     {
       ...workingMatch,
       dangerScore
     },
+    input.pricingContext
+  );
+  const executionManaged = applyExecutionGuards({
+    ...workingMatch,
+    tradePlan
+  });
+  const finalizedTradePlan = buildTradePlan(executionManaged.match, input.pricingContext);
+  const finalizedMatch: SmartMoneyPatternMatch = {
+    ...executionManaged.match,
+    tradePlan: finalizedTradePlan
+  };
+  const conditions = buildConditionChecks(
+    finalizedMatch,
+    input.filters,
+    deriveSupportStatus(finalizedMatch),
+    deriveBreakoutStatus(finalizedMatch),
+    dangerScore
+  );
+  const rejectionReasons = deriveRejectionReasons(
+    {
+      ...finalizedMatch,
+      dangerScore
+    },
     conditions,
     riskFactors,
-    input.rejectionReasons ?? []
+    [...(input.rejectionReasons ?? []), ...(managed.reason ? [managed.reason] : []), ...executionManaged.reasons]
   );
   const debugInfo = buildDebugInfo(
     {
-      ...workingMatch,
+      ...finalizedMatch,
       dangerScore,
       riskFactors,
       rejectionReasons
@@ -607,12 +795,12 @@ export function enhanceSmartMoneyMatch(input: EnhanceSmartMoneyMatchInput): Smar
   );
 
   return {
-    ...workingMatch,
+    ...finalizedMatch,
     dangerScore,
     riskFactors,
-    rejectionReasons: workingMatch.matched && workingMatch.actionable ? [] : rejectionReasons,
+    rejectionReasons: finalizedMatch.matched && finalizedMatch.actionable ? [] : rejectionReasons,
     debugInfo,
     finalRankScore:
-      workingMatch.finalRankScore == null ? undefined : clamp(Math.round(workingMatch.finalRankScore - dangerPenalty), 0, 100)
+      finalizedMatch.finalRankScore == null ? undefined : clamp(Math.round(finalizedMatch.finalRankScore - dangerPenalty), 0, 100)
   };
 }
