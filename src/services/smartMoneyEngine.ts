@@ -343,6 +343,8 @@ function buildBuyPlan(
 function resolvePullbackBuyPlan(params: {
   referenceSma20?: number;
   invalidationPrice: number;
+  secondEntryRiskRatio: number;
+  thirdEntryRiskRatio: number;
   pricingContext?: SmartMoneyPricingContext;
 }): SmartMoneyBuyPlan | undefined {
   const firstBuyPrice = params.referenceSma20;
@@ -361,10 +363,14 @@ function resolvePullbackBuyPlan(params: {
   const riskBand = firstBuyPrice - stopLossPrice;
   const minimumRiskTick = resolveSmartMoneyTickSize(firstBuyPrice, params.pricingContext);
   const roundedFirstBuyPrice = roundPriceLevel(firstBuyPrice, params.pricingContext, "down");
-  const roundedSecondBuyPrice = roundPriceLevel(stopLossPrice + riskBand * 0.58, params.pricingContext, "down");
+  const roundedSecondBuyPrice = roundPriceLevel(
+    stopLossPrice + riskBand * params.secondEntryRiskRatio,
+    params.pricingContext,
+    "down"
+  );
   const roundedStopLossPrice = roundPriceLevel(stopLossPrice, params.pricingContext, "down");
   const roundedThirdBuyPrice = Math.max(
-    roundPriceLevel(stopLossPrice + riskBand * 0.26, params.pricingContext, "down"),
+    roundPriceLevel(stopLossPrice + riskBand * params.thirdEntryRiskRatio, params.pricingContext, "down"),
     roundPriceLevel(roundedStopLossPrice + minimumRiskTick, params.pricingContext, "up")
   );
 
@@ -1090,6 +1096,8 @@ export function evaluateSmartMoneyPattern(
             ? resolvePullbackBuyPlan({
                 referenceSma20,
                 invalidationPrice: stopLossReference.price,
+                secondEntryRiskRatio: filters.pullbackBuySecondEntryRiskRatio,
+                thirdEntryRiskRatio: filters.pullbackBuyThirdEntryRiskRatio,
                 pricingContext: options?.pricingContext
               })
             : undefined;

@@ -72,6 +72,8 @@ export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPa
     minTightPullbackBuyLeadInPriceChangePercent: 20,
     pullbackBuyStartPercentFromPeak: 20,
     firstBuySma20ProximityPercent: 2.5,
+    pullbackBuySecondEntryRiskRatio: 0.45,
+    pullbackBuyThirdEntryRiskRatio: 0.15,
     stopLossLookbackSessions: 45,
     tightPullbackBuyZoneLowRetracementRatio: 0.18,
     tightPullbackBuyZoneHighRetracementRatio: 0.72,
@@ -104,6 +106,12 @@ export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPa
 
   merged.minBreakoutTurnoverValue =
     overrides?.minBreakoutTurnoverValue ?? Math.max(merged.minTurnoverValue, merged.minBreakoutTurnoverValue);
+
+  merged.pullbackBuySecondEntryRiskRatio = Math.min(Math.max(merged.pullbackBuySecondEntryRiskRatio, 0.1), 0.9);
+  merged.pullbackBuyThirdEntryRiskRatio = Math.min(
+    Math.max(merged.pullbackBuyThirdEntryRiskRatio, 0.02),
+    Math.max(0.02, merged.pullbackBuySecondEntryRiskRatio - 0.05)
+  );
 
   return merged;
 }

@@ -159,6 +159,8 @@ const smartMoneyScanSchema = z.object({
       minTightPullbackBuyLeadInPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       pullbackBuyStartPercentFromPeak: z.coerce.number().min(0).max(50).optional(),
       firstBuySma20ProximityPercent: z.coerce.number().min(0).max(10).optional(),
+      pullbackBuySecondEntryRiskRatio: z.coerce.number().min(0.1).max(0.9).optional(),
+      pullbackBuyThirdEntryRiskRatio: z.coerce.number().min(0.02).max(0.7).optional(),
       stopLossLookbackSessions: z.coerce.number().int().min(20).max(90).optional(),
       tightPullbackBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       tightPullbackBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
@@ -12,7 +12,7 @@
         <p class="eyebrow">Stock Project</p>
         <h1>STOCK PROJECT</h1>
         <p class="hero-copy">
-          관심 종목 분석, 이벤트 기반 뉴스 시그널, 지수 흐름과 시장 급등락 순위를 한 화면에서 빠르게 확인할 수 있습니다.
+          관심 종목 분석, 이벤트 기반 뉴스 시그널, 지수 및 관심 자산, 급등·급락 순위를 한 화면에서 빠르게 확인합니다.
         </p>
 
         <div class="app-tabs" id="appTabs">
@@ -22,7 +22,7 @@
           </button>
           <button class="app-tab" type="button" data-view="index">
             <span class="app-tab-title">지수 및 관심 자산</span>
-            <span class="app-tab-copy">지수, 환율, 원자재 확장용 탭</span>
+            <span class="app-tab-copy">지수, 환율, 원자재, 가상자산 흐름을 함께 확인</span>
           </button>
           <button class="app-tab active" type="button" data-view="analysis">
             <span class="app-tab-title">추천 종목 및 분석</span>
@@ -30,7 +30,7 @@
           </button>
           <button class="app-tab" type="button" data-view="movers">
             <span class="app-tab-title">급등 및 급락 순위</span>
-            <span class="app-tab-copy">시장 강약과 거래량 신호를 빠르게 확인</span>
+            <span class="app-tab-copy">시장 강약과 거래 신호를 빠르게 확인</span>
           </button>
         </div>
       </header>
@@ -46,45 +46,85 @@
               <span class="status-badge loading">로딩 중</span>
             </div>
             <div class="empty-state news-empty-state">
-              <p>동일 이벤트는 하나의 시그널 카드로 묶어서 표시됩니다.</p>
-              <p>잠시 후에도 화면이 비어 있으면 새로고침하거나 서버를 다시 시작해 주세요.</p>
+              <p>같은 이벤트는 하나의 시그널 카드로 묶어서 표시합니다.</p>
+              <p>잠시 후에도 비어 있으면 새로고침하거나 서버를 다시 시작해 주세요.</p>
             </div>
           </section>
         </div>
       </section>
 
       <section id="indexView" class="app-view hidden">
-        <section class="panel index-panel">
-          <div class="panel-head">
-            <div>
-              <h2>지수 및 관심 자산</h2>
-              <p class="field-help">이 탭은 KOSPI, KOSDAQ, 달러/원, 금, 국채 등을 하나씩 늘려가는 매크로 보드용 영역입니다.</p>
+        <div class="index-dashboard-grid">
+          <section class="panel index-panel">
+            <div class="panel-head">
+              <div>
+                <h2>지수 및 관심 자산</h2>
+                <p class="field-help">KOSPI, KOSDAQ, 환율, 금, WTI, 비트코인 같은 흐름을 한 번에 보는 보드입니다.</p>
+              </div>
             </div>
-          </div>
-          <div id="indexWatchList" class="index-watch-list"></div>
-        </section>
+            <div id="indexWatchList" class="index-watch-list"></div>
+          </section>
+
+          <section id="marketEventCalendarBoard" class="panel index-panel market-event-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Market Event Calendar</h2>
+                <p class="field-help">실적, 거시지표, 정책 일정을 달력으로 보고 날짜를 눌러 상세 이벤트를 확인합니다.</p>
+              </div>
+              <span class="status-badge loading">로딩 중</span>
+            </div>
+            <div class="empty-state">
+              <p>이벤트 캘린더를 준비 중입니다.</p>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section id="analysisView" class="app-view">
         <main class="layout">
           <section class="panel input-panel">
             <div class="panel-head">
-              <h2>추천 종목</h2>
-              <button id="openAddStockBtn" class="ghost-button" type="button">종목 추가</button>
+              <div>
+                <h2>추천 종목</h2>
+                <p class="field-help panel-head-copy">
+                  상단에서 중장기 또는 스윙 탭을 고르고, 같은 화면 안에서 추천 검색과 직접 추가를 이어서 관리합니다.
+                </p>
+              </div>
             </div>
-            <div class="category-tabs" id="stockCategoryTabs">
-              <button class="category-tab active" type="button" data-category="longTerm">중장기</button>
-              <button class="category-tab" type="button" data-category="swing">스윙</button>
-            </div>
-            <div class="category-tabs long-term-bucket-tabs" id="longTermBucketTabs">
-              <button class="category-tab active" type="button" data-long-term-bucket="buy">매수후보군</button>
-              <button class="category-tab" type="button" data-long-term-bucket="watch">관찰군</button>
-            </div>
+
+            <section class="recommendation-hub">
+              <div class="category-tabs recommendation-primary-tabs" id="stockCategoryTabs">
+                <button class="category-tab active" type="button" data-category="longTerm">중장기</button>
+                <button class="category-tab" type="button" data-category="swing">스윙</button>
+              </div>
+
+              <div class="recommendation-scope-panel">
+                <div class="recommendation-scope-copy">
+                  <span class="section-meta">현재 추천 화면</span>
+                  <h3 id="recommendationScopeTitle" class="recommendation-scope-title">중장기 추천 / 매수후보군</h3>
+                  <p id="recommendationScopeHelp" class="recommendation-scope-help">
+                    매수후보군과 관찰군을 나눠 보고, 필요한 종목은 아래 화면 안에서 바로 추가할 수 있습니다.
+                  </p>
+                </div>
+                <div class="recommendation-scope-actions">
+                  <button id="openAddStockBtn" class="primary-button" type="button">중장기 추천 추가</button>
+                  <button id="runUniverseRecommendationBtn" class="ghost-button" type="button">중장기 추천 검색</button>
+                </div>
+              </div>
+
+              <div class="category-tabs long-term-bucket-tabs" id="longTermBucketTabs">
+                <button class="category-tab active" type="button" data-long-term-bucket="buy">매수후보군</button>
+                <button class="category-tab" type="button" data-long-term-bucket="watch">관찰군</button>
+              </div>
+
+              <div class="category-tabs long-term-bucket-tabs hidden" id="swingBucketTabs">
+                <button class="category-tab active" type="button" data-swing-bucket="execution">실행후보</button>
+                <button class="category-tab" type="button" data-swing-bucket="watch">관심후보</button>
+              </div>
+            </section>
+
             <p class="field-help">종목 카드를 누르면 해당 종목 분석이 오른쪽에 표시됩니다.</p>
-            <div class="category-tabs long-term-bucket-tabs hidden" id="swingBucketTabs">
-              <button class="category-tab active" type="button" data-swing-bucket="execution">실행후보</button>
-              <button class="category-tab" type="button" data-swing-bucket="watch">관심후보</button>
-            </div>
+
             <div class="selector-toolbar">
               <label class="page-size-label" for="pageSizeSelect">표시 개수</label>
               <select id="pageSizeSelect" class="page-size-select">
@@ -93,7 +133,9 @@
                 <option value="999">전체</option>
               </select>
             </div>
+
             <div id="stockSelector" class="stock-selector"></div>
+
             <div class="pagination-bar">
               <button id="prevPageBtn" class="ghost-button small-button" type="button">이전</button>
               <span id="pageStatus" class="page-status">1 / 1</span>
@@ -123,7 +165,7 @@
           <div class="panel-head">
             <div>
               <h2>급등 및 급락 순위</h2>
-              <p class="field-help">시장 구분과 조건을 바꿔가며 강한 수급이 붙은 종목과 급락주를 함께 확인합니다.</p>
+              <p class="field-help">시장 구분과 조건을 바꿔가며 강한 수급 종목과 급락주를 바로 확인합니다.</p>
             </div>
             <span id="moversStatusBadge" class="status-badge idle">대기 중</span>
           </div>
@@ -137,6 +179,7 @@
                 <option value="KOSDAQ">코스닥</option>
               </select>
             </label>
+
             <label class="movers-field">
               <span>표시 개수</span>
               <select id="moversLimitSelect" class="page-size-select">
@@ -146,14 +189,17 @@
                 <option value="20">20개</option>
               </select>
             </label>
+
             <label class="movers-field">
               <span>최소 변동률</span>
               <input id="moversMinChangeInput" class="modal-input compact-input" type="number" min="0" step="1" value="5" />
             </label>
+
             <label class="movers-field">
               <span>최소 거래량 배수</span>
               <input id="moversMinVolumeInput" class="modal-input compact-input" type="number" min="0" step="0.5" value="2" />
             </label>
+
             <label class="movers-field">
               <span>
                 최소 점수
@@ -161,6 +207,7 @@
               </span>
               <input id="moversMinScoreInput" class="modal-input compact-input" type="number" min="0" step="5" value="40" />
             </label>
+
             <button id="refreshMoversBtn" class="primary-button" type="button">순위 새로고침</button>
           </div>
 
@@ -173,7 +220,7 @@
             <div class="panel-head">
               <div>
                 <h2>급등 순위</h2>
-                <p class="field-help">상승률, 거래량 배수, 고점 돌파 여부를 함께 봅니다.</p>
+                <p class="field-help">등락률, 거래량 배수, 고점 돌파 여부를 함께 봅니다.</p>
               </div>
               <span id="riseCountLabel" class="section-meta">0개</span>
             </div>
@@ -205,7 +252,7 @@
             <div class="panel-head">
               <div>
                 <h2>급등 테마</h2>
-                <p class="field-help">오늘 강한 업종 묶음을 대표 종목과 함께 보여줍니다.</p>
+                <p class="field-help">오늘 강하게 묶이는 업종과 대표 종목을 함께 보여줍니다.</p>
               </div>
             </div>
             <div id="moversRiseThemesList" class="movers-theme-list">
@@ -219,7 +266,7 @@
             <div class="panel-head">
               <div>
                 <h2>급락 테마</h2>
-                <p class="field-help">약한 업종 묶음도 같은 형식으로 확인합니다.</p>
+                <p class="field-help">약한 업종 묶음도 같은 방식으로 확인합니다.</p>
               </div>
             </div>
             <div id="moversFallThemesList" class="movers-theme-list">
@@ -327,6 +374,19 @@
           <button id="closeSwingScoreModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
         <div id="swingScoreModalBody" class="swing-score-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="marketEventModal" class="modal-backdrop hidden">
+      <div class="modal-panel market-event-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marketEventModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="marketEventModalTitle">Market Event Calendar</h3>
+            <p id="marketEventModalMeta" class="field-help modal-field-help"></p>
+          </div>
+          <button id="closeMarketEventModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+        <div id="marketEventModalBody" class="market-event-modal-body"></div>
       </div>
     </div>
 

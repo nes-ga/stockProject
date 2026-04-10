@@ -29,6 +29,8 @@ import { getAutoSmartMoneyMarketContext } from "./smartMoney/marketContext.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
 
 const logger = createLogger("stockAnalysis");
+const DEFAULT_NAVER_CHART_SESSIONS = 500;
+const LONG_TERM_NAVER_CHART_SESSIONS = 2200;
 
 type QuoteResponse = {
   quoteResponse: {
@@ -214,7 +216,7 @@ function parseNaverChartXml(xml: string): ChartPoint[] {
   return points;
 }
 
-async function fetchNaverChart(symbol: string, count = 500): Promise<QuoteAndChartResult> {
+async function fetchNaverChart(symbol: string, count = DEFAULT_NAVER_CHART_SESSIONS): Promise<QuoteAndChartResult> {
   logger.info("chart:load:start", {
     symbol,
     source: "naver",
@@ -276,11 +278,11 @@ async function fetchNaverChart(symbol: string, count = 500): Promise<QuoteAndCha
 
 async function fetchQuoteAndChart(
   symbol: string,
-  chartOptions?: { period1?: string; range?: string }
+  chartOptions?: { period1?: string; range?: string; naverCount?: number }
 ): Promise<QuoteAndChartResult> {
   if (isKoreanNumericSymbol(symbol) || /\.K[QS]$/.test(symbol)) {
     try {
-      return await fetchNaverChart(symbol);
+      return await fetchNaverChart(symbol, chartOptions?.naverCount ?? DEFAULT_NAVER_CHART_SESSIONS);
     } catch (error) {
       logger.error("chart:load:failed", {
         symbol,
@@ -499,7 +501,11 @@ function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
 export async function loadRealtimeStockDetail(input: RealtimeStockRequest): Promise<RealtimeStockDetail> {
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
   const period1 = input.anchorDate ? addDays(input.anchorDate, -40) : undefined;
-  const { quote, points } = await fetchQuoteAndChart(symbol, period1 ? { period1 } : { range: "3mo" });
+  const naverCount = input.category === "longTerm" ? LONG_TERM_NAVER_CHART_SESSIONS : DEFAULT_NAVER_CHART_SESSIONS;
+  const { quote, points } = await fetchQuoteAndChart(
+    symbol,
+    period1 ? { period1, naverCount } : { range: "3mo", naverCount }
+  );
   const latestCloseFromQuote = quote?.regularMarketPrice;
   const syncedPoints = syncLatestPointWithQuote(points, latestCloseFromQuote);
   const latestPoint = syncedPoints.at(-1);
@@ -1270,8 +1276,9 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     anchorDate: input.anchorDate
   });
   const period1 = addDays(input.anchorDate, -40);
+  const naverCount = input.category === "longTerm" ? LONG_TERM_NAVER_CHART_SESSIONS : DEFAULT_NAVER_CHART_SESSIONS;
   const [chartResult, fundamentals] = await Promise.all([
-    fetchQuoteAndChart(symbol, { period1 }),
+    fetchQuoteAndChart(symbol, { period1, naverCount }),
     fetchFundamentals(input.symbol)
   ]);
   const longTermReview =

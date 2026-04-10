@@ -2,8 +2,9 @@ import type { LongTermScanFilters } from "../../types.js";
 
 export function resolveLongTermScanFilters(overrides?: Partial<LongTermScanFilters>): LongTermScanFilters {
   return {
-    // 5-year supplementary drawdown needs more than ~1,260 trading sessions.
-    historySessions: 1600,
+    // Keep enough daily history so weekly/monthly views and 5-year supplementary
+    // drawdown checks still have context after aggregation.
+    historySessions: 2200,
     recentBaseWindow: 60,
     slopeLookbackSessions: 20,
     higherLowLookbackWindow: 80,

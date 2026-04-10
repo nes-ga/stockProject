@@ -146,6 +146,8 @@ export type SmartMoneyPatternFilters = {
   minTightPullbackBuyLeadInPriceChangePercent: number;
   pullbackBuyStartPercentFromPeak: number;
   firstBuySma20ProximityPercent: number;
+  pullbackBuySecondEntryRiskRatio: number;
+  pullbackBuyThirdEntryRiskRatio: number;
   stopLossLookbackSessions: number;
   tightPullbackBuyZoneLowRetracementRatio: number;
   tightPullbackBuyZoneHighRetracementRatio: number;
@@ -586,9 +588,9 @@ export type StockUniverseItem = {
   sector?: string;
 };
 
-export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD";
+export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "BTC";
 
-export type MarketWatchCategory = "index" | "fx" | "commodity";
+export type MarketWatchCategory = "index" | "fx" | "commodity" | "crypto";
 
 export type MarketWatchTimeframe = "daily" | "weekly" | "yearly";
 
@@ -859,4 +861,41 @@ export type NewsSignalDashboardPayload = {
   signalCount: number;
   signals: NewsSignalCard[];
   sectors: NewsSignalSectorSummary[];
+};
+
+export type MarketEventCategory = "earnings" | "macro" | "policy" | "market" | "news";
+
+export type MarketEventImportance = "high" | "medium" | "low";
+
+export type MarketEventCalendarEvent = {
+  id: string;
+  date: string;
+  title: string;
+  category: MarketEventCategory;
+  importance: MarketEventImportance;
+  time?: string;
+  ticker?: string;
+  companyName?: string;
+  location?: string;
+  description?: string;
+};
+
+export type MarketEventDailySummary = {
+  date: string;
+  totalCount: number;
+  earningsCount: number;
+  macroCount: number;
+  policyCount: number;
+  marketCount: number;
+  newsCount: number;
+  otherCount: number;
+  hasHighImportance: boolean;
+  highlightTitle?: string;
+};
+
+export type MarketEventCalendarPayload = {
+  generatedAt: string;
+  timezone: string;
+  events: MarketEventCalendarEvent[];
+  summaries: MarketEventDailySummary[];
 };

@@ -1,6 +1,6 @@
 # 현재 구현된 기능 정리
 
-이 문서는 `2026-04-09` 기준으로 현재 저장소에 실제 구현되어 있는 기능만 정리한 문서다.
+이 문서는 `2026-04-10` 기준으로 현재 저장소에 실제 구현되어 있는 기능만 정리한 문서다.
 
 ## 1. 서버 / 기본 구조
 
@@ -25,13 +25,16 @@
   - 가격/거래량 차트 표시
   - 재무지표 및 사업 포트폴리오 맵 표시
 - 시장 감시 화면
-  - KOSPI / KOSDAQ / USDKRW / GOLD 스냅샷 카드
+  - KOSPI / KOSDAQ / USDKRW / GOLD / WTI 스냅샷 카드
+  - 시장 이벤트 캘린더 보드
   - 일봉 / 주봉 / 연봉 차트 팝업
+  - 날짜 클릭 시 이벤트 상세 팝업
 - 급등/급락 화면
   - 시장, 개수, 최소 등락률, 최소 거래량 배수, 최소 점수 필터
   - 상승/하락 종목 리스트
 - 뉴스 시그널 화면
   - 뉴스 카드 및 섹터 요약 보드
+  - 기사 원문 링크 이동
 
 ## 3. 추천 종목 분석 기능
 
@@ -270,17 +273,23 @@
 - `correctionScore`
 - `trendScore`
 - `liquidityScore`
-- `durabilityScore`
 - `stabilizationScore`
+- `financialScore`
 
 기본 가중치
 
 - leader 25%
-- correction 25%
+- correction 20%
 - trend 15%
-- liquidity 15%
-- durability 10%
-- stabilization 10%
+- liquidity 10%
+- stabilization 15%
+- financial 15%
+
+보정 원칙
+
+- 조정률은 `2년 고점` 기준이 기본이며, 필요할 때만 `5년 고점`을 보조 기준으로 사용
+- 재무 평가는 `하드 제외`, `약점 페널티`, `회복/정상화 보너스`로 분리
+- 대표주가 깊게 조정받았고 바닥 안정화가 보이면 재무 약점 페널티를 일부 완화
 
 ### 8-4. 필터 / 제외 조건
 
@@ -288,13 +297,22 @@
 - 최근 20일 또는 60일 평균 거래대금 하한 체크
 - 최소 조정률 체크
 - 구조적으로 망가진 장기 하락 추세 제외
+- 재무 하드 제외
+  - 지속 적자 + 악화 흐름
+  - 위험한 부채 구조 + 비안정 상태
+  - 구조적 사업 훼손 플래그
 
 ### 8-5. 결과 분류
 
 - label 분류
+  - `leader correction watch`
+  - `deep value review`
+  - `base-forming candidate`
+  - `needs more stabilization`
 - candidate group 분류
   - `buy candidate`
   - `watch candidate`
+- 각 후보는 `reasonSummary`와 재무/유동성/구조 메타데이터를 함께 반환한다.
 
 ## 9. 서버 장기 픽 기능
 
@@ -359,11 +377,12 @@
 - cooldown 기반 dedupe 처리
 - Discord 발송 지원
 
-## 12. 시장 감시 기능
+## 12. 시장 감시 / 이벤트 캘린더 기능
 
 ### 12-1. API
 
 - `GET /analysis/market-watch`
+- `GET /analysis/market-event-calendar`
 
 ### 12-2. 현재 감시 대상
 
@@ -371,8 +390,9 @@
 - KOSDAQ
 - USD/KRW
 - GOLD
+- WTI
 
-### 12-3. 현재 제공 데이터
+### 12-3. 시장 감시 현재 제공 데이터
 
 - 현재가
 - 전일 종가
@@ -382,6 +402,29 @@
   - daily
   - weekly
   - yearly
+
+### 12-4. 이벤트 캘린더 현재 제공 데이터
+
+- 월간 캘린더 뷰
+- 해당 월 날짜만 표시하고 전달/익월 날짜는 비워진 셀로 처리
+- 날짜별 요약 수치
+  - earnings count
+  - macro count
+  - other count
+- 고중요도 이벤트 존재 여부 표시
+- 날짜 클릭 시 모달 팝업으로 상세 이벤트 목록 표시
+- 상세 이벤트 필드
+  - title
+  - date
+  - time
+  - category
+  - importance
+  - ticker / companyName
+  - description
+- 데이터 원본
+  - `data/market-event-calendar.json`
+- 현재 단계
+  - DB 없이 JSON 파일 원본을 읽어 프론트 보드에 제공하는 MVP 구조
 
 ## 13. 실시간 종목 기능
 
@@ -423,9 +466,10 @@
 
 ### 15-2. 현재 구현 상태
 
-현재 뉴스 수집기는 실운영 크롤러가 아니라 내부 mock seed 기반으로 동작한다.
-
+- 네이버 Search API 뉴스 검색 결과를 기준으로 최근 기사 메타데이터를 수집한다.
+- 서버 시작 시 1회 즉시 수집하고 이후 5분 주기로 갱신한다.
 - 회사 사전 기반 종목 매칭
+- 회사 alias / query 기반 검색 지원
 - 제목 키워드 기반 이벤트 분류
   - `CONTRACT`
   - `EARNINGS`
@@ -435,9 +479,13 @@
   - `SHAREHOLDER`
   - `RISK`
 - 긍정/부정 sentiment 분류
+- 최근 36시간 기사만 반영
+- 링크 / 발행시각 기준 dedupe 처리
+- 실패 시 마지막 메모리 캐시를 fallback 으로 사용
 - 1시간 이내 동일 종목/이벤트 그룹핑
 - 기사 수 / 출처 수 기반 score 보정
 - 섹터별 요약 생성
+- 기사 본문 전체를 저장하는 구조는 아니고 검색 API 메타데이터 + 원문 링크 중심 구조다.
 
 ## 16. Discord 연동
 
@@ -456,10 +504,13 @@
 - `data/server-swing-picks.json`
 - `data/server-long-term-picks.json`
 - `data/smart-money-watchlist.json`
+- `data/market-event-calendar.json`
 
 ## 18. 현재 구현 한계 / 주의 사항
 
-- 뉴스 시그널은 실뉴스 수집이 아니라 mock 데이터 기반이다.
+- 뉴스 시그널은 네이버 Search API 메타데이터 기반이며 기사 본문 전체 스크랩/저장은 하지 않는다.
+- 네이버 Search API 자격 증명이 없으면 뉴스 시그널 결과는 비어 있을 수 있다.
+- 시장 이벤트 캘린더는 현재 자동 수집기가 아니라 JSON 파일 기반 샘플/수동 관리 구조다.
 - 장기 엔진은 전 시장 완전 자동 저장형이 아니라 리뷰/선별 성격이 강하다.
 - 스마트 머니 스캔 결과는 `matched`와 `actionable`을 분리해서 저장한다.
 - 재무 데이터는 국내 6자리 종목 기준 네이버 금융 파싱 의존도가 높다.

@@ -21980,7 +21980,7 @@ function isLiveNewsUrl(value) {
   }
   try {
     const parsed = new URL(value);
-    return parsed.hostname !== "news.example.com";
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
     return false;
   }

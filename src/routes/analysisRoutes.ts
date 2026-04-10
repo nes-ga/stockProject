@@ -1,15 +1,23 @@
 import { Router } from "express";
 import { z } from "zod";
+import { config } from "../config.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
 import {
   buildKoreanMoversDiscordMessages,
+  buildRecommendationUniverseDiscordMessages,
   buildRecommendationPatternDiscordMessages,
   buildSmartMoneyPatternDiscordMessages,
   sendDiscordMessages
 } from "../services/discord.js";
 import { analyzeKoreanMovers } from "../services/koreanMovers.js";
+import { getMarketEventCalendarPayload } from "../services/marketEventCalendar.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
+import { scanRecommendationUniverse } from "../services/recommendationUniverse.js";
+import {
+  diffAndRememberLongTermUniverseAlerts,
+  diffAndRememberSwingUniverseAlerts
+} from "../services/recommendationUniverseAlerts.js";
 import { readServerLongTermPicks, writeServerLongTermPicks } from "../services/serverLongTermPicks.js";
 import { readServerSwingPickPayload, writeServerSwingPicks } from "../services/serverSwingPicks.js";
 import { getStockUniverse } from "../services/stockUniverse.js";
@@ -170,6 +178,8 @@ const smartMoneyPatternSchema = z.object({
       minTightPullbackBuyLeadInPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       pullbackBuyStartPercentFromPeak: z.coerce.number().min(0).max(50).optional(),
       firstBuySma20ProximityPercent: z.coerce.number().min(0).max(10).optional(),
+      pullbackBuySecondEntryRiskRatio: z.coerce.number().min(0.1).max(0.9).optional(),
+      pullbackBuyThirdEntryRiskRatio: z.coerce.number().min(0.02).max(0.7).optional(),
       stopLossLookbackSessions: z.coerce.number().int().min(20).max(90).optional(),
       tightPullbackBuyZoneLowRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       tightPullbackBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
@@ -210,6 +220,18 @@ const stockUniverseQuerySchema = z.object({
   forceRefresh: z.coerce.boolean().optional().default(false)
 });
 
+const recommendationUniverseScanSchema = z.object({
+  category: z.enum(["longTerm", "swing"]),
+  discord: z
+    .object({
+      enabled: z.coerce.boolean().optional().default(true),
+      webhookUrl: z.string().url().optional(),
+      username: z.string().min(1).max(80).optional(),
+      mention: z.string().min(1).max(200).optional()
+    })
+    .optional()
+});
+
 const serverSwingPickSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
@@ -218,7 +240,8 @@ const serverSwingPickSchema = z.object({
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
   bucket: z.enum(["execution", "watch"]).optional(),
-  category: z.literal("swing")
+  category: z.literal("swing"),
+  source: z.string().min(1).max(100).optional()
 });
 
 const serverSwingPickBatchSchema = z.object({
@@ -236,7 +259,9 @@ const serverLongTermPickSchema = z.object({
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
-  category: z.literal("longTerm")
+  category: z.literal("longTerm"),
+  longTermBucket: z.enum(["buy", "watch"]).optional(),
+  source: z.string().min(1).max(100).optional()
 });
 
 const serverLongTermPickBatchSchema = z.object({
@@ -409,6 +434,60 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
   }
 });
 
+analysisRoutes.post("/recommendation-universe-scan", async (request, response, next) => {
+  try {
+    const input = recommendationUniverseScanSchema.parse(request.body);
+    const payload = await scanRecommendationUniverse(input.category);
+    const universeDiff =
+      payload.category === "swing"
+        ? await diffAndRememberSwingUniverseAlerts({
+            executionItems: payload.executionItems,
+            watchItems: payload.watchItems
+          })
+        : await diffAndRememberLongTermUniverseAlerts(payload.items);
+    const discordEnabled = input.discord?.enabled !== false;
+    const webhookUrl = input.discord?.webhookUrl ?? config.discordWebhookUrl;
+    let discordSent = false;
+    let discordMessageCount = 0;
+
+    if (discordEnabled && webhookUrl) {
+      const messages = buildRecommendationUniverseDiscordMessages({
+        diff: universeDiff,
+        mention: input.discord?.mention
+      });
+
+      if (messages.length) {
+        await sendDiscordMessages({
+          messages,
+          webhookUrl,
+          username: input.discord?.username ?? "Recommendation Universe Bot"
+        });
+        discordSent = true;
+        discordMessageCount = messages.length;
+      }
+    }
+
+    logger.info("recommendation-universe-scan:success", {
+      category: input.category,
+      count: payload.count,
+      discordSent,
+      discordMessageCount,
+      diffCount: universeDiff.changes.length
+    });
+
+    response.json({
+      ok: true,
+      ...payload,
+      discordSent,
+      discordMessageCount,
+      universeDiff
+    });
+  } catch (error) {
+    logger.error("recommendation-universe-scan:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
 analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
   try {
     const payload = await readServerSwingPickPayload();
@@ -544,6 +623,20 @@ analysisRoutes.get("/news-signals", (_request, response, next) => {
     response.json(payload);
   } catch (error) {
     logger.error("news-signals:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/market-event-calendar", async (_request, response, next) => {
+  try {
+    const payload = await getMarketEventCalendarPayload();
+    logger.info("market-event-calendar:success", {
+      eventCount: payload.events.length,
+      summaryCount: payload.summaries.length
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("market-event-calendar:failed", toErrorContext(error));
     next(error);
   }
 });

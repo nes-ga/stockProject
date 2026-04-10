@@ -1,6 +1,8 @@
 import type { BusinessAreaSlice, FundamentalsPeriod, FundamentalsSummary } from "../types.js";
 
 const FUNDAMENTALS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const utf8Decoder = new TextDecoder("utf-8");
+const eucKrDecoder = new TextDecoder("euc-kr");
 const TABLE_MARKER = "\uC8FC\uC694\uC7AC\uBB34\uC815\uBCF4";
 const ANALYSIS_SECTION_MARKER = "section cop_analysis";
 const ANALYSIS_TABLE_CLASS = "tb_type1_ifrs";
@@ -89,7 +91,17 @@ function decodeHtml(text: string): string {
 }
 
 async function readNaverHtml(response: Response): Promise<string> {
-  return response.text();
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const contentType = response.headers.get("content-type") ?? "";
+  const charsetMatch = contentType.match(/charset=([^;]+)/i);
+  const charset = charsetMatch?.[1]?.trim().toLowerCase();
+
+  if (charset?.includes("euc-kr") || charset?.includes("ks_c_5601") || charset?.includes("cp949")) {
+    return eucKrDecoder.decode(bytes);
+  }
+
+  return utf8Decoder.decode(bytes);
 }
 
 function stripTags(html: string): string {

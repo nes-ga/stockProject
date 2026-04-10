@@ -25,13 +25,15 @@ type ChartResponse = {
   };
 };
 
-type SupportedMarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD";
+type SupportedMarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "BTC";
 
 type MarketWatchDefinition = {
   key: SupportedMarketWatchKey;
   name: string;
   symbol: string;
-  category: "index" | "fx" | "commodity";
+  category: "index" | "fx" | "commodity" | "crypto";
+  source?: "naver" | "yahoo";
+  naverSymbol?: string;
 };
 
 const requestHeaders = {
@@ -42,14 +44,20 @@ const requestHeaders = {
   "Origin": "https://finance.yahoo.com",
   "Referer": "https://finance.yahoo.com/"
 };
+const naverRequestHeaders = {
+  "User-Agent": "Mozilla/5.0",
+  "Referer": "https://finance.naver.com/"
+};
 
 const cacheTtlMs = 2 * 1000;
 const logger = createLogger("marketWatch");
 const marketWatchDefinitions: MarketWatchDefinition[] = [
-  { key: "KOSPI", name: "KOSPI", symbol: "^KS11", category: "index" },
-  { key: "KOSDAQ", name: "KOSDAQ", symbol: "^KQ11", category: "index" },
+  { key: "KOSPI", name: "KOSPI", symbol: "^KS11", category: "index", source: "naver", naverSymbol: "KOSPI" },
+  { key: "KOSDAQ", name: "KOSDAQ", symbol: "^KQ11", category: "index", source: "naver", naverSymbol: "KOSDAQ" },
   { key: "USDKRW", name: "USD/KRW", symbol: "KRW=X", category: "fx" },
-  { key: "GOLD", name: "Gold", symbol: "GC=F", category: "commodity" }
+  { key: "GOLD", name: "Gold", symbol: "GC=F", category: "commodity" },
+  { key: "WTI", name: "WTI", symbol: "CL=F", category: "commodity" },
+  { key: "BTC", name: "Bitcoin", symbol: "BTC-USD", category: "crypto" }
 ];
 
 let cachedPayload:
@@ -148,6 +156,30 @@ function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
   return points;
 }
 
+function parseNaverChartXml(xml: string): ChartPoint[] {
+  const itemRegex = /<item[^>]+data="([^"]+)"/g;
+  const points: ChartPoint[] = [];
+
+  for (const match of xml.matchAll(itemRegex)) {
+    const raw = match[1];
+    const [date, open, high, low, close, volume] = raw.split("|");
+    if (!date || !close) {
+      continue;
+    }
+
+    points.push({
+      date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`,
+      open: Number(open),
+      high: Number(high),
+      low: Number(low),
+      close: Number(close),
+      volume: volume ? Number(volume) : undefined
+    });
+  }
+
+  return points;
+}
+
 function buildChartWindow(points: ChartPoint[]): MarketWatchChartWindow | undefined {
   if (!points.length) {
     return undefined;
@@ -166,6 +198,69 @@ function percentChange(current?: number, previous?: number): number | undefined 
   }
 
   return ((current - previous) / previous) * 100;
+}
+
+function buildLatestSessionPointFromIntraday(
+  points: ChartPoint[],
+  latestPrice?: number
+): ChartPoint | undefined {
+  const latestDate = getLatestPoint(points)?.date;
+  if (!latestDate) {
+    return undefined;
+  }
+
+  const sessionPoints = points.filter((point) => point.date === latestDate);
+  if (!sessionPoints.length) {
+    return undefined;
+  }
+
+  const firstPoint = sessionPoints[0];
+  const lastPoint = sessionPoints.at(-1) ?? firstPoint;
+  let high = firstPoint.high ?? firstPoint.close;
+  let low = firstPoint.low ?? firstPoint.close;
+  let volume = 0;
+
+  for (const point of sessionPoints) {
+    high = Math.max(high, point.high ?? point.close);
+    low = Math.min(low, point.low ?? point.close);
+    volume += point.volume ?? 0;
+  }
+
+  return {
+    date: latestDate,
+    open: firstPoint.open ?? firstPoint.close,
+    high,
+    low,
+    close: isFiniteNumber(latestPrice) ? latestPrice : lastPoint.close,
+    volume
+  };
+}
+
+function upsertLatestDailyPoint(dailyPoints: ChartPoint[], latestSessionPoint?: ChartPoint): ChartPoint[] {
+  if (!latestSessionPoint) {
+    return dailyPoints;
+  }
+
+  if (!dailyPoints.length) {
+    return [latestSessionPoint];
+  }
+
+  const nextPoints = [...dailyPoints];
+  const lastDailyPoint = nextPoints.at(-1);
+  if (!lastDailyPoint) {
+    return [latestSessionPoint];
+  }
+
+  if (lastDailyPoint.date === latestSessionPoint.date) {
+    nextPoints[nextPoints.length - 1] = latestSessionPoint;
+    return nextPoints;
+  }
+
+  if (lastDailyPoint.date < latestSessionPoint.date) {
+    nextPoints.push(latestSessionPoint);
+  }
+
+  return nextPoints;
 }
 
 function aggregateYearlyPoints(points: ChartPoint[]): ChartPoint[] {
@@ -195,6 +290,60 @@ function aggregateYearlyPoints(points: ChartPoint[]): ChartPoint[] {
   return [...yearlyMap.values()].sort((left, right) => left.date.localeCompare(right.date));
 }
 
+function getWeekKey(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function aggregateWeeklyPoints(points: ChartPoint[]): ChartPoint[] {
+  const weeklyMap = new Map<string, ChartPoint>();
+
+  for (const point of points) {
+    const key = getWeekKey(point.date);
+    const existing = weeklyMap.get(key);
+    if (!existing) {
+      weeklyMap.set(key, {
+        date: point.date,
+        open: point.open ?? point.close,
+        high: point.high ?? point.close,
+        low: point.low ?? point.close,
+        close: point.close,
+        volume: point.volume ?? 0
+      });
+      continue;
+    }
+
+    existing.high = Math.max(existing.high ?? existing.close, point.high ?? point.close);
+    existing.low = Math.min(existing.low ?? existing.close, point.low ?? point.close);
+    existing.close = point.close;
+    existing.volume = (existing.volume ?? 0) + (point.volume ?? 0);
+  }
+
+  return [...weeklyMap.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function trimLiveCryptoDailyPoints(points: ChartPoint[], exchangeTimeZone?: string): ChartPoint[] {
+  if (points.length <= 1) {
+    return points;
+  }
+
+  const today = getCurrentIsoDate(exchangeTimeZone);
+  return points.at(-1)?.date === today ? points.slice(0, -1) : points;
+}
+
+function trimLiveCryptoMonthlyPoints(points: ChartPoint[], exchangeTimeZone?: string): ChartPoint[] {
+  if (points.length <= 1) {
+    return points;
+  }
+
+  const currentMonth = getCurrentIsoDate(exchangeTimeZone).slice(0, 7);
+  return points.at(-1)?.date.slice(0, 7) === currentMonth ? points.slice(0, -1) : points;
+}
+
 async function fetchChartPoints(symbol: string, interval: string, range: string) {
   const chartUrl = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
   chartUrl.searchParams.set("interval", interval);
@@ -208,12 +357,78 @@ async function fetchChartPoints(symbol: string, interval: string, range: string)
   };
 }
 
+async function fetchNaverChartPoints(symbol: string, count: number) {
+  const url = new URL("https://fchart.stock.naver.com/sise.nhn");
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("timeframe", "day");
+  url.searchParams.set("count", String(count));
+  url.searchParams.set("requestType", "0");
+
+  const response = await fetch(url, { headers: naverRequestHeaders });
+  if (!response.ok) {
+    throw new Error(`Naver chart request failed with status ${response.status} for ${symbol}`);
+  }
+
+  const xml = await response.text();
+  return parseNaverChartXml(xml);
+}
+
+async function fetchNaverIndexMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
+  const naverSymbol = definition.naverSymbol;
+  if (!naverSymbol) {
+    throw new Error(`Missing Naver symbol for ${definition.key}`);
+  }
+
+  const dailyPoints = await fetchNaverChartPoints(naverSymbol, 5200);
+  if (!dailyPoints.length) {
+    throw new Error(`${definition.name} chart data is unavailable.`);
+  }
+
+  const latestPoint = getLatestPoint(dailyPoints);
+  const previousPoint = dailyPoints.at(-2);
+  const weeklyPoints = aggregateWeeklyPoints(dailyPoints);
+  const yearlyPoints = aggregateYearlyPoints(dailyPoints);
+
+  const snapshot = {
+    key: definition.key,
+    name: definition.name,
+    symbol: definition.symbol,
+    category: definition.category,
+    price: latestPoint?.close,
+    previousClose: previousPoint?.close,
+    changeAmount: latestPoint && previousPoint ? latestPoint.close - previousPoint.close : undefined,
+    changePercent: latestPoint && previousPoint ? percentChange(latestPoint.close, previousPoint.close) : undefined,
+    latestDate: latestPoint?.date,
+    chartSets: {
+      daily: buildChartWindow(dailyPoints),
+      weekly: buildChartWindow(weeklyPoints),
+      yearly: buildChartWindow(yearlyPoints)
+    }
+  } satisfies MarketWatchSnapshot;
+
+  logger.info("item:load:success", {
+    key: definition.key,
+    symbol: definition.symbol,
+    source: "naver",
+    latestDate: snapshot.latestDate,
+    price: snapshot.price,
+    changePercent: snapshot.changePercent,
+    previousClose: snapshot.previousClose
+  });
+
+  return snapshot;
+}
+
 async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
   logger.info("item:load:start", {
     key: definition.key,
     symbol: definition.symbol,
     name: definition.name
   });
+
+  if (definition.source === "naver") {
+    return fetchNaverIndexMarketWatchItem(definition);
+  }
 
   const [intradayPayload, dailyPayload, weeklyPayload, monthlyPayload] = await Promise.all([
     fetchChartPoints(definition.symbol, "1m", "5d"),
@@ -222,42 +437,56 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     fetchChartPoints(definition.symbol, "1mo", "20y")
   ]);
 
-  const dailyPoints = dailyPayload.points;
+  const exchangeTimeZone =
+    intradayPayload.meta?.exchangeTimezoneName ??
+    dailyPayload.meta?.exchangeTimezoneName ??
+    weeklyPayload.meta?.exchangeTimezoneName ??
+    monthlyPayload.meta?.exchangeTimezoneName;
   const intradayPoints = intradayPayload.points;
-  const weeklyPoints = weeklyPayload.points;
-  const yearlyPoints = aggregateYearlyPoints(monthlyPayload.points);
-  const latestDailyPoint = getLatestPoint(dailyPoints);
-  const previousDailyPoint = dailyPoints.at(-2);
-  const price = intradayPayload.meta?.regularMarketPrice ?? dailyPayload.meta?.regularMarketPrice ?? latestDailyPoint?.close;
-  const latestDate = resolveLatestDate(dailyPoints, intradayPoints);
-  const previousCloseSelection = resolvePreviousClose({
-    definition,
-    latestDate,
-    intradayPreviousClose: intradayPayload.meta?.previousClose,
-    dailyPreviousClose: dailyPayload.meta?.previousClose,
-    previousDailyClose: previousDailyPoint?.close
-  });
-  const previousClose = previousCloseSelection.previousClose;
+  const rawDailyPoints = dailyPayload.points;
+  const rawWeeklyPoints = weeklyPayload.points;
+  const rawMonthlyPoints = monthlyPayload.points;
+  const resolvedLatestPrice =
+    intradayPayload.meta?.regularMarketPrice ?? dailyPayload.meta?.regularMarketPrice ?? getLatestPoint(rawDailyPoints)?.close;
+  const latestIntradaySessionPoint = buildLatestSessionPointFromIntraday(intradayPoints, resolvedLatestPrice);
+  const mergedDailyPoints = upsertLatestDailyPoint(rawDailyPoints, latestIntradaySessionPoint);
+  const chartDailyPoints =
+    definition.category === "crypto" ? trimLiveCryptoDailyPoints(mergedDailyPoints, exchangeTimeZone) : mergedDailyPoints;
+  const chartWeeklyPoints =
+    definition.category === "crypto" ? aggregateWeeklyPoints(chartDailyPoints) : rawWeeklyPoints;
+  const chartMonthlyPoints =
+    definition.category === "crypto" ? trimLiveCryptoMonthlyPoints(rawMonthlyPoints, exchangeTimeZone) : rawMonthlyPoints;
+  const chartYearlyPoints = aggregateYearlyPoints(chartMonthlyPoints);
+  const latestDisplayPoint = getLatestPoint(chartDailyPoints);
+  const previousDisplayPoint = chartDailyPoints.at(-2);
+  const latestDailyPoint = getLatestPoint(rawDailyPoints);
+  const previousDailyPoint = rawDailyPoints.at(-2);
+  const price = latestDisplayPoint?.close ?? resolvedLatestPrice;
+  const latestDate = resolveLatestDate(rawDailyPoints, intradayPoints);
+  const previousClose = previousDisplayPoint?.close;
   const today = getCurrentIsoDate(SEOUL_TIME_ZONE);
   const dailyLatestDate = latestDailyPoint?.date;
   const intradayLatestDate = getLatestPoint(intradayPoints)?.date;
   const isDailySeriesLagging = definition.category === "index" && dailyLatestDate != null && dailyLatestDate < today;
 
-  if (price == null || !dailyPoints.length) {
+  if (price == null || !rawDailyPoints.length) {
     throw new Error(`${definition.name} chart data is unavailable.`);
   }
 
+  const intradayPreviousClose = intradayPayload.meta?.previousClose;
+  const dailyMetaPreviousClose = dailyPayload.meta?.previousClose;
   if (
-    isFiniteNumber(intradayPayload.meta?.previousClose) &&
-    isFiniteNumber(dailyPayload.meta?.previousClose) &&
-    Math.abs(intradayPayload.meta.previousClose - dailyPayload.meta.previousClose) >= 0.01
+    isFiniteNumber(intradayPreviousClose) &&
+    isFiniteNumber(previousClose) &&
+    Math.abs(intradayPreviousClose - previousClose) >= 0.01
   ) {
     logger.warn("item:previous-close:mismatch", {
       key: definition.key,
       latestDate,
-      intradayPreviousClose: intradayPayload.meta.previousClose,
-      dailyPreviousClose: dailyPayload.meta.previousClose,
-      previousDailyClose: previousDailyPoint?.close
+      intradayPreviousClose,
+      dailyPreviousClose: dailyMetaPreviousClose,
+      previousDailyClose: previousDailyPoint?.close,
+      previousDisplayClose: previousClose
     });
   }
 
@@ -272,9 +501,9 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     changePercent: percentChange(price, previousClose),
     latestDate,
     chartSets: {
-      daily: buildChartWindow(dailyPoints),
-      weekly: buildChartWindow(weeklyPoints),
-      yearly: buildChartWindow(yearlyPoints)
+      daily: buildChartWindow(chartDailyPoints),
+      weekly: buildChartWindow(chartWeeklyPoints),
+      yearly: buildChartWindow(chartYearlyPoints)
     }
   } satisfies MarketWatchSnapshot;
 
@@ -284,7 +513,7 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     price,
     changePercent: snapshot.changePercent,
     previousClose,
-    previousCloseSource: previousCloseSelection.source,
+    previousCloseSource: "display-daily-series",
     laggingDailySeries: isDailySeriesLagging,
     dailyLatestDate,
     intradayLatestDate

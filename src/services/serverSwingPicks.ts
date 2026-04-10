@@ -10,6 +10,7 @@ export type ServerSwingPick = {
   note?: string;
   bucket?: ServerSwingPickBucket;
   category: "swing";
+  source?: string;
 };
 
 export type ServerSwingPickBucket = "execution" | "watch";
@@ -49,7 +50,8 @@ function normalizeServerSwingPick(item: unknown, fallbackBucket: ServerSwingPick
     latestMentionDate: typeof candidate.latestMentionDate === "string" ? candidate.latestMentionDate : undefined,
     note: typeof candidate.note === "string" ? candidate.note : undefined,
     bucket: candidate.bucket === "watch" ? "watch" : candidate.bucket === "execution" ? "execution" : fallbackBucket,
-    category: "swing"
+    category: "swing",
+    source: typeof candidate.source === "string" ? candidate.source : undefined
   };
 }
 

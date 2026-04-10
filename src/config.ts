@@ -11,5 +11,7 @@ export const config = {
   alertMinVolumeRatio: Number(process.env.ALERT_MIN_VOLUME_RATIO ?? 3),
   alertMinTurnoverKrw: Number(process.env.ALERT_MIN_TURNOVER_KRW ?? 3_000_000_000),
   alertRequireBreakout: process.env.ALERT_REQUIRE_BREAKOUT === "true",
-  yahooDefaultMarketSuffix: process.env.YAHOO_DEFAULT_MARKET_SUFFIX ?? ".KS"
+  yahooDefaultMarketSuffix: process.env.YAHOO_DEFAULT_MARKET_SUFFIX ?? ".KS",
+  naverSearchClientId: process.env.NAVER_SEARCH_CLIENT_ID,
+  naverSearchClientSecret: process.env.NAVER_SEARCH_CLIENT_SECRET
 };

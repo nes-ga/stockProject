@@ -8,6 +8,11 @@ import type {
   SmartMoneyPatternAnalysis,
   SmartMoneyPatternFilters
 } from "../types.js";
+import type {
+  RecommendationUniverseAlertBucket,
+  RecommendationUniverseAlertCategory,
+  RecommendationUniverseAlertDiff
+} from "./recommendationUniverseAlerts.js";
 
 type KoreanMoverAlertFilters = {
   direction: KoreanMoverDirection;
@@ -360,6 +365,62 @@ export function buildSmartMoneyPatternDiscordMessages(params: {
   ];
 
   return chunkMessages(lines, header);
+}
+
+function formatRecommendationUniverseCategory(category: RecommendationUniverseAlertCategory) {
+  return category === "swing" ? "스윙" : "중장기";
+}
+
+function formatRecommendationUniverseBucket(
+  category: RecommendationUniverseAlertCategory,
+  bucket?: RecommendationUniverseAlertBucket
+) {
+  if (!bucket) {
+    return "-";
+  }
+
+  if (category === "swing") {
+    return bucket === "execution" ? "매수후보" : "관찰후보";
+  }
+
+  return bucket === "buy" ? "매수후보군" : "관찰군";
+}
+
+function buildRecommendationUniverseAlertLines(diff: RecommendationUniverseAlertDiff) {
+  return diff.changes.map((change, index) => {
+    const prefix = `${index + 1}. ${change.name} (${change.symbol})`;
+
+    if (change.type === "added") {
+      return `${prefix} | 신규 편입 | ${formatRecommendationUniverseBucket(diff.category, change.toBucket)}`;
+    }
+
+    if (change.type === "removed") {
+      return `${prefix} | 제외 | ${formatRecommendationUniverseBucket(diff.category, change.fromBucket)}`;
+    }
+
+    return `${prefix} | 이동 | ${formatRecommendationUniverseBucket(diff.category, change.fromBucket)} -> ${formatRecommendationUniverseBucket(diff.category, change.toBucket)}`;
+  });
+}
+
+export function buildRecommendationUniverseDiscordMessages(params: {
+  diff: RecommendationUniverseAlertDiff;
+  mention?: string;
+}) {
+  const { diff, mention } = params;
+  if (!diff.changes.length) {
+    return [];
+  }
+
+  const categoryLabel = formatRecommendationUniverseCategory(diff.category);
+  const headerParts = [
+    mention?.trim(),
+    `${categoryLabel} 유니버스 변화 알림`,
+    `Generated ${nowInSeoul()} KST`,
+    `changes=${diff.changes.length}, current=${diff.currentCount}, previous=${diff.previousCount}`
+  ].filter(Boolean);
+  const header = headerParts.join("\n");
+
+  return chunkMessages(buildRecommendationUniverseAlertLines(diff), header);
 }
 
 export async function sendDiscordMessages(params: {

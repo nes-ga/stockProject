@@ -9,6 +9,8 @@ export type ServerLongTermPick = {
   latestMentionDate?: string;
   note?: string;
   category: "longTerm";
+  longTermBucket?: "buy" | "watch";
+  source?: string;
 };
 
 const serverLongTermPicksPath = path.resolve(process.cwd(), "data", "server-long-term-picks.json");
@@ -21,7 +23,9 @@ export async function readServerLongTermPicks(): Promise<ServerLongTermPick[]> {
   try {
     const raw = await readFile(serverLongTermPicksPath, "utf8");
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is ServerLongTermPick => Boolean(item && typeof item === "object"))
+      : [];
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("ENOENT")) {
