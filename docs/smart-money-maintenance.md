@@ -7,7 +7,7 @@ The most important rule is:
 
 - `matched` means the pattern quality cleared a score threshold.
 - `actionable` means the setup is actually tradable now.
-- The server swing scan now saves only `actionable` entries.
+- The server swing scan saves `actionable` names into `executionItems` and matched watch setups into `watchItems`.
 
 That distinction exists so early watch setups do not leak into the executable swing list.
 
@@ -33,7 +33,8 @@ That distinction exists so early watch setups do not leak into the executable sw
 - `src/scripts/scanUniverseSwingPicks.ts`
   - Universe scan entrypoint.
   - Writes `data/server-swing-picks.json`.
-  - Important: only `pattern.actionable` entries are persisted.
+  - Important: `pattern.actionable === true` entries are written to `executionItems`.
+  - Important: `matched === true` watch candidates are also written to `watchItems`, except early `pullback_early` names.
 
 ## Actionable Rule
 
@@ -43,9 +44,11 @@ Practical meaning:
 
 - A setup may be `matched=true` and still be too early.
 - A setup should only be treated like a real entry when it becomes `buy_ready`.
-- Universe scan output is intentionally closer to an execution list than a watchlist.
+- Universe scan output is split into an execution bucket and a watch bucket.
+- `executionItems` should stay close to tradable names.
+- `watchItems` may contain matched setups that are not yet executable.
 
-If you loosen this carelessly, names like early pullback watches can reappear in `server-swing-picks.json`.
+If you loosen this carelessly, low-quality early pullback names can leak into `watchItems` or start being promoted into `executionItems`.
 
 ## Where To Change Behavior
 
@@ -78,9 +81,15 @@ npm run scan:swing-universe
 
 Then verify:
 
-1. `data/server-swing-picks.json` only contains names you would accept as executable setups or valid breakouts.
-2. A known early-watch setup does not reappear just because it is `matched`.
-3. A known valid 20-day moving-average first-buy setup still appears.
+1. `executionItems` only contains names you would accept as executable setups or valid breakouts.
+2. `watchItems` only contains matched watch setups you still want surfaced to the UI.
+3. A known early-watch setup does not reappear just because it is `matched`.
+4. A known valid 20-day moving-average first-buy setup still appears.
+
+## Latest Notes
+
+- As of `2026-04-13`, a single-stock debug check and the full universe scan both confirmed that `서전기전 (189860)` is currently an `execution` name, not a rejected setup.
+- If a name looks missing in the UI while the engine says `matched=true` and `actionable=true`, verify the saved `data/server-swing-picks.json` file after running `npm run scan:swing-universe` before changing thresholds.
 
 ## Notes On Monitoring
 

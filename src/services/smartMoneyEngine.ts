@@ -214,6 +214,10 @@ function resolveSetupEntryZone(params: {
   } else if (params.setupType === "volatile_power_digestion") {
     lowRatio = params.filters.volatileDigestionBuyZoneLowRetracementRatio;
     highRatio = params.filters.volatileDigestionBuyZoneHighRetracementRatio;
+  } else if (params.setupType === "support_holding_pullback") {
+    // Deep support-holding pullbacks should focus entries near the defended low, not near the old breakout.
+    lowRatio = 0.05;
+    highRatio = 0.35;
   }
 
   const normalizedLowRatio = clampRatio(Math.min(lowRatio, highRatio));
@@ -698,6 +702,7 @@ function classifyPullback(
   const pullbackDownSessions = pullbackPoints.reduce((count, point, index) => count + (point.close < (index === 0 ? surgePeakPoint.close : pullbackPoints[index - 1].close) ? 1 : 0), 0);
   const referenceCloseVsPeakPercent = percentChange(referencePoint.close, surgePeakPoint.close) ?? -100;
   const referenceCloseVsLeadInPercent = percentChange(referencePoint.close, leadInPoint.close) ?? -100;
+  const supportHoldingRangePercent = Math.abs(percentChange(stopLossReferencePrice, getPointHigh(surgePeakPoint)) ?? 0);
   const totalImpulseFromBasePercent = percentChange(surgePeakPoint.close, baseClose) ?? 0;
   const pricePullbackValid =
     pullbackMaxDrawdownPercent >= filters.minPullbackDrawdownPercent &&
@@ -717,6 +722,14 @@ function classifyPullback(
     pullbackRangePercent <= filters.maxVolatileDigestionRangePercent &&
     referenceCloseVsLeadInPercent >= filters.minVolatileDigestionReferenceCloseVsLeadInPercent &&
     totalImpulseFromBasePercent >= filters.minVolatileDigestionBaseAdvancePercent;
+  const supportHoldingValid =
+    pullbackPoints.length >= filters.minSetupPullbackSessions &&
+    pullbackDownSessions >= filters.minSetupDownSessions &&
+    pullbackMaxDrawdownPercent >= Math.max(filters.minPullbackDrawdownPercent, filters.pullbackBuyStartPercentFromPeak) &&
+    pullbackMaxDrawdownPercent <= filters.maxSetupPullbackDrawdownPercent &&
+    supportHoldingRangePercent <= filters.maxSetupPullbackRangePercent &&
+    referencePoint.close > stopLossReferencePrice &&
+    referenceCloseVsLeadInPercent >= Math.max(filters.minVolatileDigestionReferenceCloseVsLeadInPercent, -15);
   const rejectReasons: string[] = [];
   const volumeContractionThreshold = volatilePowerDigestionValid
     ? Math.min(filters.maxPullbackAvgVolumeRatio, filters.maxVolatileDigestionAvgVolumeRatio)
@@ -724,24 +737,26 @@ function classifyPullback(
   if (pullbackVolumeRatioToLeadIn == null || pullbackVolumeRatioToLeadIn > volumeContractionThreshold) {
     rejectReasons.push("Pullback volume did not contract enough.");
   }
-  if (!pricePullbackValid && !timeCorrectionValid && !volatilePowerDigestionValid) {
+  if (!pricePullbackValid && !timeCorrectionValid && !volatilePowerDigestionValid && !supportHoldingValid) {
     rejectReasons.push("Consolidation was neither a clean price pullback, a tight time correction, nor a volatile power digestion.");
   }
 
   const setupType = timeCorrectionValid
     ? "time_correction"
-    : pricePullbackValid
-      ? "tight_price_pullback"
-      : volatilePowerDigestionValid
-        ? "volatile_power_digestion"
-        : undefined;
+    : supportHoldingValid
+      ? "support_holding_pullback"
+      : pricePullbackValid
+        ? "tight_price_pullback"
+        : volatilePowerDigestionValid
+          ? "volatile_power_digestion"
+          : undefined;
 
   return {
     valid: rejectReasons.length === 0,
     pullbackType:
       setupType === "time_correction"
         ? "time_correction"
-        : setupType === "volatile_power_digestion" || setupType === "tight_price_pullback"
+        : setupType === "volatile_power_digestion" || setupType === "tight_price_pullback" || setupType === "support_holding_pullback"
           ? "price_pullback"
           : undefined,
     setupType,
@@ -1035,7 +1050,16 @@ export function evaluateSmartMoneyPattern(
 
       const leadInPriceChangePercent = percentChange(leadInPoint.close, leadInPrevious.close);
       const leadInVolume = scoreVolumeQuality(leadInPoint, getAverageVolumeBefore(points, leadInIndex, 20), filters.minLeadInVolumeRatio, filters.minTurnoverValue);
-      if (leadInPriceChangePercent == null || leadInPriceChangePercent < filters.minLeadInPriceChangePercent || !leadInVolume.passed) {
+      const leadInReferenceOpen = leadInPoint.open ?? leadInPrevious.close;
+      const leadInBullishBody = leadInPoint.close > leadInReferenceOpen;
+      const leadInClosedStrong = leadInPoint.close >= getPointHigh(leadInPoint) * 0.94;
+      if (
+        leadInPriceChangePercent == null ||
+        leadInPriceChangePercent < filters.minLeadInPriceChangePercent ||
+        !leadInVolume.passed ||
+        !leadInBullishBody ||
+        !leadInClosedStrong
+      ) {
         rejected.push(createRejectReason("setup", lookbackWindowDays, "Lead-in impulse failed price, relative volume, or turnover filters.", leadInPoint.date));
         continue;
       }
@@ -1168,13 +1192,15 @@ export function evaluateSmartMoneyPattern(
                   : setupDistancePercent <= 2
                     ? 74
                     : 34;
+        const rangePenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.6 : 5;
+        const drawdownPenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.2 : 2.5;
         const setupBaseScore = clamp(
           Math.round(
             leadInVolume.volumeQualityScore * 0.15 +
               Math.min(100, (leadInPriceChangePercent / filters.minLeadInPriceChangePercent) * 40) * 0.25 +
               Math.min(100, (surgeAdvancePercent / filters.minSetupSurgeAdvancePercent) * 35) * 0.2 +
-              clamp(100 - setupPullback.pullbackRangePercent * 5, 0, 100) * 0.2 +
-              clamp(100 - setupPullback.pullbackMaxDrawdownPercent * 2.5, 0, 100) * 0.2
+              clamp(100 - setupPullback.pullbackRangePercent * rangePenaltyMultiplier, 0, 100) * 0.2 +
+              clamp(100 - setupPullback.pullbackMaxDrawdownPercent * drawdownPenaltyMultiplier, 0, 100) * 0.2
           ),
           0,
           100
@@ -1182,7 +1208,11 @@ export function evaluateSmartMoneyPattern(
         const setupScore = clamp(
           Math.round(
             setupBaseScore +
-              (setupPullback.setupType === "volatile_power_digestion" ? filters.volatileDigestionSetupScoreBoost : 0)
+              (setupPullback.setupType === "volatile_power_digestion"
+                ? filters.volatileDigestionSetupScoreBoost
+                : setupPullback.setupType === "support_holding_pullback"
+                  ? 8
+                  : 0)
           ),
           0,
           100
@@ -1245,9 +1275,9 @@ export function evaluateSmartMoneyPattern(
           pricingContext: options?.pricingContext,
           reasons: [
             `Lead-in on ${leadInPoint.date} printed ${leadInPriceChangePercent.toFixed(1)}% with solid turnover support.`,
-            `The stock formed a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile power digestion" : setupPullback.pullbackType === "time_correction" ? "time correction" : "tight price pullback"} with volume cooling to ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor and close compression of ${setupPullback.closeRangePercent.toFixed(1)}%.`,
+            `The stock formed a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile power digestion" : setupPullback.setupType === "support_holding_pullback" ? "support-holding pullback" : setupPullback.pullbackType === "time_correction" ? "time correction" : "tight price pullback"} with volume cooling to ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor and close compression of ${setupPullback.closeRangePercent.toFixed(1)}%.`,
             !pullbackBuyEligible
-              ? `Current structure is a ${setupPullback.setupType === "time_correction" ? "re-breakout watch" : "setup watch"} rather than a pullback-buy zone because the drawdown, distance, or funded-peak damage do not fit the staged-buy archetype.`
+              ? `Current structure is a ${setupPullback.setupType === "time_correction" ? "re-breakout watch" : setupPullback.setupType === "support_holding_pullback" ? "support-holding watch" : "setup watch"} rather than a pullback-buy zone because the drawdown, distance, or funded-peak damage do not fit the staged-buy archetype.`
               : pullbackBuyActionable
                 ? `Current price has approached the 20-day moving average (${referenceSma20?.toFixed(0) ?? "-"}) after a ${filters.pullbackBuyStartPercentFromPeak}%+ drawdown from the funded peak, so 1st-buy conditions are active with stop anchored to the visible ${filters.stopLossLookbackSessions}-session low on ${stopLossReference.date ?? "the prior low"} (${stopLossReference.price.toFixed(0)}).`
                 : pullbackBuyStarted
@@ -1359,7 +1389,7 @@ export function evaluateSmartMoneyPattern(
             regimeScoreWeight: filters.regimeScoreWeight,
             pricingContext: options?.pricingContext,
             reasons: [
-              `Setup from ${leadInPoint.date} to ${surgePeakPoint.date} provided the base for a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile-power-digestion" : setupPullback.pullbackType === "time_correction" ? "time-correction" : "price-pullback"} breakout.`,
+              `Setup from ${leadInPoint.date} to ${surgePeakPoint.date} provided the base for a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile-power-digestion" : setupPullback.setupType === "support_holding_pullback" ? "support-holding-pullback" : setupPullback.pullbackType === "time_correction" ? "time-correction" : "price-pullback"} breakout.`,
               `Breakout on ${breakoutPoint.date} cleared ${setupPullback.breakoutLevel.toFixed(2)} with ${breakoutPriceChangePercent.toFixed(1)}% price expansion and ${breakoutVolume.volumeQualityScore} volume-quality points.`,
               `Reference price is ${extensionPercent.toFixed(1)}% from the breakout level and failure risk is ${breakoutFailureRiskScore}.`
             ]

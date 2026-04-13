@@ -13,9 +13,10 @@ const LEGACY_STORAGE_KEY = "band-stock-recommendations-v2";
 const UI_STATE_STORAGE_KEY = "stock-project-ui-state-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
+const DIVIDEND_CATEGORY = "dividend";
 const DEFAULT_LONG_TERM_BUCKET = "buy";
 const DEFAULT_SWING_BUCKET = "execution";
-const SWING_LOOKBACK_DAYS = 15;
+const SWING_LOOKBACK_DAYS = 45;
 const SERVER_RECOMMENDATION_REFRESH_INTERVAL_MS = 60 * 1000;
 const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
 const DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS = {
@@ -442,6 +443,7 @@ let marketWatchChartViewportByKey = new Map();
 let marketWatchTimeframeByKey = new Map(indexWatchSeed.map((item) => [item.key, "daily"]));
 let activeMarketWatchKey = null;
 let marketWatchRefreshTimer = null;
+let marketWatchFetchedAt = "";
 let marketEventCalendarPayload = null;
 let marketEventCalendarLoaded = false;
 let marketEventCalendarLoading = false;
@@ -451,9 +453,14 @@ let marketEventCalendarVisibleMonth = "";
 let marketEventCalendarExpandedGroups = new Set();
 let stockModalPointerDownOnBackdrop = false;
 let marketEventModalPointerDownOnBackdrop = false;
+let serverDividendPicksLoaded = false;
 let serverLongTermPicksLoaded = false;
 let serverSwingPicksLoaded = false;
-let recommendationUniverseScanLoading = false;
+const recommendationUniverseScanLoadingByCategory = {
+  longTerm: false,
+  dividend: false,
+  swing: false
+};
 let swingPatternByKey = new Map();
 let realtimeStockSnapshots = new Map();
 let stockSnapshotRefreshTimer = null;
@@ -526,6 +533,10 @@ const swingBucketTabs = document.querySelector("#swingBucketTabs");
 const stockCategorySelect = document.querySelector("#stockCategorySelect");
 const longTermBucketField = document.querySelector("#longTermBucketField");
 const longTermBucketSelect = document.querySelector("#longTermBucketSelect");
+const reviewBucketLabel = document.querySelector("#reviewBucketLabel");
+const dividendInfoField = document.querySelector("#dividendInfoField");
+const latestDividendDateInput = document.querySelector("#latestDividendDateInput");
+const latestDividendAmountInput = document.querySelector("#latestDividendAmountInput");
 const stockNoteInput = document.querySelector("#stockNoteInput");
 const moversStatusBadge = document.querySelector("#moversStatusBadge");
 const moversSummaryBar = document.querySelector("#moversSummaryBar");
@@ -711,7 +722,7 @@ stockCategoryTabs?.addEventListener("click", (event) => {
 
 longTermBucketTabs?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-long-term-bucket]");
-  if (!button || currentCategory !== DEFAULT_CATEGORY) {
+  if (!button || isSwingCategory(currentCategory)) {
     return;
   }
 
@@ -866,7 +877,7 @@ stockForm.addEventListener("submit", async (event) => {
   }
 
   recommendationCatalog = [...recommendationCatalog, item];
-  currentCategory = item.category ?? DEFAULT_CATEGORY;
+  currentCategory = resolveRecommendationCategory(item.category);
   if (item.category !== "swing") {
     currentLongTermBucket = item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET;
   }
@@ -963,6 +974,7 @@ results.addEventListener("click", (event) => {
 
 async function initializeApp() {
   stockSearchUniverse = buildStockSearchUniverse();
+  await loadServerDividendPicks();
   await loadServerLongTermPicks();
   await loadServerSwingPicks();
   await refreshSwingPatternSnapshots();
@@ -1033,6 +1045,12 @@ function syncServerLongTermRecommendations(baseItems, incomingItems) {
   return mergeRecommendations(normalizedIncoming, preserved);
 }
 
+function syncServerDividendRecommendations(baseItems, incomingItems) {
+  const preserved = baseItems.filter((item) => (item.category ?? DEFAULT_CATEGORY) !== DIVIDEND_CATEGORY || !isServerUniverseRecommendation(item));
+  const normalizedIncoming = incomingItems.map((item) => normalizeRecommendation(item));
+  return mergeRecommendations(normalizedIncoming, preserved);
+}
+
 function syncServerSwingRecommendations(baseItems, incomingItems) {
   const preserved = baseItems.filter((item) => (item.category ?? DEFAULT_CATEGORY) !== "swing" || !isServerUniverseRecommendation(item));
   const normalizedIncoming = incomingItems.map((item) => normalizeRecommendation(item));
@@ -1073,6 +1091,35 @@ async function loadServerLongTermPicks(force = false) {
     return false;
   } finally {
     serverLongTermPicksLoaded = true;
+  }
+}
+
+async function loadServerDividendPicks(force = false) {
+  if (serverDividendPicksLoaded && !force) {
+    return false;
+  }
+
+  try {
+    const response = await fetch("/analysis/server-dividend-picks");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "서버 배당 종목을 불러오지 못했습니다.");
+    }
+
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const nextCatalog = syncServerDividendRecommendations(recommendationCatalog, items);
+    const changed = JSON.stringify(nextCatalog) !== JSON.stringify(recommendationCatalog);
+    recommendationCatalog = nextCatalog;
+    if (changed) {
+      saveCatalog();
+    }
+    syncSelectedKeyWithCatalog();
+    return changed;
+  } catch (error) {
+    console.error(error);
+    return false;
+  } finally {
+    serverDividendPicksLoaded = true;
   }
 }
 
@@ -1131,12 +1178,13 @@ async function syncServerRecommendations(options = {}) {
   serverRecommendationSyncInFlight = true;
 
   try {
-    const [longTermChanged, swingChanged] = await Promise.all([
+    const [dividendChanged, longTermChanged, swingChanged] = await Promise.all([
+      loadServerDividendPicks(true),
       loadServerLongTermPicks(true),
       loadServerSwingPicks(true)
     ]);
 
-    if (!longTermChanged && !swingChanged) {
+    if (!dividendChanged && !longTermChanged && !swingChanged) {
       return;
     }
 
@@ -1157,7 +1205,10 @@ async function syncServerRecommendations(options = {}) {
       const swingItems = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === "swing");
       const executionCount = swingItems.filter((item) => item.swingBucket === "execution").length;
       const watchCount = swingItems.filter((item) => item.swingBucket === "watch").length;
-      showSummary(`서버 추천 종목을 다시 반영했습니다. 스윙 매수후보 ${executionCount}개 / 관심후보 ${watchCount}개입니다.`);
+      const dividendCount = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === DIVIDEND_CATEGORY).length;
+      showSummary(
+        `서버 추천 종목을 다시 반영했습니다. 배당 ${dividendCount}개 / 스윙 매수후보 ${executionCount}개 / 관심후보 ${watchCount}개입니다.`
+      );
     }
   } catch (error) {
     console.error(error);
@@ -1251,6 +1302,7 @@ function renderIndexWatchList() {
     return;
   }
 
+  const marketWatchDisplayDate = getMarketWatchDisplayDate();
   indexWatchList.innerHTML = indexWatchSeed
     .map((item) => {
       const snapshot = marketWatchItems.get(item.key);
@@ -1291,7 +1343,7 @@ function renderIndexWatchList() {
                       <span class="index-watch-card-price-state">${formatSignedPointDelta(priceDirectionValue)}</span>
                     </div>
                     <div class="index-watch-card-change ${trendClass}">${formatPercent(displayMetrics.changePercent)}</div>
-                    <div class="index-watch-card-hint">카드를 누르면 차트가 열립니다.</div>
+                    <div class="index-watch-card-hint">${escapeHtml(marketWatchDisplayDate)} 업데이트 · 카드를 누르면 차트가 열립니다.</div>
                   </div>
                 `
                 : `
@@ -1699,6 +1751,12 @@ function getTodayInSeoulDateText() {
   return formatter.format(new Date());
 }
 
+function getMarketWatchDisplayDate() {
+  return typeof marketWatchFetchedAt === "string" && marketWatchFetchedAt
+    ? marketWatchFetchedAt.slice(0, 10)
+    : getTodayInSeoulDateText();
+}
+
 function getMonthKeyFromDate(dateText) {
   return typeof dateText === "string" ? dateText.slice(0, 7) : "";
 }
@@ -1942,6 +2000,7 @@ async function loadMarketWatch(options = {}) {
     }
 
     const items = Array.isArray(payload.items) ? payload.items : [];
+    marketWatchFetchedAt = typeof payload.fetchedAt === "string" ? payload.fetchedAt : "";
     marketWatchItems = new Map(items.map((item) => [item.key, item]));
     marketWatchLoaded = true;
   } catch (error) {
@@ -2395,7 +2454,7 @@ function renderIndexChartModal() {
     indexChartModalStartDate.textContent = chartWindow?.startDate ?? "-";
   }
   if (indexChartModalEndDate) {
-    indexChartModalEndDate.textContent = chartWindow?.endDate ?? "-";
+    indexChartModalEndDate.textContent = getMarketWatchDisplayDate();
   }
 
   indexChartModalTooltip.classList.add("hidden");
@@ -2845,7 +2904,8 @@ function renderSelector() {
       const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
-      const longTermBucketLabel = item.category === "swing" ? "" : getLongTermBucketLabel(item.longTermBucket);
+      const dividendInfoLine = buildDividendInfoLine(item);
+      const longTermBucketLabel = item.category === "swing" ? "" : getNonSwingBucketLabel(item.category, item.longTermBucket);
       const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(item.swingBucket) : "";
       const longTermInsightNote = item.category === "swing" ? "" : item.longTermInsightNote ?? item.note;
       const longTermInsightKeywords = Array.isArray(item.longTermInsightKeywords) ? item.longTermInsightKeywords : null;
@@ -2868,6 +2928,7 @@ function renderSelector() {
             <button class="stock-card-select" type="button" data-stock-key="${escapeHtml(item.key)}">
               <span class="stock-card-name">${escapeHtml(titleText)}</span>
               ${metaText ? `<span class="stock-card-meta">${escapeHtml(metaText)}</span>` : ""}
+              ${dividendInfoLine ? `<span class="stock-card-meta">${escapeHtml(dividendInfoLine)}</span>` : ""}
               ${realtimeLine}
               ${longTermBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>` : ""}
               ${swingBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>` : ""}
@@ -3156,33 +3217,48 @@ function updateUniverseRecommendationButton() {
     return;
   }
 
-  runUniverseRecommendationBtn.disabled = recommendationUniverseScanLoading;
-  if (!recommendationUniverseScanLoading) {
-    runUniverseRecommendationBtn.textContent = currentCategory === "swing" ? "스윙 추천 검색" : "중장기 추천 검색";
+  const isCurrentCategoryLoading = recommendationUniverseScanLoadingByCategory[currentCategory] === true;
+  runUniverseRecommendationBtn.disabled = isCurrentCategoryLoading;
+  if (!isCurrentCategoryLoading) {
+    runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
+      ? "배당 추천 검색"
+      : isSwingCategory(currentCategory)
+        ? "스윙 추천 검색"
+        : "중장기 추천 검색";
     return;
   }
 
-  runUniverseRecommendationBtn.textContent = currentCategory === "swing" ? "스윙 추천 검색 중..." : "중장기 추천 검색 중...";
+  runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
+    ? "배당 추천 검색 중..."
+    : isSwingCategory(currentCategory)
+      ? "스윙 추천 검색 중..."
+      : "중장기 추천 검색 중...";
 }
 
 function renderRecommendationScopePanel() {
-  const categoryLabel = currentCategory === "swing" ? "스윙" : "중장기";
-  const activeBucketLabel = currentCategory === "swing"
+  const categoryLabel = getCategoryDisplayLabel(currentCategory);
+  const activeBucketLabel = isSwingCategory(currentCategory)
     ? getSwingBucketLabel(currentSwingBucket)
-    : getLongTermBucketLabel(currentLongTermBucket);
+    : getNonSwingBucketLabel(currentCategory, currentLongTermBucket);
 
   if (recommendationScopeTitle) {
     recommendationScopeTitle.textContent = `${categoryLabel} 추천 / ${activeBucketLabel}`;
   }
 
   if (recommendationScopeHelp) {
-    recommendationScopeHelp.textContent = currentCategory === "swing"
+    recommendationScopeHelp.textContent = isSwingCategory(currentCategory)
       ? "상단에서 스윙 흐름을 고르고, 매수후보와 관심후보를 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
-      : "상단에서 중장기 흐름을 유지한 채 매수후보군과 관찰군을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
+      : isDividendCategory(currentCategory)
+        ? "배당 탭은 중장기 형식과 같은 카드/상세 화면을 쓰되, 배당 엔진 기준 후보와 관찰군을 따로 관리합니다."
+        : "상단에서 중장기 흐름을 유지한 채 매수후보군과 관찰군을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
   }
 
   if (openAddStockBtn) {
-    openAddStockBtn.textContent = currentCategory === "swing" ? "스윙 추천 추가" : "중장기 추천 추가";
+    openAddStockBtn.textContent = isSwingCategory(currentCategory)
+      ? "스윙 추천 추가"
+      : isDividendCategory(currentCategory)
+        ? "배당 종목 추가"
+        : "중장기 추천 추가";
   }
 
   updateUniverseRecommendationButton();
@@ -3193,14 +3269,14 @@ function renderLongTermBucketTabs() {
     return;
   }
 
-  const isVisible = currentCategory === DEFAULT_CATEGORY;
+  const isVisible = !isSwingCategory(currentCategory);
   longTermBucketTabs.classList.toggle("hidden", !isVisible);
   if (!isVisible) {
     renderRecommendationScopePanel();
     return;
   }
 
-  const counts = getLongTermBucketCounts();
+  const counts = getLongTermBucketCounts(currentCategory);
   for (const tab of longTermBucketTabs.querySelectorAll("[data-long-term-bucket]")) {
     const bucket = tab.dataset.longTermBucket;
     if (!isValidLongTermBucket(bucket)) {
@@ -3208,7 +3284,7 @@ function renderLongTermBucketTabs() {
     }
 
     tab.classList.toggle("active", bucket === currentLongTermBucket);
-    tab.textContent = `${getLongTermBucketLabel(bucket)} ${counts[bucket]}개`;
+    tab.textContent = `${getNonSwingBucketLabel(currentCategory, bucket)} ${counts[bucket]}개`;
   }
 
   renderRecommendationScopePanel();
@@ -3241,14 +3317,17 @@ function renderSwingBucketTabs() {
 }
 
 async function runRecommendationUniverseScan() {
-  if (recommendationUniverseScanLoading) {
+  const requestedCategory = isSwingCategory(currentCategory)
+    ? "swing"
+    : isDividendCategory(currentCategory)
+      ? DIVIDEND_CATEGORY
+      : DEFAULT_CATEGORY;
+  if (recommendationUniverseScanLoadingByCategory[requestedCategory]) {
     return;
   }
+  const requestedLabel = requestedCategory === "swing" ? "스윙" : requestedCategory === DIVIDEND_CATEGORY ? "배당" : "중장기";
 
-  const requestedCategory = currentCategory === "swing" ? "swing" : DEFAULT_CATEGORY;
-  const requestedLabel = requestedCategory === "swing" ? "스윙" : "중장기";
-
-  recommendationUniverseScanLoading = true;
+  recommendationUniverseScanLoadingByCategory[requestedCategory] = true;
   updateUniverseRecommendationButton();
   showError("");
   showSummary(`${requestedLabel} universe 검색을 시작했습니다. 종목 수가 많아 시간이 걸릴 수 있습니다.`);
@@ -3313,6 +3392,39 @@ async function runRecommendationUniverseScan() {
       return;
     }
 
+    if (payload.category === DIVIDEND_CATEGORY) {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      recommendationCatalog = syncServerDividendRecommendations(recommendationCatalog, items);
+      serverDividendPicksLoaded = true;
+
+      if (currentCategory === DIVIDEND_CATEGORY) {
+        currentPage = 1;
+        if (currentLongTermBucket === "buy" && !payload.buyCount && payload.watchCount) {
+          currentLongTermBucket = "watch";
+        } else if (currentLongTermBucket === "watch" && !payload.watchCount && payload.buyCount) {
+          currentLongTermBucket = "buy";
+        }
+        selectedKey = getFilteredCatalog()[0]?.key ?? null;
+      }
+
+      saveCatalog();
+      syncSelectedKeyWithCatalog();
+      renderCategoryTabs();
+      renderLongTermBucketTabs();
+      renderSwingBucketTabs();
+      renderSelector();
+
+      if (currentCategory === DIVIDEND_CATEGORY && selectedKey) {
+        await runAnalysisByKey(selectedKey);
+      }
+
+      const dividendDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
+      showSummary(
+        `배당 universe 검색이 완료되었습니다. 후보 ${payload.buyCount ?? 0}개 / 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.${dividendDiffCount ? ` 변화 ${dividendDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+      );
+      return;
+    }
+
     const items = Array.isArray(payload.items) ? payload.items : [];
     recommendationCatalog = syncServerLongTermRecommendations(recommendationCatalog, items);
     serverLongTermPicksLoaded = true;
@@ -3348,7 +3460,7 @@ async function runRecommendationUniverseScan() {
     showError(message);
     showSummary("");
   } finally {
-    recommendationUniverseScanLoading = false;
+    recommendationUniverseScanLoadingByCategory[requestedCategory] = false;
     updateUniverseRecommendationButton();
   }
 }
@@ -3391,9 +3503,16 @@ function isValidRecommendation(item) {
 }
 
 function normalizeRecommendation(item) {
-  const category = item?.category === "swing" ? "swing" : DEFAULT_CATEGORY;
+  const category = resolveRecommendationCategory(item?.category);
+  const normalizedName = typeof item?.name === "string" ? item.name : typeof item?.symbol === "string" ? item.symbol : "종목";
+  const normalizedSymbol = typeof item?.symbol === "string" ? item.symbol : "";
+  const baseKey =
+    typeof item?.key === "string" && item.key.trim()
+      ? item.key.trim()
+      : createRecommendationKey(normalizedName, normalizedSymbol, category);
   return {
     ...item,
+    key: scopeRecommendationKey(baseKey, category),
     category,
     longTermBucket: category === "swing" ? undefined : resolveLongTermBucket(item),
     swingBucket: category === "swing" ? resolveSwingBucket(item) : undefined,
@@ -3427,8 +3546,40 @@ function isValidLongTermBucket(value) {
   return value === "buy" || value === "watch";
 }
 
+function isSwingCategory(category) {
+  return category === "swing";
+}
+
+function isDividendCategory(category) {
+  return category === DIVIDEND_CATEGORY;
+}
+
+function resolveRecommendationCategory(category) {
+  if (category === "swing") {
+    return "swing";
+  }
+
+  if (category === DIVIDEND_CATEGORY) {
+    return DIVIDEND_CATEGORY;
+  }
+
+  return DEFAULT_CATEGORY;
+}
+
+function scopeRecommendationKey(key, category) {
+  if (!key) {
+    return key;
+  }
+
+  if (category === DEFAULT_CATEGORY) {
+    return key.replace(/-(dividend|swing)$/u, "");
+  }
+
+  return key.endsWith(`-${category}`) ? key : `${key}-${category}`;
+}
+
 function isValidCategory(value) {
-  return value === "swing" || value === DEFAULT_CATEGORY;
+  return value === "swing" || value === DIVIDEND_CATEGORY || value === DEFAULT_CATEGORY;
 }
 
 function resolveSwingBucket(item) {
@@ -3453,6 +3604,192 @@ function getSwingBucketLabel(bucket) {
 
 function getLongTermBucketLabel(bucket) {
   return bucket === "watch" ? "관찰군" : "매수후보군";
+}
+
+function getDividendBucketLabel(bucket) {
+  return bucket === "watch" ? "관찰군" : "배당후보군";
+}
+
+function getNonSwingBucketLabel(category, bucket) {
+  return isDividendCategory(category) ? getDividendBucketLabel(bucket) : getLongTermBucketLabel(bucket);
+}
+
+function getCategoryDisplayLabel(category) {
+  if (isSwingCategory(category)) {
+    return "스윙";
+  }
+
+  if (isDividendCategory(category)) {
+    return "배당";
+  }
+
+  return "중장기";
+}
+
+function formatDividendAmount(value) {
+  if (value == null || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return `${formatNumber(value)}원`;
+}
+
+function formatDividendYield(value) {
+  if (value == null || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return `${formatDecimal(value, 2)}%`;
+}
+
+function getDividendHistoryEntries(item) {
+  if (!isDividendCategory(item?.category)) {
+    return [];
+  }
+
+  const history = Array.isArray(item?.fundamentals?.dividendHistory) ? item.fundamentals.dividendHistory.slice(-4) : [];
+  if (!history.length) {
+    const explicitDate = typeof item?.latestDividendDate === "string" && item.latestDividendDate ? item.latestDividendDate : "";
+    const explicitAmount =
+      typeof item?.latestDividendAmount === "number" && Number.isFinite(item.latestDividendAmount)
+        ? item.latestDividendAmount
+        : undefined;
+
+    return explicitDate || explicitAmount != null
+      ? [
+          {
+            label: "최근 배당",
+            dividendDateLabel: explicitDate || "-",
+            dividendAmount: explicitAmount,
+            dividendYield: undefined
+          }
+        ]
+      : [];
+  }
+
+  return history
+    .slice()
+    .reverse()
+    .map((entry, index) => {
+      const explicitDate =
+        index === 0 && typeof item?.latestDividendDate === "string" && item.latestDividendDate
+          ? item.latestDividendDate
+          : "";
+      const explicitAmount =
+        index === 0 && typeof item?.latestDividendAmount === "number" && Number.isFinite(item.latestDividendAmount)
+          ? item.latestDividendAmount
+          : undefined;
+
+      return {
+        label: typeof entry?.label === "string" && entry.label ? entry.label : `최근 ${index + 1}`,
+        dividendDateLabel:
+          explicitDate ||
+          (typeof entry?.dividendDateLabel === "string" && entry.dividendDateLabel
+            ? entry.dividendDateLabel
+            : typeof entry?.label === "string" && entry.label
+              ? entry.label
+              : "-"),
+        dividendAmount:
+          explicitAmount ??
+          (typeof entry?.dividendAmount === "number" && Number.isFinite(entry.dividendAmount)
+            ? entry.dividendAmount
+            : undefined),
+        dividendYield:
+          typeof entry?.dividendYield === "number" && Number.isFinite(entry.dividendYield) ? entry.dividendYield : undefined
+      };
+    });
+}
+
+function buildDividendInfoLine(item) {
+  if (!isDividendCategory(item?.category)) {
+    return "";
+  }
+
+  const latestHistory = getDividendHistoryEntries(item)[0];
+  const date =
+    typeof item?.latestDividendDate === "string" && item.latestDividendDate
+      ? item.latestDividendDate
+      : latestHistory?.dividendDateLabel ?? "";
+  const amountValue =
+    typeof item?.latestDividendAmount === "number" && Number.isFinite(item.latestDividendAmount)
+      ? item.latestDividendAmount
+      : latestHistory?.dividendAmount;
+  const amountText = amountValue != null ? formatDividendAmount(amountValue) : "";
+  const yieldText = formatDividendYield(latestHistory?.dividendYield);
+
+  return [`최근 배당일 ${date || "-"}`, `배당액 ${amountText || "-"}`, `추정 배당수익률 ${yieldText}`].join(" / ");
+}
+
+function buildDividendHistoryPanel(item) {
+  if (!isDividendCategory(item?.category)) {
+    return "";
+  }
+
+  const entries = getDividendHistoryEntries(item);
+  if (!entries.length) {
+    return `
+      <div class="dividend-history-block">
+        <div class="dividend-history-head">
+          <strong>최근 4년 배당 이력</strong>
+          <span>배당 데이터 없음</span>
+        </div>
+        <div class="dividend-history-empty">최근 4년 배당일과 배당액을 아직 불러오지 못했습니다.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="dividend-history-block">
+      <div class="dividend-history-head">
+        <strong>최근 4년 배당 이력</strong>
+        <span>최신순</span>
+      </div>
+      <div class="dividend-history-table" role="table" aria-label="최근 4년 배당 이력">
+        <div class="dividend-history-row dividend-history-row-head" role="row">
+          <span role="columnheader">구분</span>
+          <span role="columnheader">배당일</span>
+          <span role="columnheader">배당액</span>
+          <span role="columnheader">추정 배당수익률</span>
+        </div>
+        ${entries
+          .map(
+            (entry, index) => `
+              <div class="dividend-history-row" role="row">
+                <span role="cell">${escapeHtml(index === 0 ? `최근 ${entry.label}` : entry.label)}</span>
+                <span role="cell">${escapeHtml(entry.dividendDateLabel || "-")}</span>
+                <span role="cell">${escapeHtml(formatDividendAmount(entry.dividendAmount))}</span>
+                <span role="cell">${escapeHtml(formatDividendYield(entry.dividendYield))}</span>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function getEngineDisplayLabel(category) {
+  return isDividendCategory(category) ? "배당 엔진" : "중장기 엔진";
+}
+
+function getEnginePanelTitle(category) {
+  return isDividendCategory(category) ? "배당 엔진 진단" : "중장기 엔진 진단";
+}
+
+function getEngineBucketLabel(category, group) {
+  if (isDividendCategory(category)) {
+    return group === "watch candidate" ? "배당 관찰군" : "배당 후보군";
+  }
+
+  return formatLongTermGroupLabel(group);
+}
+
+function getEngineReviewExclusionText(category) {
+  return isDividendCategory(category) ? "배당 엔진 대상에서 제외" : "중장기 대표주 엔진 대상에서 제외";
+}
+
+function getEngineReviewEmptyText(category) {
+  return isDividendCategory(category) ? "평가 가능한 배당 엔진 결과가 없습니다." : "평가 가능한 중장기 엔진 결과가 없습니다.";
 }
 
 function getMarketWatchDisplayMetrics(snapshot, timeframe = "daily") {
@@ -3505,7 +3842,7 @@ function repairRecommendationText(item, fallbackName) {
   }
 
   if (looksCorruptedText(next.key)) {
-    next.key = `${next.name}-${next.symbol}`;
+    next.key = createRecommendationKey(next.name, next.symbol, resolveRecommendationCategory(next.category));
   }
 
   if (looksCorruptedText(next.note)) {
@@ -3537,13 +3874,13 @@ function getFilteredCatalog() {
       return false;
     }
 
-    if (currentCategory === "swing") {
+    if (isSwingCategory(currentCategory)) {
       return (item.swingBucket ?? DEFAULT_SWING_BUCKET) === currentSwingBucket;
     }
 
     return (item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET) === currentLongTermBucket;
   });
-  if (currentCategory !== "swing") {
+  if (!isSwingCategory(currentCategory)) {
     return filtered;
   }
 
@@ -3624,7 +3961,11 @@ function removeStock(key) {
 function openStockModal() {
   stockForm.reset();
   if (stockModalTitle) {
-    stockModalTitle.textContent = currentCategory === "swing" ? "스윙 추천 추가" : "중장기 추천 추가";
+    stockModalTitle.textContent = isSwingCategory(currentCategory)
+      ? "스윙 추천 추가"
+      : isDividendCategory(currentCategory)
+        ? "배당 종목 추가"
+        : "중장기 추천 추가";
   }
   if (stockCategorySelect) {
     stockCategorySelect.value = currentCategory;
@@ -3656,20 +3997,26 @@ function buildStockFromForm() {
   const name = stockNameInput.value.trim();
   const symbol = stockSymbolInput.value.trim();
   const anchorDate = stockDateInput.value;
-  const category = stockCategorySelect?.value === "swing" ? "swing" : DEFAULT_CATEGORY;
+  const category = resolveRecommendationCategory(stockCategorySelect?.value);
   const longTermBucket = category === "swing" ? undefined : isValidLongTermBucket(longTermBucketSelect?.value) ? longTermBucketSelect.value : DEFAULT_LONG_TERM_BUCKET;
   const swingBucket = category === "swing" ? currentSwingBucket : undefined;
   const recommendedPrice = Number(stockPriceInput.value);
   const extraNote = stockNoteInput.value.trim();
+  const latestDividendDate = isDividendCategory(category) ? latestDividendDateInput?.value || undefined : undefined;
+  const parsedDividendAmount = latestDividendAmountInput?.value ? Number(latestDividendAmountInput.value) : undefined;
+  const latestDividendAmount =
+    isDividendCategory(category) && parsedDividendAmount != null && Number.isFinite(parsedDividendAmount) && parsedDividendAmount >= 0
+      ? parsedDividendAmount
+      : undefined;
 
   if (!selectedStockOption || !name || !symbol || !anchorDate || !Number.isFinite(recommendedPrice) || recommendedPrice <= 0) {
     showError("먼저 검색 결과에서 종목을 선택하고 추천가와 기준일을 입력해주세요.");
     return null;
   }
 
-  const key = createRecommendationKey(name, symbol);
-  if (recommendationCatalog.some((item) => item.key === key || item.symbol === symbol)) {
-    showError("이미 등록된 종목명 또는 종목코드입니다.");
+  const key = createRecommendationKey(name, symbol, category);
+  if (recommendationCatalog.some((item) => item.key === key || (item.symbol === symbol && (item.category ?? DEFAULT_CATEGORY) === category))) {
+    showError("같은 탭에는 동일한 종목을 중복 등록할 수 없습니다.");
     return null;
   }
 
@@ -3681,25 +4028,57 @@ function buildStockFromForm() {
     source: "manual",
     longTermBucket,
     swingBucket,
+    latestDividendDate,
+    latestDividendAmount,
     anchorDate,
     note: [formatNumber(recommendedPrice) + "원 기준", extraNote].filter(Boolean).join(" / ")
   };
 }
 
 function syncLongTermBucketField() {
-  const isLongTerm = stockCategorySelect?.value !== "swing";
-  longTermBucketField?.classList.toggle("hidden", !isLongTerm);
+  const category = resolveRecommendationCategory(stockCategorySelect?.value);
+  const isNonSwing = !isSwingCategory(category);
+  const isDividend = isDividendCategory(category);
+  longTermBucketField?.classList.toggle("hidden", !isNonSwing);
+  dividendInfoField?.classList.toggle("hidden", !isDividend);
   if (longTermBucketSelect) {
-    longTermBucketSelect.disabled = !isLongTerm;
-    if (isLongTerm && !isValidLongTermBucket(longTermBucketSelect.value)) {
+    longTermBucketSelect.disabled = !isNonSwing;
+    if (isNonSwing && !isValidLongTermBucket(longTermBucketSelect.value)) {
       longTermBucketSelect.value = DEFAULT_LONG_TERM_BUCKET;
+    }
+  }
+
+  if (reviewBucketLabel) {
+    reviewBucketLabel.textContent = isDividendCategory(category) ? "배당 분류" : "중장기 분류";
+  }
+
+  const buyOption = longTermBucketSelect?.querySelector('option[value="buy"]');
+  const watchOption = longTermBucketSelect?.querySelector('option[value="watch"]');
+  if (buyOption) {
+    buyOption.textContent = isDividendCategory(category) ? "배당후보군" : "매수후보군";
+  }
+  if (watchOption) {
+    watchOption.textContent = "관찰군";
+  }
+
+  if (latestDividendDateInput) {
+    latestDividendDateInput.disabled = !isDividend;
+    if (!isDividend) {
+      latestDividendDateInput.value = "";
+    }
+  }
+
+  if (latestDividendAmountInput) {
+    latestDividendAmountInput.disabled = !isDividend;
+    if (!isDividend) {
+      latestDividendAmountInput.value = "";
     }
   }
 }
 
-function getLongTermBucketCounts() {
+function getLongTermBucketCounts(category = DEFAULT_CATEGORY) {
   return recommendationCatalog
-    .filter((item) => (item.category ?? DEFAULT_CATEGORY) === DEFAULT_CATEGORY)
+    .filter((item) => (item.category ?? DEFAULT_CATEGORY) === category)
     .reduce(
       (counts, item) => {
         const bucket = item.longTermBucket === "watch" ? "watch" : "buy";
@@ -3724,13 +4103,13 @@ function getSwingBucketCounts() {
 }
 
 function getCurrentFilterEmptyMessage() {
-  if (currentCategory === "swing") {
+  if (isSwingCategory(currentCategory)) {
     return currentSwingBucket === "watch"
       ? "관심후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다."
       : "매수후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.";
   }
 
-  return `${getLongTermBucketLabel(currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;
+  return `${getNonSwingBucketLabel(currentCategory, currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;
 }
 
 function renderEmptyResultsForCurrentFilter() {
@@ -3742,8 +4121,9 @@ function renderEmptyResultsForCurrentFilter() {
   results.innerHTML = `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
 }
 
-function createRecommendationKey(name, symbol) {
-  return `${name}-${symbol}`;
+function createRecommendationKey(name, symbol, category = DEFAULT_CATEGORY) {
+  const baseKey = `${name}-${symbol}`;
+  return scopeRecommendationKey(baseKey, resolveRecommendationCategory(category));
 }
 
 async function runAnalysisByKey(key) {
@@ -3833,9 +4213,11 @@ async function runAnalysisByKey(key) {
         `${item.name} 분석이 완료되었습니다. 최근 ${SWING_LOOKBACK_DAYS}거래일 기준 ${currentAnalysis.swingAssessment.label} 상태입니다.`
       );
     } else if (item.category !== "swing" && currentAnalysis.longTermReview) {
-      const assessment = getLongTermReviewAssessment(currentAnalysis.longTermReview);
+      const assessment = getLongTermReviewAssessment(currentAnalysis.longTermReview, item.category ?? DEFAULT_CATEGORY);
       const passText = currentAnalysis.longTermReview.enginePass ? "엔진 통과" : "엔진 관찰/제외";
-      showSummary(`${item.name} 분석이 완료되었습니다. 중장기 엔진 기준 ${assessment.groupLabel} / ${passText} 상태입니다.`);
+      showSummary(
+        `${item.name} 분석이 완료되었습니다. ${getCategoryDisplayLabel(item.category ?? DEFAULT_CATEGORY)} 탭 종목이며, ${getEngineDisplayLabel(item.category ?? DEFAULT_CATEGORY)} 기준 ${assessment.groupLabel} / ${passText} 상태입니다.`
+      );
     } else {
       showSummary(`${item.name} 분석이 완료되었습니다. 확대/축소, 드래그 이동, 툴팁을 지원합니다.`);
     }
@@ -4508,7 +4890,9 @@ function applyLongTermInsightToCatalog(key, review) {
 
     const next = {
       ...item,
-      longTermBucket: insight.bucket,
+      // Keep the current bucket stable during single-item analysis.
+      // Universe scans or explicit edits should own bucket movement.
+      longTermBucket: isValidLongTermBucket(item.longTermBucket) ? item.longTermBucket : insight.bucket,
       longTermInsightNote: insight.note,
       longTermInsightKeywords: insight.keywords
     };
@@ -4527,22 +4911,22 @@ function applyLongTermInsightToCatalog(key, review) {
   return changed;
 }
 
-function getLongTermReviewAssessment(review) {
+function getLongTermReviewAssessment(review, category = DEFAULT_CATEGORY) {
   const candidate = review?.candidate;
   if (!candidate) {
     return {
       className: "broken",
       groupLabel: "관찰 제외",
       statusLabel: "엔진 대상 아님",
-      action: "중장기 대표주 엔진 대상에서 제외",
-      summary: review?.filterReasons?.[0] ?? "평가 가능한 중장기 엔진 결과가 없습니다."
+      action: getEngineReviewExclusionText(category),
+      summary: review?.filterReasons?.[0] ?? getEngineReviewEmptyText(category)
     };
   }
 
   if (review.enginePass && candidate.candidateGroup === "buy candidate") {
     return {
       className: "ready",
-      groupLabel: "매수 가능 후보군",
+      groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
       statusLabel: formatLongTermLabel(candidate.label),
       action: "분할매수 검토 가능",
       summary: formatLongTermSummary(candidate.reasonSummary, "buy")
@@ -4551,30 +4935,33 @@ function getLongTermReviewAssessment(review) {
 
   return {
     className: candidate.label === "deep value review" ? "caution" : "watch",
-    groupLabel: formatLongTermGroupLabel(candidate.candidateGroup),
+    groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
     statusLabel: formatLongTermLabel(candidate.label),
     action: review.enginePass ? "관찰 유지" : "엔진 조건 미충족",
     summary: formatLongTermSummary(candidate.reasonSummary, candidate.candidateGroup === "buy candidate" ? "buy" : "watch")
   };
 }
 
-function renderLongTermReviewPanel(review) {
+function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = null) {
   if (!review) {
     return "";
   }
 
-  const assessment = getLongTermReviewAssessment(review);
+  const assessment = getLongTermReviewAssessment(review, category);
   const candidate = review.candidate;
   const filterReasonChips = Array.isArray(review.filterReasons)
     ? review.filterReasons.map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`).join("")
     : "";
-  const sourceLabel = review.seedSource === "curated" ? "엔진 시드" : "수동 추가 평가";
+  const sourceLabel = review.seedSource === "curated" ? `${getEngineDisplayLabel(category)} 시드` : "수동 추가 평가";
+  const engineLabel = getEngineDisplayLabel(category);
+  const candidateGroupLabel = candidate ? getEngineBucketLabel(category, candidate.candidateGroup) : "-";
+  const dividendHistoryPanel = buildDividendHistoryPanel(item);
 
   return `
     <section class="swing-pattern-panel">
       <div class="swing-pattern-head">
         <div>
-          <h4>중장기 엔진 진단</h4>
+          <h4>${escapeHtml(getEnginePanelTitle(category))}</h4>
           <div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>
         </div>
         <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
@@ -4586,10 +4973,10 @@ function renderLongTermReviewPanel(review) {
             <div class="metric-grid swing-metric-grid">
               <div class="metric">
                 <span class="metric-label">후보군</span>
-                <span class="metric-value">${escapeHtml(formatLongTermGroupLabel(candidate.candidateGroup))}</span>
+                <span class="metric-value">${escapeHtml(candidateGroupLabel)}</span>
               </div>
               <div class="metric">
-                <span class="metric-label">구조 라벨</span>
+                <span class="metric-label">${escapeHtml(engineLabel)} 라벨</span>
                 <span class="metric-value">${escapeHtml(formatLongTermLabel(candidate.label))}</span>
               </div>
               <div class="metric">
@@ -4652,6 +5039,7 @@ function renderLongTermReviewPanel(review) {
             `
             : ""
         }
+      ${dividendHistoryPanel}
       ${
         filterReasonChips
           ? `
@@ -4669,10 +5057,16 @@ function renderCard(item) {
   const returnClass =
     item.returnSinceAnchor > 0 ? "positive" : item.returnSinceAnchor < 0 ? "negative" : "neutral";
   const longTermAssessment =
-    item.category !== "swing" && item.longTermReview ? getLongTermReviewAssessment(item.longTermReview) : null;
+    item.category !== "swing" && item.longTermReview
+      ? getLongTermReviewAssessment(item.longTermReview, item.category ?? DEFAULT_CATEGORY)
+      : null;
   const longTermInsightNote = item.category === "swing" ? "" : item.longTermInsightNote ?? item.note;
   const longTermNoteSummary =
     item.category === "swing" ? "" : formatLongTermSummary(longTermInsightNote, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
+  const categoryLabel = getCategoryDisplayLabel(item.category ?? DEFAULT_CATEGORY);
+  const nonSwingBucketLabel =
+    item.category === "swing" ? "" : getNonSwingBucketLabel(item.category ?? DEFAULT_CATEGORY, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
+  const dividendInfoLine = buildDividendInfoLine(item);
 
   return `
     <article class="result-card">
@@ -4683,6 +5077,8 @@ function renderCard(item) {
             ${escapeHtml(item.symbol)} / 기준일 ${escapeHtml(item.anchorDate)} / 실제 거래일 ${escapeHtml(item.tradingAnchorDate)}
           </div>
           <div class="meta-line" data-live-sync-line>실시간 시세 동기화 대기</div>
+          <div class="meta-line">${escapeHtml(categoryLabel)} 탭 종목${nonSwingBucketLabel ? ` / ${escapeHtml(nonSwingBucketLabel)}` : ""}</div>
+          ${dividendInfoLine ? `<div class="meta-line">${escapeHtml(dividendInfoLine)}</div>` : ""}
           ${
             item.swingAssessment
               ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
@@ -4695,7 +5091,7 @@ function renderCard(item) {
           }
           ${
             longTermAssessment
-              ? `<div class="meta-line">중장기 엔진 ${escapeHtml(longTermAssessment.groupLabel)} / ${escapeHtml(longTermAssessment.statusLabel)}</div>`
+              ? `<div class="meta-line">${escapeHtml(getEngineDisplayLabel(item.category ?? DEFAULT_CATEGORY))} ${escapeHtml(longTermAssessment.groupLabel)} / ${escapeHtml(longTermAssessment.statusLabel)}</div>`
               : ""
           }
           ${longTermNoteSummary ? `<div class="meta-line">${escapeHtml(longTermNoteSummary)}</div>` : longTermInsightNote ? `<div class="meta-line">${escapeHtml(longTermInsightNote)}</div>` : ""}
@@ -4773,7 +5169,7 @@ function renderCard(item) {
       </div>
 
       ${renderSwingPatternPanel(item.swingPatternAnalysis, item.swingAssessment)}
-      ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview) : ""}
+      ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview, item.category ?? DEFAULT_CATEGORY, item) : ""}
 
       <div class="fundamentals-wrap">
         ${renderFundamentals(item.fundamentals, {
@@ -5361,6 +5757,23 @@ function clearInteractivePriceLines(chartEntry) {
   chartEntry.priceLines = [];
 }
 
+function resolveInteractiveAnchorPoint(points, anchorDate) {
+  if (!Array.isArray(points) || !points.length) {
+    return undefined;
+  }
+
+  const visiblePoints = points.filter((point) => !point.isWhitespace);
+  if (!visiblePoints.length) {
+    return undefined;
+  }
+
+  return (
+    visiblePoints.find((point) => point.time === anchorDate) ??
+    [...visiblePoints].reverse().find((point) => point.time <= anchorDate) ??
+    visiblePoints[0]
+  );
+}
+
 function applyInteractivePriceLines(chartEntry, points, anchorDate, swingTradeOverlay = null) {
   clearInteractivePriceLines(chartEntry);
 
@@ -5368,9 +5781,7 @@ function applyInteractivePriceLines(chartEntry, points, anchorDate, swingTradeOv
     ? swingTradeOverlay.buyPrices.filter((price) => Number.isFinite(price) && price > 0)
     : [];
   const hasTradeOverlay = buyPrices.length > 0 || (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0);
-  const anchorPoint =
-    points.find((point) => point.time === anchorDate && !point.isWhitespace) ??
-    points.find((point) => !point.isWhitespace);
+  const anchorPoint = resolveInteractiveAnchorPoint(points, anchorDate);
 
   if (!hasTradeOverlay && anchorPoint?.close != null) {
     chartEntry.priceLines.push(

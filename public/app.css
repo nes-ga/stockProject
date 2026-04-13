@@ -1362,11 +1362,12 @@ body {
 
 .recommendation-primary-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .recommendation-primary-tabs .category-tab {
   text-align: center;
+  white-space: nowrap;
 }
 
 .recommendation-scope-panel {
@@ -2276,6 +2277,72 @@ body {
   margin-top: 8px;
   color: var(--muted);
   font-size: 14px;
+  line-height: 1.6;
+}
+
+.dividend-history-block {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(78, 58, 32, 0.08);
+}
+
+.dividend-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.dividend-history-head strong {
+  font-size: 14px;
+}
+
+.dividend-history-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dividend-history-table {
+  display: grid;
+  gap: 8px;
+}
+
+.dividend-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(96px, auto) minmax(84px, auto);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(247, 242, 232, 0.82);
+  color: var(--text);
+  font-size: 13px;
+  align-items: center;
+}
+
+.dividend-history-row span:last-child {
+  text-align: right;
+  font-weight: 800;
+}
+
+.dividend-history-row-head {
+  background: transparent;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.dividend-history-row-head span:last-child {
+  text-align: right;
+}
+
+.dividend-history-empty {
+  color: var(--muted);
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -3446,6 +3513,15 @@ body {
 
   .fundamentals-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dividend-history-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .dividend-history-row span:last-child {
+    text-align: left;
   }
 
   .fundamentals-history-head {

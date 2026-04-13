@@ -248,7 +248,8 @@
   - 기존 저장 종목을 다시 스마트 머니 엔진으로 재평가
 - `npm run scan:swing-universe`
   - KOSPI/KOSDAQ 유니버스 전체를 스캔
-  - `pattern.actionable === true` 인 종목만 저장
+  - `pattern.actionable === true` 인 종목은 `executionItems` 에 저장
+  - `matched === true` 인 watch 후보는 `watchItems` 에 저장
 
 ## 8. 장기 엔진
 
@@ -518,6 +519,16 @@
 - 시세는 네이버/Yahoo 외부 소스 응답에 영향을 받는다.
 
 ## 19. 현재 구현 요약
+
+## 18-A. 2026-04-13 유지보수 반영
+
+- 추천 종목 상단 카테고리 탭은 `중장기 / 배당 / 스윙` 3개가 한 줄에 보이도록 정리되었다.
+- 추천 종목 차트의 기준일 가격선은 일봉뿐 아니라 주봉, 월봉에서도 기준일이 속한 가장 가까운 집계 봉에 맞춰 표시된다.
+- `GET /analysis/market-watch` 감시 대상에는 `BTC` 가 포함된다.
+- 시장 감시 화면의 표시 날짜는 서울 기준 서버 갱신 시각(`fetchedAt`)을 기준으로 통일해서 보여준다.
+- 원본 시세 소스의 실제 거래일은 자산별 거래소 시간대 차이로 하루 늦을 수 있다. 예를 들어 `Gold`, `WTI` 는 미국 세션 기준 날짜가 내려올 수 있다.
+- crypto(`BTC`)는 현재 진행 중 봉이 잘려 보이지 않도록 최신 일봉/주봉 집계를 유지한다.
+- 서버 스윙 픽 파일 `data/server-swing-picks.json` 은 `executionItems` 와 `watchItems` 를 함께 저장하며, UI도 이 두 버킷을 같이 사용한다.
 
 현재 저장소는 아래 기능이 실제 동작 가능한 수준으로 묶여 있다.
 

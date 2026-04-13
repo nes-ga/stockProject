@@ -1,4 +1,4 @@
-import type { BusinessAreaSlice, FundamentalsPeriod, FundamentalsSummary } from "../types.js";
+import type { BusinessAreaSlice, DividendHistoryRecord, FundamentalsPeriod, FundamentalsSummary } from "../types.js";
 
 const FUNDAMENTALS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const utf8Decoder = new TextDecoder("utf-8");
@@ -12,6 +12,8 @@ const METRIC_REVENUE = ["\uB9E4\uCD9C\uC561"];
 const METRIC_OPERATING_INCOME = ["\uC601\uC5C5\uC774\uC775"];
 const METRIC_NET_INCOME = ["\uB2F9\uAE30\uC21C\uC774\uC775", "\uC9C0\uBC30\uC8FC\uC8FC\uC21C\uC774\uC775"];
 const METRIC_DEBT_RATIO = ["\uBD80\uCC44\uBE44\uC728"];
+const METRIC_DPS = ["DPS", "\uC8FC\uB2F9\uBC30\uB2F9\uAE08", "\uD604\uAE08DPS", "\uD604\uAE08\uBC30\uB2F9\uAE08"];
+const METRIC_DIVIDEND_YIELD = ["\uD604\uAE08\uBC30\uB2F9\uC218\uC775\uB960", "\uBC30\uB2F9\uC218\uC775\uB960"];
 
 type BusinessAreaRule = {
   label: string;
@@ -406,6 +408,8 @@ function buildPeriod(
   const bps = pickMetric(rows, ["BPS"]);
   const per = pickMetric(rows, ["PER"]);
   const pbr = pickMetric(rows, ["PBR"]);
+  const dividendPerShare = pickMetric(rows, METRIC_DPS);
+  const dividendYield = pickMetric(rows, METRIC_DIVIDEND_YIELD);
 
   return {
     label,
@@ -418,7 +422,37 @@ function buildPeriod(
     eps: parseNumber(eps?.values[index] ?? ""),
     bps: parseNumber(bps?.values[index] ?? ""),
     per: parseNumber(per?.values[index] ?? ""),
-    pbr: parseNumber(pbr?.values[index] ?? "")
+    pbr: parseNumber(pbr?.values[index] ?? ""),
+    dividendPerShare: parseNumber(dividendPerShare?.values[index] ?? ""),
+    dividendYield: parseNumber(dividendYield?.values[index] ?? "")
+  };
+}
+
+function normalizeDividendDateLabel(label: string): string {
+  return label.replace(/\(E\)/gi, "").replace(/\s+/g, " ").trim();
+}
+
+function buildDividendHistoryRecord(
+  label: string | undefined,
+  rows: Array<{ label: string; values: string[] }>,
+  index: number
+): DividendHistoryRecord | undefined {
+  if (!label) {
+    return undefined;
+  }
+
+  const dividendPerShare = pickMetric(rows, METRIC_DPS);
+  const dividendYield = pickMetric(rows, METRIC_DIVIDEND_YIELD);
+  const dividendAmount = parseNumber(dividendPerShare?.values[index] ?? "");
+  if (dividendAmount == null) {
+    return undefined;
+  }
+
+  return {
+    label: normalizeDividendDateLabel(label),
+    dividendDateLabel: normalizeDividendDateLabel(label),
+    dividendAmount,
+    dividendYield: parseNumber(dividendYield?.values[index] ?? "")
   };
 }
 
@@ -457,6 +491,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
     let annualHistory: FundamentalsPeriod[] | undefined;
     let quarterlyHistory: FundamentalsPeriod[] | undefined;
     let quarterlyEstimateHistory: FundamentalsPeriod[] | undefined;
+    let dividendHistory: DividendHistoryRecord[] | undefined;
 
     if (tableHtml) {
       const { annualCount, quarterlyCount } = extractHeaderCounts(tableHtml);
@@ -476,6 +511,9 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
       quarterlyEstimateHistory = collectPopulatedPeriods(rows, quarterlyLabels, annualCount, 8, "estimated")
         .map((period) => buildPeriod(quarterlyLabels[period.labelIndex], rows, period.index))
         .filter((period): period is FundamentalsPeriod => Boolean(period));
+      dividendHistory = collectPopulatedPeriods(rows, annualLabels, 0, 4, "actual")
+        .map((period) => buildDividendHistoryRecord(annualLabels[period.labelIndex], rows, period.index))
+        .filter((period): period is DividendHistoryRecord => Boolean(period));
 
       annual =
         annualPeriod != null
@@ -494,6 +532,7 @@ export async function fetchFundamentals(symbol: string): Promise<FundamentalsSum
       annualHistory,
       quarterlyHistory,
       quarterlyEstimateHistory,
+      dividendHistory,
       businessAreasSource: businessAreas?.length ? "Naver Finance 기업개요 기반 자동 추정" : undefined,
       businessSummary,
       businessAreas

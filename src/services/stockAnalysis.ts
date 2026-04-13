@@ -30,6 +30,7 @@ import { resolveFinanceSymbol } from "./symbolExtractor.js";
 
 const logger = createLogger("stockAnalysis");
 const DEFAULT_NAVER_CHART_SESSIONS = 500;
+const SWING_NAVER_CHART_SESSIONS = 160;
 const LONG_TERM_NAVER_CHART_SESSIONS = 2200;
 
 type QuoteResponse = {
@@ -477,6 +478,107 @@ function buildChartWindow(points: ChartPoint[]) {
   };
 }
 
+function parseAnnualPeriodLabel(label: string | undefined): { year: number; month: number } | undefined {
+  if (!label) {
+    return undefined;
+  }
+
+  const match = label.match(/(\d{4})\.(\d{2})/);
+  if (!match) {
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return undefined;
+  }
+
+  return { year, month };
+}
+
+function findPeriodReferenceClose(points: ChartPoint[], label: string | undefined): number | undefined {
+  const period = parseAnnualPeriodLabel(label);
+  if (!period) {
+    return undefined;
+  }
+
+  const monthPrefix = `${period.year}-${String(period.month).padStart(2, "0")}`;
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const point = points[index];
+    if (point?.date?.startsWith(monthPrefix)) {
+      return point.close;
+    }
+  }
+
+  const monthEnd = `${monthPrefix}-31`;
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const point = points[index];
+    if (point?.date && point.date <= monthEnd) {
+      return point.close;
+    }
+  }
+
+  return undefined;
+}
+
+function calculateDividendYieldPercent(dividendAmount?: number, referenceClose?: number): number | undefined {
+  if (
+    dividendAmount == null ||
+    !Number.isFinite(dividendAmount) ||
+    referenceClose == null ||
+    !Number.isFinite(referenceClose) ||
+    referenceClose <= 0
+  ) {
+    return undefined;
+  }
+
+  return (dividendAmount / referenceClose) * 100;
+}
+
+function enrichFundamentalsWithDividendYields(fundamentals: RecommendationAnalysis["fundamentals"], points: ChartPoint[]) {
+  if (!fundamentals) {
+    return fundamentals;
+  }
+
+  const annual = fundamentals.annual
+    ? {
+        ...fundamentals.annual,
+        dividendYield:
+          fundamentals.annual.dividendYield ??
+          calculateDividendYieldPercent(
+            fundamentals.annual.dividendPerShare,
+            findPeriodReferenceClose(points, fundamentals.annual.label)
+          )
+      }
+    : fundamentals.annual;
+
+  const annualHistory = Array.isArray(fundamentals.annualHistory)
+    ? fundamentals.annualHistory.map((period) => ({
+        ...period,
+        dividendYield:
+          period.dividendYield ??
+          calculateDividendYieldPercent(period.dividendPerShare, findPeriodReferenceClose(points, period.label))
+      }))
+    : fundamentals.annualHistory;
+
+  const dividendHistory = Array.isArray(fundamentals.dividendHistory)
+    ? fundamentals.dividendHistory.map((entry) => ({
+        ...entry,
+        dividendYield:
+          entry.dividendYield ??
+          calculateDividendYieldPercent(entry.dividendAmount, findPeriodReferenceClose(points, entry.label))
+      }))
+    : fundamentals.dividendHistory;
+
+  return {
+    ...fundamentals,
+    annual,
+    annualHistory,
+    dividendHistory
+  };
+}
+
 function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
   if (!points.length || typeof latestClose !== "number" || !Number.isFinite(latestClose)) {
     return points;
@@ -501,7 +603,7 @@ function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
 export async function loadRealtimeStockDetail(input: RealtimeStockRequest): Promise<RealtimeStockDetail> {
   const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
   const period1 = input.anchorDate ? addDays(input.anchorDate, -40) : undefined;
-  const naverCount = input.category === "longTerm" ? LONG_TERM_NAVER_CHART_SESSIONS : DEFAULT_NAVER_CHART_SESSIONS;
+  const naverCount = input.category === "swing" ? SWING_NAVER_CHART_SESSIONS : LONG_TERM_NAVER_CHART_SESSIONS;
   const { quote, points } = await fetchQuoteAndChart(
     symbol,
     period1 ? { period1, naverCount } : { range: "3mo", naverCount }
@@ -1276,7 +1378,7 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     anchorDate: input.anchorDate
   });
   const period1 = addDays(input.anchorDate, -40);
-  const naverCount = input.category === "longTerm" ? LONG_TERM_NAVER_CHART_SESSIONS : DEFAULT_NAVER_CHART_SESSIONS;
+  const naverCount = input.category === "swing" ? DEFAULT_NAVER_CHART_SESSIONS : LONG_TERM_NAVER_CHART_SESSIONS;
   const [chartResult, fundamentals] = await Promise.all([
     fetchQuoteAndChart(symbol, { period1, naverCount }),
     fetchFundamentals(input.symbol)
@@ -1290,6 +1392,7 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
           fundamentals
         });
   const { quote, points } = chartResult;
+  const enrichedFundamentals = enrichFundamentalsWithDividendYields(fundamentals, points);
 
   if (!points.length) {
     throw new Error(`No chart data available for ${symbol}`);
@@ -1361,7 +1464,7 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     latestVolume: latestPoint.volume,
     latestVolumeVs20d: ratio(latestPoint.volume, avgVolume20Latest),
     chartWindow: buildChartWindow(points),
-    fundamentals,
+    fundamentals: enrichedFundamentals,
     longTermReview
   };
 
@@ -1463,7 +1566,8 @@ async function analyzeSmartMoneyPatternWithContext(
   const maxLookbackWindow = Math.max(...filters.lookbackWindows);
   const historyLookback = Math.max(90, maxLookbackWindow + filters.breakoutLookbackDays + filters.maxPullbackSessions + 25);
   const period1 = addDays(referenceDate, -historyLookback);
-  const { points } = await fetchQuoteAndChart(symbol, { period1 });
+  const naverCount = Math.max(SWING_NAVER_CHART_SESSIONS, historyLookback + 5);
+  const { points } = await fetchQuoteAndChart(symbol, { period1, naverCount });
 
   if (!points.length) {
     throw new Error(`No chart data available for ${symbol}`);

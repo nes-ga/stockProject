@@ -1,9 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ServerDividendPick } from "./serverDividendPicks.js";
 import type { ServerLongTermPick } from "./serverLongTermPicks.js";
 import type { ServerSwingPick } from "./serverSwingPicks.js";
 
-export type RecommendationUniverseAlertCategory = "longTerm" | "swing";
+export type RecommendationUniverseAlertCategory = "longTerm" | "dividend" | "swing";
 export type RecommendationUniverseAlertBucket = "buy" | "execution" | "watch";
 
 type RecommendationUniverseAlertItem = {
@@ -99,6 +100,16 @@ function buildSwingAlertItems(payload: { executionItems: ServerSwingPick[]; watc
 }
 
 function buildLongTermAlertItems(items: ServerLongTermPick[]) {
+  return sortAlertItems(
+    items.map((item) => ({
+      symbol: item.symbol,
+      name: item.name,
+      bucket: item.longTermBucket === "watch" ? ("watch" as const) : ("buy" as const)
+    }))
+  );
+}
+
+function buildDividendAlertItems(items: ServerDividendPick[]) {
   return sortAlertItems(
     items.map((item) => ({
       symbol: item.symbol,
@@ -217,6 +228,26 @@ export async function diffAndRememberLongTermUniverseAlerts(
   });
 
   state.longTerm = {
+    updatedAt: new Date().toISOString(),
+    items: currentItems
+  };
+  await writeRecommendationUniverseAlertState(state);
+  return diff;
+}
+
+export async function diffAndRememberDividendUniverseAlerts(
+  items: ServerDividendPick[]
+): Promise<RecommendationUniverseAlertDiff> {
+  const state = await readRecommendationUniverseAlertState();
+  const currentItems = buildDividendAlertItems(items);
+  const previousItems = Array.isArray(state.dividend?.items) ? sortAlertItems(state.dividend.items) : [];
+  const diff = diffAlertItems({
+    category: "dividend",
+    previous: previousItems,
+    current: currentItems
+  });
+
+  state.dividend = {
     updatedAt: new Date().toISOString(),
     items: currentItems
   };

@@ -7,6 +7,7 @@ TypeScript + Express 기반의 국내 주식 분석 대시보드입니다.
 
 - [문서 인덱스](./docs/README.md)
 - [현재 구현된 기능 정리](./docs/current-implemented-features.md)
+- [작업 요약 2026-04-13](./docs/work-summary-2026-04-13.md)
 - [스마트머니 유지보수 가이드](./docs/smart-money-maintenance.md)
 - [장기 엔진 설계 문서](./docs/long-term-engine-design.md)
 
@@ -80,8 +81,8 @@ npm run scan:long-term
 npm run scan:long-term-universe
 ```
 
-- `refresh:swing-picks`: 저장된 서버 스윙 후보를 다시 평가합니다.
-- `scan:swing-universe`: KOSPI/KOSDAQ 전체에서 actionable 스윙 후보를 다시 스캔합니다.
+- `refresh:swing-picks`: 저장된 서버 스윙 후보를 다시 평가하고 `matched` 결과를 `execution/watch` 버킷 구조로 다시 저장합니다.
+- `scan:swing-universe`: KOSPI/KOSDAQ 전체를 다시 스캔하고 `actionable`은 `executionItems`, watch 후보는 `watchItems`로 저장합니다.
 - `scan:long-term`: 장기 엔진 기준으로 큐레이션 대표주를 평가합니다.
 - `scan:long-term-universe`: 장기 엔진 기준으로 유니버스 스캔 결과를 생성합니다.
 
@@ -124,6 +125,8 @@ npm run scan:long-term-universe
 - `data/server-swing-picks.json`
 - `data/server-long-term-picks.json`
 - `data/smart-money-watchlist.json`
+
+`data/server-swing-picks.json` 는 단일 배열이 아니라 `executionItems` 와 `watchItems` 를 함께 저장하는 구조입니다.
 
 ## 참고
 

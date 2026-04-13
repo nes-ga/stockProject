@@ -11,6 +11,7 @@
     "check": "tsc --noEmit",
     "refresh:swing-picks": "tsx scripts/refresh-server-swing-picks.ts",
     "scan:swing-universe": "npm.cmd run build && node dist/scripts/scanUniverseSwingPicks.js",
+    "scan:dividend-universe": "npm.cmd run build && node dist/scripts/scanUniverseDividendPicks.js",
     "scan:long-term": "npm.cmd run build && node dist/scripts/scanLongTermLeaders.js",
     "scan:long-term-universe": "npm.cmd run build && node dist/scripts/scanUniverseLongTermPicks.js"
   },

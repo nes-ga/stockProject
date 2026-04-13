@@ -1,4 +1,6 @@
+import { scanDividendUniverse } from "./dividendEngine.js";
 import { scanLongTermUniverse } from "./longTermEngine.js";
+import { writeServerDividendPicks } from "./serverDividendPicks.js";
 import { writeServerLongTermPicks } from "./serverLongTermPicks.js";
 import { writeServerSwingPicks } from "./serverSwingPicks.js";
 import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
@@ -7,9 +9,11 @@ import { getStockUniverse } from "./stockUniverse.js";
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
 
-type RecommendationUniverseCategory = "longTerm" | "swing";
+type RecommendationUniverseCategory = "longTerm" | "dividend" | "swing";
 type UniverseItem = Awaited<ReturnType<typeof getStockUniverse>>["items"][number];
 type SmartMoneyAnalysis = Awaited<ReturnType<typeof analyzeSmartMoneyPattern>>;
+type DividendScanResult = Awaited<ReturnType<typeof scanDividendUniverse>>;
+type DividendUniverseCandidate = DividendScanResult["candidates"][number];
 type LongTermScanResult = Awaited<ReturnType<typeof scanLongTermUniverse>>;
 type LongTermUniverseCandidate = LongTermScanResult["candidates"][number];
 
@@ -27,6 +31,15 @@ type RecommendationUniverseScanResult =
       asOfDate: string;
       universeSize: number;
       items: Awaited<ReturnType<typeof writeServerLongTermPicks>>;
+    }
+  | {
+      category: "dividend";
+      count: number;
+      buyCount: number;
+      watchCount: number;
+      asOfDate: string;
+      universeSize: number;
+      items: Awaited<ReturnType<typeof writeServerDividendPicks>>;
     }
   | {
       category: "swing";
@@ -109,6 +122,12 @@ function buildLongTermNote(candidate: LongTermUniverseCandidate) {
   return [groupLabel, formatLongTermNoteLabel(candidate.label), ...buildLongTermHighlights(candidate)].join(" | ");
 }
 
+function buildDividendNote(candidate: DividendUniverseCandidate) {
+  const groupLabel = candidate.candidateGroup === "buy candidate" ? "배당 후보군" : "배당 관찰군";
+
+  return [groupLabel, formatLongTermNoteLabel(candidate.label), ...buildLongTermHighlights(candidate)].join(" | ");
+}
+
 function buildSwingNote(pattern: SmartMoneyAnalysis["pattern"]) {
   const stageLabel =
     pattern.status === "breakout_extended"
@@ -174,6 +193,10 @@ function compareSwingAnalyses(left: SwingScanRankedItem, right: SwingScanRankedI
   return left.item.name.localeCompare(right.item.name, "ko");
 }
 
+function isSwingWatchEligible(pattern: SmartMoneyAnalysis["pattern"]) {
+  return pattern.matched && pattern.status !== "pullback_early";
+}
+
 async function scanSwingChunk(chunk: UniverseItem[]) {
   const settled = await Promise.allSettled(
     chunk.map(async (item) => ({
@@ -193,7 +216,7 @@ async function scanSwingChunk(chunk: UniverseItem[]) {
     if (result.status === "fulfilled") {
       if (result.value.analysis.pattern.actionable) {
         actionable.push(result.value);
-      } else if (result.value.analysis.pattern.matched) {
+      } else if (isSwingWatchEligible(result.value.analysis.pattern)) {
         watch.push(result.value);
       }
       continue;
@@ -229,6 +252,35 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
 
   return {
     category: "longTerm",
+    count: items.length,
+    buyCount: result.groupedCandidates.buyCandidates.length,
+    watchCount: result.groupedCandidates.watchCandidates.length,
+    asOfDate: result.asOfDate,
+    universeSize: result.universeSize,
+    items
+  };
+}
+
+async function scanAndSaveDividendUniverse(): Promise<RecommendationUniverseScanResult> {
+  const result = await scanDividendUniverse({
+    forceRefreshUniverse: true
+  });
+
+  const items = await writeServerDividendPicks(
+    result.candidates.map((candidate) => ({
+      key: `${candidate.name}-${candidate.symbol}-dividend`,
+      name: candidate.name,
+      symbol: candidate.symbol,
+      anchorDate: result.asOfDate,
+      note: buildDividendNote(candidate),
+      category: "dividend" as const,
+      longTermBucket: candidate.candidateGroup === "watch candidate" ? ("watch" as const) : ("buy" as const),
+      source: "server-universe" as const
+    }))
+  );
+
+  return {
+    category: "dividend",
     count: items.length,
     buyCount: result.groupedCandidates.buyCandidates.length,
     watchCount: result.groupedCandidates.watchCandidates.length,
@@ -280,7 +332,13 @@ export async function scanRecommendationUniverse(category: RecommendationUnivers
     return existing;
   }
 
-  const nextScan = (category === "longTerm" ? scanAndSaveLongTermUniverse() : scanAndSaveSwingUniverse()).finally(() => {
+  const nextScan = (
+    category === "longTerm"
+      ? scanAndSaveLongTermUniverse()
+      : category === "dividend"
+        ? scanAndSaveDividendUniverse()
+        : scanAndSaveSwingUniverse()
+  ).finally(() => {
     activeScanByCategory.delete(category);
   });
 

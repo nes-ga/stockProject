@@ -21,7 +21,7 @@ export type RecommendationRequest = {
   anchorDate: string;
   latestMentionDate?: string;
   note?: string;
-  category?: "longTerm" | "swing";
+  category?: "longTerm" | "dividend" | "swing";
 };
 
 export type RealtimeStockRequest = {
@@ -29,7 +29,7 @@ export type RealtimeStockRequest = {
   name?: string;
   symbol: string;
   anchorDate?: string;
-  category?: "longTerm" | "swing";
+  category?: "longTerm" | "dividend" | "swing";
 };
 
 export type RealtimeStockSnapshot = {
@@ -37,7 +37,7 @@ export type RealtimeStockSnapshot = {
   name?: string;
   symbol: string;
   resolvedSymbol: string;
-  category?: "longTerm" | "swing";
+  category?: "longTerm" | "dividend" | "swing";
   latestClose?: number;
   previousClose?: number;
   changeAmount?: number;
@@ -166,7 +166,7 @@ export type SmartMoneyPatternFilters = {
 
 export type SmartMoneyPullbackType = "price_pullback" | "time_correction";
 
-export type SmartMoneySetupType = "tight_price_pullback" | "time_correction" | "volatile_power_digestion";
+export type SmartMoneySetupType = "tight_price_pullback" | "time_correction" | "volatile_power_digestion" | "support_holding_pullback";
 
 export type SmartMoneyEntryStrategy = "pullback_buy" | "breakout_ready" | "breakout_confirmed" | "no_chase";
 
@@ -483,7 +483,7 @@ export type RecommendationAnalysis = {
   name?: string;
   symbol: string;
   resolvedSymbol: string;
-  category?: "longTerm" | "swing";
+  category?: "longTerm" | "dividend" | "swing";
   anchorDate: string;
   tradingAnchorDate: string;
   latestMentionDate?: string;
@@ -626,6 +626,15 @@ export type FundamentalsPeriod = {
   bps?: number;
   per?: number;
   pbr?: number;
+  dividendPerShare?: number;
+  dividendYield?: number;
+};
+
+export type DividendHistoryRecord = {
+  label: string;
+  dividendDateLabel: string;
+  dividendAmount?: number;
+  dividendYield?: number;
 };
 
 export type BusinessAreaSlice = {
@@ -641,6 +650,7 @@ export type FundamentalsSummary = {
   annualHistory?: FundamentalsPeriod[];
   quarterlyHistory?: FundamentalsPeriod[];
   quarterlyEstimateHistory?: FundamentalsPeriod[];
+  dividendHistory?: DividendHistoryRecord[];
   businessAreasSource?: string;
   businessSummary?: string;
   businessAreas?: BusinessAreaSlice[];

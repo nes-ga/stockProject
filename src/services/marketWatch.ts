@@ -271,7 +271,7 @@ function aggregateYearlyPoints(points: ChartPoint[]): ChartPoint[] {
     const existing = yearlyMap.get(year);
     if (!existing) {
       yearlyMap.set(year, {
-        date: `${year}-12-31`,
+        date: point.date,
         open: point.open ?? point.close,
         high: point.high ?? point.close,
         low: point.low ?? point.close,
@@ -281,6 +281,7 @@ function aggregateYearlyPoints(points: ChartPoint[]): ChartPoint[] {
       continue;
     }
 
+    existing.date = point.date;
     existing.high = Math.max(existing.high ?? existing.close, point.high ?? point.close);
     existing.low = Math.min(existing.low ?? existing.close, point.low ?? point.close);
     existing.close = point.close;
@@ -317,6 +318,7 @@ function aggregateWeeklyPoints(points: ChartPoint[]): ChartPoint[] {
       continue;
     }
 
+    existing.date = point.date;
     existing.high = Math.max(existing.high ?? existing.close, point.high ?? point.close);
     existing.low = Math.min(existing.low ?? existing.close, point.low ?? point.close);
     existing.close = point.close;
@@ -324,24 +326,6 @@ function aggregateWeeklyPoints(points: ChartPoint[]): ChartPoint[] {
   }
 
   return [...weeklyMap.values()].sort((left, right) => left.date.localeCompare(right.date));
-}
-
-function trimLiveCryptoDailyPoints(points: ChartPoint[], exchangeTimeZone?: string): ChartPoint[] {
-  if (points.length <= 1) {
-    return points;
-  }
-
-  const today = getCurrentIsoDate(exchangeTimeZone);
-  return points.at(-1)?.date === today ? points.slice(0, -1) : points;
-}
-
-function trimLiveCryptoMonthlyPoints(points: ChartPoint[], exchangeTimeZone?: string): ChartPoint[] {
-  if (points.length <= 1) {
-    return points;
-  }
-
-  const currentMonth = getCurrentIsoDate(exchangeTimeZone).slice(0, 7);
-  return points.at(-1)?.date.slice(0, 7) === currentMonth ? points.slice(0, -1) : points;
 }
 
 async function fetchChartPoints(symbol: string, interval: string, range: string) {
@@ -450,12 +434,9 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     intradayPayload.meta?.regularMarketPrice ?? dailyPayload.meta?.regularMarketPrice ?? getLatestPoint(rawDailyPoints)?.close;
   const latestIntradaySessionPoint = buildLatestSessionPointFromIntraday(intradayPoints, resolvedLatestPrice);
   const mergedDailyPoints = upsertLatestDailyPoint(rawDailyPoints, latestIntradaySessionPoint);
-  const chartDailyPoints =
-    definition.category === "crypto" ? trimLiveCryptoDailyPoints(mergedDailyPoints, exchangeTimeZone) : mergedDailyPoints;
-  const chartWeeklyPoints =
-    definition.category === "crypto" ? aggregateWeeklyPoints(chartDailyPoints) : rawWeeklyPoints;
-  const chartMonthlyPoints =
-    definition.category === "crypto" ? trimLiveCryptoMonthlyPoints(rawMonthlyPoints, exchangeTimeZone) : rawMonthlyPoints;
+  const chartDailyPoints = mergedDailyPoints;
+  const chartWeeklyPoints = definition.category === "crypto" ? aggregateWeeklyPoints(chartDailyPoints) : rawWeeklyPoints;
+  const chartMonthlyPoints = rawMonthlyPoints;
   const chartYearlyPoints = aggregateYearlyPoints(chartMonthlyPoints);
   const latestDisplayPoint = getLatestPoint(chartDailyPoints);
   const previousDisplayPoint = chartDailyPoints.at(-2);

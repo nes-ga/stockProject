@@ -15,9 +15,11 @@ import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
 import { scanRecommendationUniverse } from "../services/recommendationUniverse.js";
 import {
+  diffAndRememberDividendUniverseAlerts,
   diffAndRememberLongTermUniverseAlerts,
   diffAndRememberSwingUniverseAlerts
 } from "../services/recommendationUniverseAlerts.js";
+import { readServerDividendPicks, writeServerDividendPicks } from "../services/serverDividendPicks.js";
 import { readServerLongTermPicks, writeServerLongTermPicks } from "../services/serverLongTermPicks.js";
 import { readServerSwingPickPayload, writeServerSwingPicks } from "../services/serverSwingPicks.js";
 import { getStockUniverse } from "../services/stockUniverse.js";
@@ -38,7 +40,7 @@ const recommendationSchema = z.object({
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
-  category: z.enum(["longTerm", "swing"]).optional()
+  category: z.enum(["longTerm", "dividend", "swing"]).optional()
 });
 
 const recommendationBatchSchema = z.object({
@@ -50,7 +52,7 @@ const realtimeStockSchema = z.object({
   name: z.string().min(1).optional(),
   symbol: z.string().min(1),
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  category: z.enum(["longTerm", "swing"]).optional()
+  category: z.enum(["longTerm", "dividend", "swing"]).optional()
 });
 
 const realtimeStockBatchSchema = z.object({
@@ -221,7 +223,7 @@ const stockUniverseQuerySchema = z.object({
 });
 
 const recommendationUniverseScanSchema = z.object({
-  category: z.enum(["longTerm", "swing"]),
+  category: z.enum(["longTerm", "dividend", "swing"]),
   discord: z
     .object({
       enabled: z.coerce.boolean().optional().default(true),
@@ -266,6 +268,24 @@ const serverLongTermPickSchema = z.object({
 
 const serverLongTermPickBatchSchema = z.object({
   items: z.array(serverLongTermPickSchema)
+});
+
+const serverDividendPickSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  symbol: z.string().min(1),
+  anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  latestDividendDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  latestDividendAmount: z.coerce.number().min(0).optional(),
+  note: z.string().min(1).optional(),
+  category: z.literal("dividend"),
+  longTermBucket: z.enum(["buy", "watch"]).optional(),
+  source: z.string().min(1).max(100).optional()
+});
+
+const serverDividendPickBatchSchema = z.object({
+  items: z.array(serverDividendPickSchema)
 });
 
 const moversDiscordSchema = z.object({
@@ -444,7 +464,9 @@ analysisRoutes.post("/recommendation-universe-scan", async (request, response, n
             executionItems: payload.executionItems,
             watchItems: payload.watchItems
           })
-        : await diffAndRememberLongTermUniverseAlerts(payload.items);
+        : payload.category === "dividend"
+          ? await diffAndRememberDividendUniverseAlerts(payload.items)
+          : await diffAndRememberLongTermUniverseAlerts(payload.items);
     const discordEnabled = input.discord?.enabled !== false;
     const webhookUrl = input.discord?.webhookUrl ?? config.discordWebhookUrl;
     let discordSent = false;
@@ -564,6 +586,40 @@ analysisRoutes.post("/server-long-term-picks", async (request, response, next) =
     });
   } catch (error) {
     logger.error("server-long-term-picks:save:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/server-dividend-picks", async (_request, response, next) => {
+  try {
+    const items = await readServerDividendPicks();
+    logger.info("server-dividend-picks:get:success", {
+      count: items.length
+    });
+    response.json({
+      count: items.length,
+      items
+    });
+  } catch (error) {
+    logger.error("server-dividend-picks:get:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/server-dividend-picks", async (request, response, next) => {
+  try {
+    const input = serverDividendPickBatchSchema.parse(request.body);
+    const items = await writeServerDividendPicks(input.items);
+    logger.info("server-dividend-picks:save:success", {
+      count: items.length
+    });
+    response.json({
+      ok: true,
+      count: items.length,
+      items
+    });
+  } catch (error) {
+    logger.error("server-dividend-picks:save:failed", toErrorContext(error));
     next(error);
   }
 });

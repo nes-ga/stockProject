@@ -26,7 +26,7 @@
           </button>
           <button class="app-tab active" type="button" data-view="analysis">
             <span class="app-tab-title">추천 종목 및 분석</span>
-            <span class="app-tab-copy">중장기·스윙 종목과 차트 분석을 확인</span>
+            <span class="app-tab-copy">중장기·배당·스윙 종목과 차트 분석을 확인</span>
           </button>
           <button class="app-tab" type="button" data-view="movers">
             <span class="app-tab-title">급등 및 급락 순위</span>
@@ -87,7 +87,7 @@
               <div>
                 <h2>추천 종목</h2>
                 <p class="field-help panel-head-copy">
-                  상단에서 중장기 또는 스윙 탭을 고르고, 같은 화면 안에서 추천 검색과 직접 추가를 이어서 관리합니다.
+                  상단에서 중장기, 배당, 스윙 탭을 고르고, 같은 화면 안에서 추천 검색과 직접 추가를 이어서 관리합니다.
                 </p>
               </div>
             </div>
@@ -95,6 +95,7 @@
             <section class="recommendation-hub">
               <div class="category-tabs recommendation-primary-tabs" id="stockCategoryTabs">
                 <button class="category-tab active" type="button" data-category="longTerm">중장기</button>
+                <button class="category-tab" type="button" data-category="dividend">배당</button>
                 <button class="category-tab" type="button" data-category="swing">스윙</button>
               </div>
 
@@ -311,15 +312,24 @@
           <label class="modal-label" for="stockCategorySelect">탭 분류</label>
           <select id="stockCategorySelect" name="category" class="modal-input">
             <option value="longTerm">중장기</option>
+            <option value="dividend">배당</option>
             <option value="swing">스윙</option>
           </select>
 
           <div id="longTermBucketField" class="modal-field-group">
-            <label class="modal-label" for="longTermBucketSelect">중장기 분류</label>
+            <label id="reviewBucketLabel" class="modal-label" for="longTermBucketSelect">중장기 분류</label>
             <select id="longTermBucketSelect" name="longTermBucket" class="modal-input">
               <option value="buy">매수후보군</option>
               <option value="watch">관찰군</option>
             </select>
+          </div>
+
+          <div id="dividendInfoField" class="modal-field-group hidden">
+            <label class="modal-label" for="latestDividendDateInput">최근 배당일</label>
+            <input id="latestDividendDateInput" name="latestDividendDate" class="modal-input" type="date" />
+
+            <label class="modal-label" for="latestDividendAmountInput">최근 배당액</label>
+            <input id="latestDividendAmountInput" name="latestDividendAmount" class="modal-input" type="number" min="0" step="1" placeholder="주당 배당액" />
           </div>
 
           <label class="modal-label" for="stockNoteInput">메모</label>
