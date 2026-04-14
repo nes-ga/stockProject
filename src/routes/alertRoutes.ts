@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { buildSmartMoneyPatternDiscordMessages, sendDiscordMessages } from "../services/discord.js";
 import { evaluateRealTimePriceSpike } from "../services/realtimeAlerts.js";
+import { classifySwingCandidate } from "../services/recommendationUniverse.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
 import { analyzeSmartMoneyPatterns } from "../services/stockAnalysis.js";
 import {
@@ -116,10 +117,12 @@ const smartMoneyScanSchema = z.object({
       breakoutLookbackDays: z.coerce.number().int().min(5).max(60).optional(),
       minLeadInPriceChangePercent: z.coerce.number().min(0).max(30).optional(),
       minLeadInVolumeRatio: z.coerce.number().min(0).max(20).optional(),
+      minLeadInVolumeShares: z.coerce.number().int().min(0).optional(),
       minTurnoverValue: z.coerce.number().min(0).optional(),
       minBreakoutTurnoverValue: z.coerce.number().min(0).optional(),
       minBreakoutPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       minBreakoutVolumeRatio: z.coerce.number().min(0).max(20).optional(),
+      minBreakoutVolumeShares: z.coerce.number().int().min(0).optional(),
       minPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
       maxPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
       minSetupPullbackSessions: z.coerce.number().int().min(1).max(20).optional(),
@@ -170,6 +173,14 @@ const smartMoneyScanSchema = z.object({
       volatileDigestionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       minActionableValidityScore: z.coerce.number().int().min(0).max(100).optional(),
       minExecutionReadinessScore: z.coerce.number().int().min(0).max(100).optional(),
+      setupValidityMin: z.coerce.number().int().min(0).max(100).optional(),
+      setupExecutionMin: z.coerce.number().int().min(0).max(100).optional(),
+      breakoutValidityMin: z.coerce.number().int().min(0).max(100).optional(),
+      breakoutExecutionMin: z.coerce.number().int().min(0).max(100).optional(),
+      executionReadyRiskRewardMin: z.coerce.number().min(0).max(10).optional(),
+      executionProbeRiskRewardMin: z.coerce.number().min(0).max(10).optional(),
+      bullBreakoutThresholdRelief: z.coerce.number().int().min(0).max(20).optional(),
+      bearSetupThresholdTightening: z.coerce.number().int().min(0).max(20).optional(),
       regimeScoreWeight: z.coerce.number().min(0).max(1).optional(),
       minRegimeScoreForActionable: z.coerce.number().int().min(0).max(100).optional(),
       blockActionableOnRiskOff: z.coerce.boolean().optional(),
@@ -347,7 +358,7 @@ alertRoutes.post("/smart-money-watchlist/scan", async (request, response, next) 
     await updateSmartMoneyWatchScanResults(analyses);
 
     const matchedAnalyses = analyses.filter((item) => item.pattern.matched);
-    const actionableAnalyses = analyses.filter((item) => item.pattern.actionable);
+    const actionableAnalyses = analyses.filter((item) => classifySwingCandidate(item).bucket !== "watch");
     let messageCount = 0;
 
     if (input.discord) {

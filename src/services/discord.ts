@@ -335,7 +335,7 @@ export function buildSmartMoneyPatternDiscordMessages(params: {
     mention?.trim(),
     "Smart-money entry pattern alerts",
     `Generated ${nowInSeoul()} KST`,
-    `lookbacks=${filters.lookbackWindows.join("/")}, leadVol=${filters.minLeadInVolumeRatio}, breakoutVol=${filters.minBreakoutVolumeRatio}, minTurnover=${Math.round(filters.minTurnoverValue).toLocaleString("ko-KR")}, recent=${filters.recentSignalSessions}`
+    `lookbacks=${filters.lookbackWindows.join("/")}, leadVol=${filters.minLeadInVolumeRatio}/${Math.round(filters.minLeadInVolumeShares).toLocaleString("ko-KR")}주, breakoutVol=${filters.minBreakoutVolumeRatio}/${Math.round(filters.minBreakoutVolumeShares).toLocaleString("ko-KR")}주, minTurnover=${Math.round(filters.minTurnoverValue).toLocaleString("ko-KR")}, recent=${filters.recentSignalSessions}`
   ].filter(Boolean);
   const header = headerParts.join("\n");
 

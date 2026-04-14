@@ -82,6 +82,9 @@ export function calculateCorrectionScore(metrics: LongTermMetricSnapshot, filter
   const context = resolveLongTermCorrectionContext(metrics, filters);
   const magnitudeScore = resolveDrawdownMagnitudeScore(context.drawdownPct, filters);
   let reboundAdjustment = 0;
+  const daysSincePeak = metrics.baseStructure.daysSincePeak ?? filters.longBaseRewardFullDays;
+  const baseDurationDays = metrics.baseStructure.baseDurationDays ?? metrics.baseDurationDays ?? 0;
+  const timeSinceLastMajorLow = metrics.baseStructure.timeSinceLastMajorLow ?? baseDurationDays;
 
   if ((metrics.baseStructure.distanceFromLowPct ?? 0) < 3) {
     reboundAdjustment -= 18;
@@ -106,6 +109,26 @@ export function calculateCorrectionScore(metrics: LongTermMetricSnapshot, filter
   if (context.usesLongCycleSupplement) {
     // 5-year drawdown is only a supporting lens, so keep a small discount versus a clean 2-year correction.
     reboundAdjustment -= 4;
+  }
+
+  if (
+    daysSincePeak <= filters.vShapePenaltyPeakDays &&
+    baseDurationDays < filters.minimumBaseDays &&
+    (metrics.baseStructure.distanceFromLowPct ?? 0) >= 12
+  ) {
+    reboundAdjustment -= 16;
+  } else if (
+    daysSincePeak <= filters.vShapePenaltyPeakDays &&
+    timeSinceLastMajorLow < filters.minimumBaseDays &&
+    (metrics.baseStructure.distanceFromLowPct ?? 0) >= 8
+  ) {
+    reboundAdjustment -= 8;
+  }
+
+  if (baseDurationDays >= filters.longBaseRewardFullDays) {
+    reboundAdjustment += 12;
+  } else if (baseDurationDays >= filters.longBaseRewardStartDays) {
+    reboundAdjustment += 6;
   }
 
   return clamp(Math.round(magnitudeScore + reboundAdjustment), 0, 100);

@@ -29,10 +29,12 @@ export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPa
     breakoutLookbackDays: 20,
     minLeadInPriceChangePercent: 12,
     minLeadInVolumeRatio: 4,
+    minLeadInVolumeShares: 2_000_000,
     minTurnoverValue: 1_500_000_000,
     minBreakoutTurnoverValue: 2_500_000_000,
     minBreakoutPriceChangePercent: 8,
     minBreakoutVolumeRatio: 3.5,
+    minBreakoutVolumeShares: 4_000_000,
     minPullbackSessions: 1,
     maxPullbackSessions: 30,
     minSetupPullbackSessions: 3,
@@ -83,6 +85,14 @@ export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPa
     volatileDigestionBuyZoneHighRetracementRatio: 0.58,
     minActionableValidityScore: 55,
     minExecutionReadinessScore: 55,
+    setupValidityMin: 55,
+    setupExecutionMin: 55,
+    breakoutValidityMin: 55,
+    breakoutExecutionMin: 55,
+    executionReadyRiskRewardMin: 1.8,
+    executionProbeRiskRewardMin: 1.2,
+    bullBreakoutThresholdRelief: 3,
+    bearSetupThresholdTightening: 4,
     regimeScoreWeight: 0.18,
     minRegimeScoreForActionable: 40,
     blockActionableOnRiskOff: true,
@@ -106,6 +116,15 @@ export function resolveSmartMoneyPatternFilters(overrides?: Partial<SmartMoneyPa
 
   merged.minBreakoutTurnoverValue =
     overrides?.minBreakoutTurnoverValue ?? Math.max(merged.minTurnoverValue, merged.minBreakoutTurnoverValue);
+  merged.minBreakoutVolumeShares =
+    overrides?.minBreakoutVolumeShares ?? Math.max(merged.minLeadInVolumeShares, merged.minBreakoutVolumeShares);
+  merged.setupValidityMin = overrides?.setupValidityMin ?? overrides?.minActionableValidityScore ?? merged.setupValidityMin;
+  merged.setupExecutionMin =
+    overrides?.setupExecutionMin ?? overrides?.minExecutionReadinessScore ?? merged.setupExecutionMin;
+  merged.breakoutValidityMin =
+    overrides?.breakoutValidityMin ?? overrides?.minActionableValidityScore ?? merged.breakoutValidityMin;
+  merged.breakoutExecutionMin =
+    overrides?.breakoutExecutionMin ?? overrides?.minExecutionReadinessScore ?? merged.breakoutExecutionMin;
 
   merged.pullbackBuySecondEntryRiskRatio = Math.min(Math.max(merged.pullbackBuySecondEntryRiskRatio, 0.1), 0.9);
   merged.pullbackBuyThirdEntryRiskRatio = Math.min(

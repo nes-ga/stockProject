@@ -140,6 +140,17 @@ function countLossPeriods(periods: FundamentalsPeriod[] | undefined, key: "opera
   return periods.reduce((count, period) => count + ((period[key] ?? 0) < 0 ? 1 : 0), 0);
 }
 
+function hasStrongRevenueDecline(
+  annualLatest?: FundamentalsPeriod,
+  annualPrevious?: FundamentalsPeriod,
+  quarterlyLatest?: FundamentalsPeriod,
+  quarterlyPrevious?: FundamentalsPeriod
+) {
+  const annualDecline = getChangeRatio(annualLatest?.revenue, annualPrevious?.revenue);
+  const quarterlyDecline = getChangeRatio(quarterlyLatest?.revenue, quarterlyPrevious?.revenue);
+  return (annualDecline ?? 0) <= -0.12 || ((annualDecline ?? 0) <= -0.08 && (quarterlyDecline ?? 0) <= -0.08);
+}
+
 function classifyEarningsState(
   annualLatest?: FundamentalsPeriod,
   annualPrevious?: FundamentalsPeriod,
@@ -353,7 +364,10 @@ function buildFallbackSnapshot(isLeader: boolean): LongTermFinancialSnapshot {
     debtTrend: "stable",
     businessClarity: isLeader ? "clear_core_business" : "diversified",
     financialMomentum: "stabilizing",
-    structuralRiskFlags: ["limited_financial_data"]
+    structuralRiskFlags: ["limited_financial_data"],
+    recentOperatingLossCount: 0,
+    recentNetLossCount: 0,
+    strongRevenueDecline: false
   };
 }
 
@@ -361,26 +375,32 @@ function resolveWeaknessPenaltyMultiplier(
   snapshot: LongTermFinancialSnapshot,
   context: FinancialScoreContext
 ) {
+  if (snapshot.financialMomentum === "deteriorating") {
+    return 1;
+  }
+
   const absoluteDrawdown = Math.abs(context.drawdownPct ?? 0);
   const stabilizationReady = context.isStabilizing || context.stabilizationScore >= STABILIZATION_RELIEF_SCORE;
   const deepStabilizationReady =
     context.isStabilizing || context.stabilizationScore >= DEEP_STABILIZATION_RELIEF_SCORE;
+  const strongRevenueDeclinePenalty = snapshot.strongRevenueDecline ? 0.2 : 0;
+  const operatingLossPenalty = (snapshot.recentOperatingLossCount ?? 0) >= 2 ? 0.15 : 0;
+  const businessClarityPenalty = snapshot.businessClarity === "unclear" ? 0.1 : 0;
+  const safeguardPenalty = strongRevenueDeclinePenalty + operatingLossPenalty + businessClarityPenalty;
 
   if (
     absoluteDrawdown >= DEEP_WEAKNESS_RELIEF_DRAWNDOWN_PCT &&
-    deepStabilizationReady &&
-    snapshot.financialMomentum !== "deteriorating"
+    deepStabilizationReady
   ) {
-    return 0.5;
+    return Math.min(1, 0.5 + safeguardPenalty);
   }
 
   if (
     context.isLeader &&
     absoluteDrawdown >= WEAKNESS_RELIEF_DRAWNDOWN_PCT &&
-    stabilizationReady &&
-    snapshot.financialMomentum !== "deteriorating"
+    stabilizationReady
   ) {
-    return 0.6;
+    return Math.min(1, 0.6 + safeguardPenalty);
   }
 
   return 1;
@@ -531,7 +551,10 @@ export function evaluateLongTermFinancials(
           latestRoe: annualLatest?.roe,
           latestDebtRatio: annualLatest?.debtRatio,
           latestPer: annualLatest?.per,
-          latestPbr: annualLatest?.pbr
+          latestPbr: annualLatest?.pbr,
+          recentOperatingLossCount: countLossPeriods(fundamentals?.quarterlyHistory?.slice(-4), "operatingIncome"),
+          recentNetLossCount: countLossPeriods(fundamentals?.quarterlyHistory?.slice(-4), "netIncome"),
+          strongRevenueDecline: hasStrongRevenueDecline(annualLatest, annualPrevious, quarterlyLatest, quarterlyPrevious)
         } satisfies LongTermFinancialSnapshot)
       : buildFallbackSnapshot(context.isLeader);
 

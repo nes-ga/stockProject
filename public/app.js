@@ -2933,7 +2933,7 @@ function renderSelector() {
               ${longTermBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>` : ""}
               ${swingBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>` : ""}
               ${
-                item.category === "swing" && swingTradePlan
+                item.category === "swing" && swingTradePlan && item.swingBucket !== "watch"
                   ? `
                     <span class="stock-card-trade-grid">
                       <span class="stock-card-trade-item">
@@ -3587,7 +3587,14 @@ function resolveSwingBucket(item) {
     return "watch";
   }
 
-  if (item?.swingBucket === "execution" || item?.bucket === "execution") {
+  if (
+    item?.swingBucket === "execution" ||
+    item?.swingBucket === "execution_ready" ||
+    item?.swingBucket === "execution_probe" ||
+    item?.bucket === "execution" ||
+    item?.bucket === "execution_ready" ||
+    item?.bucket === "execution_probe"
+  ) {
     return "execution";
   }
 
@@ -4194,7 +4201,11 @@ async function runAnalysisByKey(key) {
 
     currentAnalysis = enrichAnalysis(analysis, item, swingPatternAnalysis);
     if (item.category !== "swing" && currentAnalysis.longTermReview) {
-      const insightChanged = applyLongTermInsightToCatalog(item.key, currentAnalysis.longTermReview);
+      const insightChanged = applyLongTermInsightToCatalog(
+        item.key,
+        currentAnalysis.longTermReview,
+        item.category ?? DEFAULT_CATEGORY
+      );
       if (insightChanged) {
         renderSelector();
       }
@@ -4233,6 +4244,10 @@ async function runAnalysisByKey(key) {
 function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
   const daily = analysis.chartWindow.points;
   const swingPattern = swingPatternAnalysis?.pattern ?? null;
+  const swingTradeOverlay =
+    item.swingBucket === "watch"
+      ? null
+      : getSwingTradeOverlay(item.note, swingPattern);
   return {
     key: item.key,
     ...analysis,
@@ -4241,7 +4256,7 @@ function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
     swingBucket: item.swingBucket,
     swingPatternAnalysis,
     swingAssessment: swingPattern ? getSwingAssessment(swingPattern) : null,
-    swingTradeOverlay: getSwingTradeOverlay(item.note, swingPattern),
+    swingTradeOverlay,
     chartSets: {
       daily: toChartPoints(daily),
       weekly: aggregateCandles(daily, "weekly"),
@@ -4611,6 +4626,22 @@ function formatLongTermLabel(label) {
       return "베이스 형성 후보";
     case "needs more stabilization":
       return "안정화 더 필요";
+    case "dividend_income_core":
+      return "배당 코어";
+    case "dividend_growth_candidate":
+      return "배당 성장형";
+    case "dividend_stable_payer":
+      return "안정 배당";
+    case "dividend_watch_payout_risk":
+      return "배당성향 점검";
+    case "dividend_watch_growth_slowing":
+      return "배당 성장 둔화";
+    case "dividend_watch_financial_repair":
+      return "재무 보수 점검";
+    case "dividend_trap_risk":
+      return "배당 함정 주의";
+    case "dividend_irregular_history":
+      return "배당 이력 불규칙";
     default:
       return label ?? "-";
   }
@@ -4846,28 +4877,41 @@ function formatLongTermSummary(note, bucket = DEFAULT_LONG_TERM_BUCKET) {
   return keywords.join(" / ");
 }
 
-function buildLongTermInsightFromReview(review) {
+function buildLongTermInsightFromReview(review, category = DEFAULT_CATEGORY) {
   const candidate = review?.candidate;
   if (!candidate) {
     return null;
   }
 
   const bucket = candidate.candidateGroup === "watch candidate" ? "watch" : "buy";
-  const keywords = [
-    formatLongTermLabel(candidate.label),
-    `총점 ${candidate.scores.totalScore}점`,
-    candidate.drawdownPct != null ? `낙폭 ${Math.round(Math.abs(candidate.drawdownPct))}%` : null,
-    candidate.baseStructure.isStabilizing
-      ? "바닥 안정화"
-      : candidate.baseStructure.higherLowCount >= 2
-        ? "바닥 형성 중"
-        : "바닥 미완성",
-    candidate.financials?.financialMomentum === "deteriorating"
-      ? "실적 둔화"
-      : candidate.financials?.operatingProfitTrend === "improving" || candidate.financials?.netIncomeTrend === "improving"
-        ? "실적 개선"
-        : null
-  ].filter(Boolean);
+  const keywords =
+    category === DIVIDEND_CATEGORY
+      ? [
+          formatLongTermLabel(candidate.label),
+          `총점 ${candidate.scores.totalScore}점`,
+          candidate.dividendMetrics?.latestDividendYield != null
+            ? `배당수익률 ${candidate.dividendMetrics.latestDividendYield.toFixed(1)}%`
+            : null,
+          candidate.dividendMetrics?.consecutiveDividendYears
+            ? `연속배당 ${candidate.dividendMetrics.consecutiveDividendYears}년`
+            : null,
+          candidate.dividendMetrics?.payoutRatio != null ? `배당성향 ${Math.round(candidate.dividendMetrics.payoutRatio)}%` : null
+        ].filter(Boolean)
+      : [
+          formatLongTermLabel(candidate.label),
+          `총점 ${candidate.scores.totalScore}점`,
+          candidate.drawdownPct != null ? `낙폭 ${Math.round(Math.abs(candidate.drawdownPct))}%` : null,
+          candidate.baseStructure.isStabilizing
+            ? "바닥 안정화"
+            : candidate.baseStructure.higherLowCount >= 2
+              ? "바닥 형성 중"
+              : "바닥 미완성",
+          candidate.financials?.financialMomentum === "deteriorating"
+            ? "실적 둔화"
+            : candidate.financials?.operatingProfitTrend === "improving" || candidate.financials?.netIncomeTrend === "improving"
+              ? "실적 개선"
+              : null
+        ].filter(Boolean);
 
   return {
     bucket,
@@ -4876,8 +4920,8 @@ function buildLongTermInsightFromReview(review) {
   };
 }
 
-function applyLongTermInsightToCatalog(key, review) {
-  const insight = buildLongTermInsightFromReview(review);
+function applyLongTermInsightToCatalog(key, review, category = DEFAULT_CATEGORY) {
+  const insight = buildLongTermInsightFromReview(review, category);
   if (!insight) {
     return false;
   }
@@ -4928,17 +4972,28 @@ function getLongTermReviewAssessment(review, category = DEFAULT_CATEGORY) {
       className: "ready",
       groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
       statusLabel: formatLongTermLabel(candidate.label),
-      action: "분할매수 검토 가능",
-      summary: formatLongTermSummary(candidate.reasonSummary, "buy")
+      action: category === DIVIDEND_CATEGORY ? "배당 후보군 검토 가능" : "분할매수 검토 가능",
+      summary:
+        category === DIVIDEND_CATEGORY
+          ? candidate.reasonSummary
+          : formatLongTermSummary(candidate.reasonSummary, "buy")
     };
   }
 
   return {
-    className: candidate.label === "deep value review" ? "caution" : "watch",
+    className:
+      candidate.label === "deep value review" ||
+      candidate.label === "dividend_trap_risk" ||
+      candidate.label === "dividend_watch_payout_risk"
+        ? "caution"
+        : "watch",
     groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
     statusLabel: formatLongTermLabel(candidate.label),
     action: review.enginePass ? "관찰 유지" : "엔진 조건 미충족",
-    summary: formatLongTermSummary(candidate.reasonSummary, candidate.candidateGroup === "buy candidate" ? "buy" : "watch")
+    summary:
+      category === DIVIDEND_CATEGORY
+        ? candidate.reasonSummary
+        : formatLongTermSummary(candidate.reasonSummary, candidate.candidateGroup === "buy candidate" ? "buy" : "watch")
   };
 }
 
@@ -4952,24 +5007,102 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
   const filterReasonChips = Array.isArray(review.filterReasons)
     ? review.filterReasons.map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`).join("")
     : "";
-  const sourceLabel = review.seedSource === "curated" ? `${getEngineDisplayLabel(category)} 시드` : "수동 추가 평가";
+  const sourceLabel =
+    review.seedSource === "curated"
+      ? `${getEngineDisplayLabel(category)} 시드`
+      : review.seedSource
+        ? "수동 추가 평가"
+        : `${getEngineDisplayLabel(category)} 리뷰`;
   const engineLabel = getEngineDisplayLabel(category);
   const candidateGroupLabel = candidate ? getEngineBucketLabel(category, candidate.candidateGroup) : "-";
   const dividendHistoryPanel = buildDividendHistoryPanel(item);
-
-  return `
-    <section class="swing-pattern-panel">
-      <div class="swing-pattern-head">
-        <div>
-          <h4>${escapeHtml(getEnginePanelTitle(category))}</h4>
-          <div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>
-        </div>
-        <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
-      </div>
-      <div class="swing-pattern-copy">${escapeHtml(assessment.statusLabel)} / ${escapeHtml(assessment.action)} / ${escapeHtml(sourceLabel)}</div>
-      ${
-        candidate
-          ? `
+  const tagChips = Array.isArray(candidate?.tags)
+    ? candidate.tags.map((tag) => `<span class="swing-reason-chip">${escapeHtml(tag)}</span>`).join("")
+    : "";
+  const strengthChips = Array.isArray(candidate?.strengths)
+    ? candidate.strengths.map((strength) => `<span class="swing-reason-chip">${escapeHtml(strength)}</span>`).join("")
+    : "";
+  const weaknessChips = Array.isArray(candidate?.weaknesses)
+    ? candidate.weaknesses.map((weakness) => `<span class="swing-reason-chip">${escapeHtml(weakness)}</span>`).join("")
+    : "";
+  const failureChips = Array.isArray(candidate?.failureReasons)
+    ? candidate.failureReasons.map((reason) => `<span class="swing-reason-chip">${escapeHtml(reason)}</span>`).join("")
+    : "";
+  const metricGrid = candidate
+    ? category === DIVIDEND_CATEGORY
+      ? `
+            <div class="metric-grid swing-metric-grid">
+              <div class="metric">
+                <span class="metric-label">후보군</span>
+                <span class="metric-value">${escapeHtml(candidateGroupLabel)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">${escapeHtml(engineLabel)} 라벨</span>
+                <span class="metric-value">${escapeHtml(formatLongTermLabel(candidate.label))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">총점</span>
+                <span class="metric-value">${candidate.scores.totalScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">배당수익률</span>
+                <span class="metric-value">${escapeHtml(formatDividendYield(candidate.dividendMetrics?.latestDividendYield))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">연속 배당</span>
+                <span class="metric-value">${formatNumber(candidate.dividendMetrics?.consecutiveDividendYears)}년</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">배당성향</span>
+                <span class="metric-value">${candidate.dividendMetrics?.payoutRatio != null ? `${formatDecimal(candidate.dividendMetrics.payoutRatio)}%` : "-"}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">이익 커버리지</span>
+                <span class="metric-value">${candidate.dividendMetrics?.earningsCoverageRatio != null ? `${formatDecimal(candidate.dividendMetrics.earningsCoverageRatio)}x` : "-"}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">최근 배당 삭감</span>
+                <span class="metric-value">${formatNumber(candidate.dividendMetrics?.recentDividendCutCount)}회</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">배당 안정성</span>
+                <span class="metric-value">${candidate.scores.dividendStabilityScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">배당 성장성</span>
+                <span class="metric-value">${candidate.scores.dividendGrowthScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">배당 안전성</span>
+                <span class="metric-value">${candidate.scores.dividendSafetyScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">재무 내구성</span>
+                <span class="metric-value">${candidate.scores.financialDurabilityScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">유동성</span>
+                <span class="metric-value">${candidate.scores.liquidityScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">가격 보조점수</span>
+                <span class="metric-value">${candidate.scores.priceSupportScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">함정 위험</span>
+                <span class="metric-value">${candidate.dividendMetrics?.trapRiskScore != null ? `${formatNumber(candidate.dividendMetrics.trapRiskScore)}점` : "-"}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">매출 추세</span>
+                <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.revenueTrend))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">영업이익 추세</span>
+                <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.operatingProfitTrend))}</span>
+              </div>
+            </div>
+        `
+      : `
             <div class="metric-grid swing-metric-grid">
               <div class="metric">
                 <span class="metric-label">후보군</span>
@@ -5004,6 +5137,22 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
                 <span class="metric-value">${formatPercent(candidate.baseStructure.distanceFromLowPct)}</span>
               </div>
               <div class="metric">
+                <span class="metric-label">베이스 기간</span>
+                <span class="metric-value">${formatNumber(candidate.baseStructure.baseDurationDays)}일</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">고점 경과</span>
+                <span class="metric-value">${formatNumber(candidate.baseStructure.daysSincePeak)}일</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Higher-low 품질</span>
+                <span class="metric-value">${candidate.baseStructure.higherLowQualityScore != null ? `${formatNumber(candidate.baseStructure.higherLowQualityScore)}점` : "-"}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">축적 시그널</span>
+                <span class="metric-value">${candidate.liquidity?.accumulationSignal != null ? `${formatNumber(candidate.liquidity.accumulationSignal)}점` : "-"}</span>
+              </div>
+              <div class="metric">
                 <span class="metric-label">대표성 점수</span>
                 <span class="metric-value">${candidate.scores.leaderScore}점</span>
               </div>
@@ -5018,33 +5167,84 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
               <div class="metric">
                 <span class="metric-label">안정화 점수</span>
                 <span class="metric-value">${candidate.scores.stabilizationScore}점</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">재무 점수</span>
-                  <span class="metric-value">${candidate.scores?.financialScore ?? "-"}${candidate.scores?.financialScore != null ? "점" : ""}</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">매출 추세</span>
-                  <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.revenueTrend ?? candidate.fundamentals?.revenueTrend))}</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">영업이익 추세</span>
-                  <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.operatingProfitTrend ?? candidate.fundamentals?.operatingProfitTrend))}</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">ROE / 부채비율</span>
-                  <span class="metric-value">${(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe) != null ? `${formatSignedDecimal(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe)}%` : "-"} / ${(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio) != null ? `${formatDecimal(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio)}%` : "-"}</span>
-                </div>
               </div>
-            `
-            : ""
-        }
+              <div class="metric">
+                <span class="metric-label">재무 점수</span>
+                <span class="metric-value">${candidate.scores?.financialScore ?? "-"}${candidate.scores?.financialScore != null ? "점" : ""}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">매출 추세</span>
+                <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.revenueTrend ?? candidate.fundamentals?.revenueTrend))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">영업이익 추세</span>
+                <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.operatingProfitTrend ?? candidate.fundamentals?.operatingProfitTrend))}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">ROE / 부채비율</span>
+                <span class="metric-value">${(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe) != null ? `${formatSignedDecimal(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe)}%` : "-"} / ${(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio) != null ? `${formatDecimal(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio)}%` : "-"}</span>
+              </div>
+            </div>
+        `
+    : "";
+
+  return `
+    <section class="swing-pattern-panel">
+      <div class="swing-pattern-head">
+        <div>
+          <h4>${escapeHtml(getEnginePanelTitle(category))}</h4>
+          <div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>
+        </div>
+        <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
+      </div>
+      <div class="swing-pattern-copy">${escapeHtml(assessment.statusLabel)} / ${escapeHtml(assessment.action)} / ${escapeHtml(sourceLabel)}</div>
+      ${metricGrid}
       ${dividendHistoryPanel}
       ${
         filterReasonChips
           ? `
             <div class="swing-reason-list">
               ${filterReasonChips}
+            </div>
+          `
+          : ""
+      }
+      ${
+        tagChips
+          ? `
+            <div class="swing-pattern-copy">watch tags</div>
+            <div class="swing-reason-list">
+              ${tagChips}
+            </div>
+          `
+          : ""
+      }
+      ${
+        failureChips
+          ? `
+            <div class="swing-pattern-copy">failure reasons</div>
+            <div class="swing-reason-list">
+              ${failureChips}
+            </div>
+          `
+          : ""
+      }
+      ${
+        strengthChips
+          ? `
+            <div class="swing-pattern-copy">strengths</div>
+            <div class="swing-reason-list">
+              ${strengthChips}
+            </div>
+          `
+          : ""
+      }
+      ${
+        weaknessChips
+          ? `
+            <div class="swing-pattern-copy">weaknesses</div>
+            <div class="swing-reason-list">
+              ${weaknessChips}
             </div>
           `
           : ""
@@ -5332,7 +5532,7 @@ function formatSwingPriceBand(low, high) {
     return "-";
   }
   if (typeof low === "number" && typeof high === "number") {
-    return `${formatNumber(low)}원 ~ ${formatNumber(high)}원`;
+    return `${formatNumber(Math.max(low, high))}원 ~ ${formatNumber(Math.min(low, high))}원`;
   }
   const single = typeof high === "number" ? high : low;
   return single == null ? "-" : `${formatNumber(single)}원`;
@@ -5531,12 +5731,12 @@ function getSwingTradeOverlay(note, pattern) {
 function getSwingCardTradePlan(note, pattern) {
   const overlay = getSwingTradeOverlay(note, pattern);
   const buyPlan = pattern?.buyPlan;
-  const buyLevelsFromOverlay = overlay.buyPrices.map((price, index) => `${index + 1}차 ${formatNumber(price)}원`);
   const buyLevelsFromPlan = buyPlan
     ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
       .filter((price) => Number.isFinite(price) && price > 0)
       .map((price, index) => `${index + 1}차 ${formatNumber(price)}원`)
     : [];
+  const buyLevelsFromOverlay = buyPlan ? overlay.buyPrices.map((price, index) => `${index + 1}차 ${formatNumber(price)}원`) : [];
   const buyFromNote = parseSwingPlanSegment(note, "매수가") ?? parseSwingPlanSegment(note, "매수");
   const buyLevelsFromNote =
     !buyLevelsFromOverlay.length && !buyLevelsFromPlan.length && buyFromNote

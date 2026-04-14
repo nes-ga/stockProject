@@ -103,10 +103,12 @@ export type SmartMoneyPatternFilters = {
   breakoutLookbackDays: number;
   minLeadInPriceChangePercent: number;
   minLeadInVolumeRatio: number;
+  minLeadInVolumeShares: number;
   minTurnoverValue: number;
   minBreakoutTurnoverValue: number;
   minBreakoutPriceChangePercent: number;
   minBreakoutVolumeRatio: number;
+  minBreakoutVolumeShares: number;
   minPullbackSessions: number;
   maxPullbackSessions: number;
   minSetupPullbackSessions: number;
@@ -157,6 +159,14 @@ export type SmartMoneyPatternFilters = {
   volatileDigestionBuyZoneHighRetracementRatio: number;
   minActionableValidityScore: number;
   minExecutionReadinessScore: number;
+  setupValidityMin: number;
+  setupExecutionMin: number;
+  breakoutValidityMin: number;
+  breakoutExecutionMin: number;
+  executionReadyRiskRewardMin: number;
+  executionProbeRiskRewardMin: number;
+  bullBreakoutThresholdRelief: number;
+  bearSetupThresholdTightening: number;
   regimeScoreWeight: number;
   minRegimeScoreForActionable: number;
   blockActionableOnRiskOff: boolean;
@@ -306,6 +316,32 @@ export type SmartMoneyTradePlan = {
   notes: string[];
 };
 
+export type SmartMoneyExecutionBucket = "execution_ready" | "execution_probe" | "watch";
+
+export type SmartMoneyClassificationTag =
+  | "tag_sma20_primary"
+  | "tag_alt_anchor_pivot_retest"
+  | "tag_alt_anchor_box_support"
+  | "tag_alt_anchor_shallow_pullback"
+  | "tag_volume_weak"
+  | "tag_volume_turnover_strong"
+  | "tag_candle_weak"
+  | "tag_candle_rejection"
+  | "tag_sma20_slope_negative"
+  | "tag_support_unstable"
+  | "watch_extended_leader"
+  | "watch_pullback_pending"
+  | "watch_low_quality"
+  | "watch_halt_event"
+  | "watch_halt_structural";
+
+export type SmartMoneyPenaltyFactor = {
+  code: string;
+  label: string;
+  impact: number;
+  reason: string;
+};
+
 export type SmartMoneyRejectReason = {
   stage: "setup" | "breakout";
   lookbackWindowDays: number;
@@ -318,6 +354,7 @@ export type SmartMoneyCandidateSummary = {
   stage: "setup" | "breakout";
   status: SmartMoneyWorkflowStatus;
   entryStrategy?: SmartMoneyEntryStrategy;
+  executionBucket?: SmartMoneyExecutionBucket;
   buyPlan?: SmartMoneyBuyPlan;
   referenceSma20?: number;
   stopLossReferenceDate?: string;
@@ -345,6 +382,13 @@ export type SmartMoneyCandidateSummary = {
   freshnessScore: number;
   validityScore: number;
   executionReadinessScore: number;
+  candleQualityScore?: number;
+  volumeContractionScore?: number;
+  supportStabilityScore?: number;
+  sma20SlopePercent?: number;
+  riskRewardRatio?: number;
+  tags: SmartMoneyClassificationTag[];
+  penaltyFactors: SmartMoneyPenaltyFactor[];
   reasons: string[];
   rejectReasons: string[];
 };
@@ -369,6 +413,7 @@ export type SmartMoneyPatternMatch = {
   stage: "none" | "setup" | "breakout";
   status: SmartMoneyWorkflowStatus;
   entryStrategy?: SmartMoneyEntryStrategy;
+  executionBucket?: SmartMoneyExecutionBucket;
   buyPlan?: SmartMoneyBuyPlan;
   referenceSma20?: number;
   stopLossReferenceDate?: string;
@@ -428,6 +473,11 @@ export type SmartMoneyPatternMatch = {
   freshnessScore?: number;
   validityScore?: number;
   executionReadinessScore?: number;
+  candleQualityScore?: number;
+  volumeContractionScore?: number;
+  supportStabilityScore?: number;
+  sma20SlopePercent?: number;
+  riskRewardRatio?: number;
   setupScore?: number;
   breakoutScore?: number;
   regimeScore?: number;
@@ -441,6 +491,9 @@ export type SmartMoneyPatternMatch = {
   marketContext?: SmartMoneyAppliedMarketContext;
   backtestResult?: SmartMoneyBacktestResult;
   tradePlan?: SmartMoneyTradePlan;
+  tags: SmartMoneyClassificationTag[];
+  penaltyFactors: SmartMoneyPenaltyFactor[];
+  classificationReasons: string[];
   lookbackWindowDays?: number;
   reasons: string[];
   summary: string;
@@ -455,9 +508,18 @@ export type SmartMoneyPatternAnalysis = {
   resolvedSymbol: string;
   referenceDate?: string;
   tradingReferenceDate: string;
+  tradingHalted?: boolean;
+  tradingHaltReason?: string;
+  tradingHaltReasonCategory?: TradingHaltReasonCategory;
+  haltCategory?: TradingHaltCategory;
+  haltAction?: TradingHaltAction;
   note?: string;
   pattern: SmartMoneyPatternMatch;
 };
+
+export type TradingHaltReasonCategory = "corporate_action" | "regulatory_risk" | "market_warning" | "other";
+export type TradingHaltCategory = "critical" | "structural" | "event" | "technical" | "other";
+export type TradingHaltAction = "exclude" | "watch_only" | "allow_with_penalty";
 
 export type SmartMoneyWatchItem = {
   symbol: string;
@@ -518,7 +580,7 @@ export type RecommendationAnalysis = {
     points: ChartPoint[];
   };
   fundamentals?: FundamentalsSummary;
-  longTermReview?: LongTermReviewAnalysis;
+  longTermReview?: LongTermReviewAnalysis | DividendReviewAnalysis;
 };
 
 export type KoreanMoverMarket = "KOSPI" | "KOSDAQ";
@@ -705,7 +767,11 @@ export type LongTermBaseStructure = {
   recentLow?: number;
   distanceFromLowPct?: number;
   higherLowCount: number;
+  higherLowQualityScore?: number;
   daysSinceLastLowBreak: number;
+  daysSincePeak?: number;
+  baseDurationDays: number;
+  timeSinceLastMajorLow: number;
   isStabilizing: boolean;
 };
 
@@ -713,6 +779,8 @@ export type LongTermLiquiditySnapshot = {
   avgTurnover20?: number;
   avgTurnover60?: number;
   volumeConsistency?: number;
+  liquidityStability?: number;
+  accumulationSignal?: number;
 };
 
 export type LongTermFinancialTrend = "improving" | "weakening" | "cyclical_downturn";
@@ -747,7 +815,18 @@ export type LongTermFinancialSnapshot = {
   latestDebtRatio?: number;
   latestPer?: number;
   latestPbr?: number;
+  recentOperatingLossCount?: number;
+  recentNetLossCount?: number;
+  strongRevenueDecline?: boolean;
 };
+
+export type LongTermWatchTag =
+  | "watch_needs_stabilization"
+  | "watch_deep_value"
+  | "watch_leader_correction"
+  | "watch_trend_not_confirmed"
+  | "watch_financial_repair"
+  | "watch_secondary_recovery";
 
 export type LongTermScanCandidate = {
   symbol: string;
@@ -769,6 +848,10 @@ export type LongTermScanCandidate = {
   candidateGroup: LongTermCandidateGroup;
   label: LongTermScanLabel;
   reasonSummary: string;
+  strengths: string[];
+  weaknesses: string[];
+  failureReasons: string[];
+  tags: string[];
 };
 
 export type LongTermScanFilters = {
@@ -777,7 +860,11 @@ export type LongTermScanFilters = {
   slopeLookbackSessions: number;
   higherLowLookbackWindow: number;
   higherLowPivotSpan: number;
+  majorLowLookbackWindow: number;
   minimumBaseDays: number;
+  longBaseRewardStartDays: number;
+  longBaseRewardFullDays: number;
+  vShapePenaltyPeakDays: number;
   minimumTradableTurnover20: number;
   minimumTradableTurnover60: number;
   minimumDrawdownPct: number;
@@ -790,6 +877,7 @@ export type LongTermScanFilters = {
   farBelowMa240Pct: number;
   lowBreakPenaltyDays: number;
   coolingVolumeRatioThreshold: number;
+  higherLowQualityBuyFloor: number;
   leaderWeight: number;
   correctionWeight: number;
   trendWeight: number;
@@ -819,6 +907,108 @@ export type LongTermReviewAnalysis = {
   enginePass: boolean;
   filterReasons: string[];
   candidate?: LongTermScanCandidate;
+};
+
+export type DividendScanLabel =
+  | "dividend_stable_payer"
+  | "dividend_growth_candidate"
+  | "dividend_income_core"
+  | "dividend_watch_payout_risk"
+  | "dividend_watch_growth_slowing"
+  | "dividend_watch_financial_repair"
+  | "dividend_trap_risk"
+  | "dividend_irregular_history";
+
+export type DividendCandidateGroup = "buy candidate" | "watch candidate";
+
+export type DividendScoreBreakdown = {
+  totalScore: number;
+  dividendStabilityScore: number;
+  dividendGrowthScore: number;
+  dividendSafetyScore: number;
+  financialDurabilityScore: number;
+  liquidityScore: number;
+  priceSupportScore: number;
+};
+
+export type DividendMetricSnapshot = {
+  yearsPaidCount: number;
+  consecutiveDividendYears: number;
+  skippedDividendYears: number;
+  recentDividendCutCount: number;
+  dividendGrowthCagr?: number;
+  dividendGrowthConsistency?: number;
+  latestDividendPerShare?: number;
+  latestDividendYield?: number;
+  averageDividendYield?: number;
+  payoutRatio?: number;
+  earningsCoverageRatio?: number;
+  dividendDataCoverage: number;
+  trapRiskScore: number;
+  trapRiskReasons: string[];
+};
+
+export type DividendScanCandidate = {
+  symbol: string;
+  name: string;
+  sector?: string;
+  price: number;
+  dividendMetrics: DividendMetricSnapshot;
+  scores: DividendScoreBreakdown;
+  structure: LongTermStructureSnapshot;
+  liquidity: LongTermLiquiditySnapshot;
+  financials?: LongTermFinancialSnapshot;
+  candidateGroup: DividendCandidateGroup;
+  label: DividendScanLabel;
+  reasonSummary: string;
+  strengths: string[];
+  weaknesses: string[];
+  failureReasons: string[];
+  tags: string[];
+};
+
+export type DividendScanFilters = {
+  historySessions: number;
+  minimumTradableTurnover20: number;
+  minimumTradableTurnover60: number;
+  minimumDividendYears: number;
+  targetDividendYears: number;
+  maxRecentDividendCutsForBuy: number;
+  minDividendYield: number;
+  elevatedDividendYield: number;
+  dangerDividendYield: number;
+  payoutRatioWatchThreshold: number;
+  payoutRatioDangerThreshold: number;
+  minimumEarningsCoverageRatio: number;
+  stableGrowthTargetCagr: number;
+  stableGrowthTargetConsistency: number;
+  stabilityWeight: number;
+  growthWeight: number;
+  safetyWeight: number;
+  durabilityWeight: number;
+  liquidityWeight: number;
+  priceSupportWeight: number;
+};
+
+export type DividendScanResult = {
+  asOfDate: string;
+  universeSize: number;
+  filters: DividendScanFilters;
+  candidates: DividendScanCandidate[];
+  groupedCandidates: {
+    buyCandidates: DividendScanCandidate[];
+    watchCandidates: DividendScanCandidate[];
+  };
+};
+
+export type DividendReviewAnalysis = {
+  symbol: string;
+  name?: string;
+  market?: StockUniverseItem["market"];
+  sector?: string;
+  enginePass: boolean;
+  filterReasons: string[];
+  candidate?: DividendScanCandidate;
 };
 
 export type NewsMetadata = {

@@ -11,6 +11,7 @@ import type {
   RecommendationPatternFilters,
   RecommendationPatternMatch,
   RecommendationRequest,
+  SmartMoneyClassificationTag,
   SmartMoneyCandidateSummary,
   SmartMoneyMarketContext,
   SmartMoneyPatternAnalysis,
@@ -22,11 +23,14 @@ import type {
   StockAnalysis
 } from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
+import { analyzeDividendCandidate } from "./dividendEngine.js";
 import { analyzeLongTermCandidate } from "./longTermEngine.js";
+import { enrichFundamentalsWithDividendYields } from "./sharedDividendData.js";
 import { calculateSmartMoneyBacktestResult } from "./smartMoneyBacktest.js";
 import { evaluateSmartMoneyPattern, resolveSmartMoneyPatternFilters } from "./smartMoneyEngine.js";
 import { getAutoSmartMoneyMarketContext } from "./smartMoney/marketContext.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
+import { getTradingHaltInfoBySymbol } from "./tradingHalts.js";
 
 const logger = createLogger("stockAnalysis");
 const DEFAULT_NAVER_CHART_SESSIONS = 500;
@@ -165,6 +169,19 @@ function ratio(value?: number, base?: number): number | undefined {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function isNonTradingPoint(point?: ChartPoint): boolean {
+  if (!point) {
+    return false;
+  }
+
+  return (
+    (point.open ?? 0) === 0 &&
+    (point.high ?? 0) === 0 &&
+    (point.low ?? 0) === 0 &&
+    (point.volume ?? 0) === 0
+  );
 }
 
 function buildChartPoints(chartPayload: ChartResponse): ChartPoint[] {
@@ -478,107 +495,6 @@ function buildChartWindow(points: ChartPoint[]) {
   };
 }
 
-function parseAnnualPeriodLabel(label: string | undefined): { year: number; month: number } | undefined {
-  if (!label) {
-    return undefined;
-  }
-
-  const match = label.match(/(\d{4})\.(\d{2})/);
-  if (!match) {
-    return undefined;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return undefined;
-  }
-
-  return { year, month };
-}
-
-function findPeriodReferenceClose(points: ChartPoint[], label: string | undefined): number | undefined {
-  const period = parseAnnualPeriodLabel(label);
-  if (!period) {
-    return undefined;
-  }
-
-  const monthPrefix = `${period.year}-${String(period.month).padStart(2, "0")}`;
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    const point = points[index];
-    if (point?.date?.startsWith(monthPrefix)) {
-      return point.close;
-    }
-  }
-
-  const monthEnd = `${monthPrefix}-31`;
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    const point = points[index];
-    if (point?.date && point.date <= monthEnd) {
-      return point.close;
-    }
-  }
-
-  return undefined;
-}
-
-function calculateDividendYieldPercent(dividendAmount?: number, referenceClose?: number): number | undefined {
-  if (
-    dividendAmount == null ||
-    !Number.isFinite(dividendAmount) ||
-    referenceClose == null ||
-    !Number.isFinite(referenceClose) ||
-    referenceClose <= 0
-  ) {
-    return undefined;
-  }
-
-  return (dividendAmount / referenceClose) * 100;
-}
-
-function enrichFundamentalsWithDividendYields(fundamentals: RecommendationAnalysis["fundamentals"], points: ChartPoint[]) {
-  if (!fundamentals) {
-    return fundamentals;
-  }
-
-  const annual = fundamentals.annual
-    ? {
-        ...fundamentals.annual,
-        dividendYield:
-          fundamentals.annual.dividendYield ??
-          calculateDividendYieldPercent(
-            fundamentals.annual.dividendPerShare,
-            findPeriodReferenceClose(points, fundamentals.annual.label)
-          )
-      }
-    : fundamentals.annual;
-
-  const annualHistory = Array.isArray(fundamentals.annualHistory)
-    ? fundamentals.annualHistory.map((period) => ({
-        ...period,
-        dividendYield:
-          period.dividendYield ??
-          calculateDividendYieldPercent(period.dividendPerShare, findPeriodReferenceClose(points, period.label))
-      }))
-    : fundamentals.annualHistory;
-
-  const dividendHistory = Array.isArray(fundamentals.dividendHistory)
-    ? fundamentals.dividendHistory.map((entry) => ({
-        ...entry,
-        dividendYield:
-          entry.dividendYield ??
-          calculateDividendYieldPercent(entry.dividendAmount, findPeriodReferenceClose(points, entry.label))
-      }))
-    : fundamentals.dividendHistory;
-
-  return {
-    ...fundamentals,
-    annual,
-    annualHistory,
-    dividendHistory
-  };
-}
-
 function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
   if (!points.length || typeof latestClose !== "number" || !Number.isFinite(latestClose)) {
     return points;
@@ -869,6 +785,9 @@ function buildEmptySmartMoneyPattern(referenceDate: string, windowPoints: ChartP
     entryZoneLow: undefined,
     entryZoneHigh: undefined,
     invalidationPrice: undefined,
+    tags: [],
+    penaltyFactors: [],
+    classificationReasons: ["no_pattern"],
     reasons: ["No smart-money entry pattern was found in the selected window."],
     summary: "No smart-money entry pattern was found in the selected window."
   };
@@ -1166,6 +1085,9 @@ function evaluateSmartMoneyPatternWindow(
         entryZoneLow: undefined,
         entryZoneHigh: undefined,
         invalidationPrice: undefined,
+        tags: [],
+        penaltyFactors: [],
+        classificationReasons: [],
         reasons,
         summary: reasons.join(" ")
       };
@@ -1357,6 +1279,9 @@ function evaluateSmartMoneyPatternWindow(
         entryZoneLow: undefined,
         entryZoneHigh: undefined,
         invalidationPrice: undefined,
+        tags: [],
+        penaltyFactors: [],
+        classificationReasons: [],
         reasons,
         summary: reasons.join(" ")
       };
@@ -1386,11 +1311,17 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
   const longTermReview =
     input.category === "swing"
       ? undefined
-      : await analyzeLongTermCandidate({
-          symbol: input.symbol,
-          name: input.name,
-          fundamentals
-        });
+      : input.category === "dividend"
+        ? await analyzeDividendCandidate({
+            symbol: input.symbol,
+            name: input.name,
+            fundamentals
+          })
+        : await analyzeLongTermCandidate({
+            symbol: input.symbol,
+            name: input.name,
+            fundamentals
+          });
   const { quote, points } = chartResult;
   const enrichedFundamentals = enrichFundamentalsWithDividendYields(fundamentals, points);
 
@@ -1579,6 +1510,13 @@ async function analyzeSmartMoneyPatternWithContext(
   }
 
   const referencePoint = points[referenceIndex];
+  const tradingHaltInfo = await getTradingHaltInfoBySymbol(input.symbol).catch((error) => {
+    logger.warn("smartMoney:trading-halt:lookup-failed", {
+      symbol: input.symbol,
+      ...toErrorContext(error)
+    });
+    return undefined;
+  });
   const pattern = evaluateSmartMoneyPattern(points, referenceIndex, filters, {
     marketContext,
     debug: input.debug,
@@ -1588,10 +1526,38 @@ async function analyzeSmartMoneyPatternWithContext(
     }
   });
   const backtestResult = calculateSmartMoneyBacktestResult(points, referenceIndex, pattern);
+  const haltTags: SmartMoneyClassificationTag[] =
+    tradingHaltInfo?.haltCategory === "event"
+      ? ["watch_halt_event"]
+      : tradingHaltInfo?.haltCategory === "structural" || tradingHaltInfo?.haltCategory === "critical"
+        ? ["watch_halt_structural"]
+        : [];
   const enrichedPattern = {
     ...pattern,
-    backtestResult
+    backtestResult,
+    riskRewardRatio: pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio,
+    tags: [...new Set([...(pattern.tags ?? []), ...haltTags])],
+    penaltyFactors: [
+      ...(pattern.penaltyFactors ?? []),
+      ...(tradingHaltInfo?.haltAction === "allow_with_penalty"
+        ? [
+            {
+              code: "halt_event_penalty",
+              label: "Trading halt event penalty",
+              impact: 8,
+              reason: `Trading halt reason '${tradingHaltInfo.reason}' is event-driven, so execution should stay conservative.`
+            }
+          ]
+        : [])
+    ],
+    classificationReasons: [
+      ...new Set([
+        ...(pattern.classificationReasons ?? []),
+        ...(tradingHaltInfo ? [`halt_${tradingHaltInfo.haltCategory}`, `halt_action_${tradingHaltInfo.haltAction}`] : [])
+      ])
+    ]
   };
+  const tradingHalted = Boolean(tradingHaltInfo) || isNonTradingPoint(referencePoint);
 
   const analysis = {
     name: input.name,
@@ -1599,6 +1565,11 @@ async function analyzeSmartMoneyPatternWithContext(
     resolvedSymbol: symbol,
     referenceDate: input.referenceDate,
     tradingReferenceDate: referencePoint.date,
+    tradingHalted,
+    tradingHaltReason: tradingHaltInfo?.reason ?? (tradingHalted ? "기준일 비거래 상태" : undefined),
+    tradingHaltReasonCategory: tradingHaltInfo?.reasonCategory,
+    haltCategory: tradingHaltInfo?.haltCategory,
+    haltAction: tradingHaltInfo?.haltAction,
     note: input.note,
     pattern: enrichedPattern
   };
@@ -1606,6 +1577,11 @@ async function analyzeSmartMoneyPatternWithContext(
   logger.info("smartMoney:analyze:success", {
     symbol: input.symbol,
     tradingReferenceDate: analysis.tradingReferenceDate,
+    tradingHalted: analysis.tradingHalted,
+    tradingHaltReason: analysis.tradingHaltReason,
+    tradingHaltReasonCategory: analysis.tradingHaltReasonCategory,
+    haltCategory: analysis.haltCategory,
+    haltAction: analysis.haltAction,
     stage: enrichedPattern.stage,
     matched: enrichedPattern.matched,
     actionable: enrichedPattern.actionable,

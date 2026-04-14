@@ -13,7 +13,7 @@ import { analyzeKoreanMovers } from "../services/koreanMovers.js";
 import { getMarketEventCalendarPayload } from "../services/marketEventCalendar.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
-import { scanRecommendationUniverse } from "../services/recommendationUniverse.js";
+import { classifySwingCandidate, scanRecommendationUniverse } from "../services/recommendationUniverse.js";
 import {
   diffAndRememberDividendUniverseAlerts,
   diffAndRememberLongTermUniverseAlerts,
@@ -137,10 +137,12 @@ const smartMoneyPatternSchema = z.object({
       breakoutLookbackDays: z.coerce.number().int().min(5).max(60).optional(),
       minLeadInPriceChangePercent: z.coerce.number().min(0).max(30).optional(),
       minLeadInVolumeRatio: z.coerce.number().min(0).max(20).optional(),
+      minLeadInVolumeShares: z.coerce.number().int().min(0).optional(),
       minTurnoverValue: z.coerce.number().min(0).optional(),
       minBreakoutTurnoverValue: z.coerce.number().min(0).optional(),
       minBreakoutPriceChangePercent: z.coerce.number().min(0).max(40).optional(),
       minBreakoutVolumeRatio: z.coerce.number().min(0).max(20).optional(),
+      minBreakoutVolumeShares: z.coerce.number().int().min(0).optional(),
       minPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
       maxPullbackSessions: z.coerce.number().int().min(1).max(30).optional(),
       minSetupPullbackSessions: z.coerce.number().int().min(1).max(20).optional(),
@@ -191,6 +193,14 @@ const smartMoneyPatternSchema = z.object({
       volatileDigestionBuyZoneHighRetracementRatio: z.coerce.number().min(0).max(1).optional(),
       minActionableValidityScore: z.coerce.number().int().min(0).max(100).optional(),
       minExecutionReadinessScore: z.coerce.number().int().min(0).max(100).optional(),
+      setupValidityMin: z.coerce.number().int().min(0).max(100).optional(),
+      setupExecutionMin: z.coerce.number().int().min(0).max(100).optional(),
+      breakoutValidityMin: z.coerce.number().int().min(0).max(100).optional(),
+      breakoutExecutionMin: z.coerce.number().int().min(0).max(100).optional(),
+      executionReadyRiskRewardMin: z.coerce.number().min(0).max(10).optional(),
+      executionProbeRiskRewardMin: z.coerce.number().min(0).max(10).optional(),
+      bullBreakoutThresholdRelief: z.coerce.number().int().min(0).max(20).optional(),
+      bearSetupThresholdTightening: z.coerce.number().int().min(0).max(20).optional(),
       regimeScoreWeight: z.coerce.number().min(0).max(1).optional(),
       minRegimeScoreForActionable: z.coerce.number().int().min(0).max(100).optional(),
       blockActionableOnRiskOff: z.coerce.boolean().optional(),
@@ -241,7 +251,21 @@ const serverSwingPickSchema = z.object({
   anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
-  bucket: z.enum(["execution", "watch"]).optional(),
+  bucket: z.enum(["execution", "execution_ready", "execution_probe", "watch"]).optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  reasons: z.array(z.string().min(1)).optional(),
+  penaltyFactors: z
+    .array(
+      z.object({
+        code: z.string().min(1),
+        label: z.string().min(1),
+        impact: z.coerce.number(),
+        reason: z.string().min(1)
+      })
+    )
+    .optional(),
+  haltCategory: z.string().min(1).optional(),
+  haltAction: z.string().min(1).optional(),
   category: z.literal("swing"),
   source: z.string().min(1).max(100).optional()
 });
@@ -378,7 +402,7 @@ analysisRoutes.post("/smart-money-patterns", async (request, response, next) => 
       filters
     );
     const matchedAnalyses = analyses.filter((item) => item.pattern.matched);
-    const actionableAnalyses = analyses.filter((item) => item.pattern.actionable);
+    const actionableAnalyses = analyses.filter((item) => classifySwingCandidate(item).bucket !== "watch");
     let messageCount = 0;
 
     if (input.discord) {

@@ -3,9 +3,12 @@ import type {
   SmartMoneyAppliedMarketContext,
   ChartPoint,
   SmartMoneyCandidateSummary,
+  SmartMoneyClassificationTag,
   SmartMoneyDebugMeta,
   SmartMoneyEntryStrategy,
+  SmartMoneyExecutionBucket,
   SmartMoneyMarketContext,
+  SmartMoneyPenaltyFactor,
   SmartMoneyPatternFilters,
   SmartMoneyPatternMatch,
   SmartMoneyPullbackType,
@@ -160,6 +163,9 @@ function buildEmptyMatch(referenceDate: string, windowPoints: ChartPoint[], look
       notes: ["No market context was injected, so regime stayed neutral."]
     },
     tradePlan: undefined,
+    tags: [],
+    penaltyFactors: [],
+    classificationReasons: ["no_pattern"],
     referenceDate,
     windowStartDate: windowPoints[0]?.date,
     windowEndDate: windowPoints.at(-1)?.date,
@@ -194,6 +200,7 @@ function scaleBetween(low: number, high: number, ratioValue: number): number {
 function resolveSetupEntryZone(params: {
   breakoutLevel: number;
   pullbackLow: number;
+  referenceSma20?: number;
   setupType?: SmartMoneySetupType;
   filters: SmartMoneyPatternFilters;
 }) {
@@ -203,6 +210,22 @@ function resolveSetupEntryZone(params: {
   const baseRange = Math.max(0, params.breakoutLevel - normalizedPullbackLow);
   if (baseRange === 0) {
     return resolveBreakoutRetestZone(params.breakoutLevel, normalizedPullbackLow, params.filters.maxSetupDistanceBelowBreakoutLevelPercent);
+  }
+
+  const normalizedSma20 =
+    typeof params.referenceSma20 === "number" && Number.isFinite(params.referenceSma20) && params.referenceSma20 > 0
+      ? clamp(params.referenceSma20, normalizedPullbackLow, params.breakoutLevel)
+      : undefined;
+  if (normalizedSma20 != null && normalizedSma20 > normalizedPullbackLow) {
+    const proximityRatio = clamp(params.filters.firstBuySma20ProximityPercent / 100, 0.005, 0.08);
+    const entryZoneHigh = normalizedSma20;
+    const entryZoneLow = Math.max(normalizedPullbackLow, normalizedSma20 * (1 - proximityRatio));
+    if (entryZoneLow < entryZoneHigh) {
+      return {
+        entryZoneLow,
+        entryZoneHigh
+      };
+    }
   }
 
   let lowRatio = params.filters.tightPullbackBuyZoneLowRetracementRatio;
@@ -234,6 +257,238 @@ function isWithinBand(value: number, low?: number, high?: number): boolean {
 
 function roundPriceLevel(value: number, pricingContext?: SmartMoneyPricingContext, mode: "nearest" | "up" | "down" = "nearest"): number {
   return normalizePriceByTick(value, pricingContext, mode) ?? value;
+}
+
+function getAverageTurnoverBefore(points: ChartPoint[], index: number, period = 20): number | undefined {
+  return averageNumberSeries(
+    points.slice(Math.max(0, index - period), index).map((point) => getTurnoverValue(point))
+  );
+}
+
+function getSma20SlopePercent(points: ChartPoint[], index: number, lookbackSessions = 5): number | undefined {
+  const currentSma20 = getAverageCloseThrough(points, index, 20);
+  const priorSma20 = getAverageCloseThrough(points, index - lookbackSessions, 20);
+  return currentSma20 != null && priorSma20 != null ? percentChange(currentSma20, priorSma20) : undefined;
+}
+
+function getRiskRewardRatioFromCandidate(
+  buyPlan: SmartMoneyBuyPlan | undefined,
+  entryZoneLow: number | undefined,
+  entryZoneHigh: number | undefined,
+  invalidationPrice: number | undefined,
+  breakoutLevel: number | undefined,
+  referenceClose: number | undefined
+) {
+  const zoneLow = buyPlan?.thirdBuyPrice ?? entryZoneLow;
+  const zoneHigh = buyPlan?.firstBuyPrice ?? entryZoneHigh;
+  const stopLoss = buyPlan?.stopLossPrice ?? invalidationPrice;
+  const entryPrice = zoneLow != null && zoneHigh != null ? (Math.min(zoneLow, zoneHigh) + Math.max(zoneLow, zoneHigh)) / 2 : undefined;
+  const targetPrice =
+    breakoutLevel != null && entryPrice != null && stopLoss != null
+      ? Math.max(breakoutLevel, referenceClose ?? breakoutLevel) + (entryPrice - stopLoss) * 2
+      : undefined;
+
+  if (entryPrice == null || stopLoss == null || targetPrice == null || entryPrice <= stopLoss) {
+    return undefined;
+  }
+
+  return Math.round(((targetPrice - entryPrice) / (entryPrice - stopLoss)) * 100) / 100;
+}
+
+function deriveActionableThresholds(
+  stage: Exclude<SmartMoneyPatternMatch["stage"], "none">,
+  market: MarketEvaluation,
+  filters: SmartMoneyPatternFilters
+) {
+  let validityMin = stage === "breakout" ? filters.breakoutValidityMin : filters.setupValidityMin;
+  let executionMin = stage === "breakout" ? filters.breakoutExecutionMin : filters.setupExecutionMin;
+
+  if (market.appliedContext.resolvedTrend === "bullish" && stage === "breakout") {
+    validityMin -= filters.bullBreakoutThresholdRelief;
+    executionMin -= filters.bullBreakoutThresholdRelief;
+  }
+
+  if (market.appliedContext.resolvedTrend === "bearish" && stage === "setup") {
+    validityMin += filters.bearSetupThresholdTightening;
+    executionMin += filters.bearSetupThresholdTightening;
+  }
+
+  return {
+    validityMin: clamp(Math.round(validityMin), 0, 100),
+    executionMin: clamp(Math.round(executionMin), 0, 100)
+  };
+}
+
+function createPenaltyFactor(
+  code: string,
+  label: string,
+  impact: number,
+  reason: string
+): SmartMoneyPenaltyFactor {
+  return {
+    code,
+    label,
+    impact,
+    reason
+  };
+}
+
+function deriveSupportStabilityScore(params: {
+  pullback: PullbackAssessment;
+  referenceCloseVsBreakoutLevelPercent?: number;
+  referenceClose: number;
+  invalidationPrice?: number;
+}) {
+  let score = 88;
+
+  if (params.pullback.closeRangePercent <= 6) {
+    score += 4;
+  } else if (params.pullback.closeRangePercent >= 12) {
+    score -= 8;
+  }
+
+  if (params.pullback.pullbackMaxDrawdownPercent > 15) {
+    score -= 28;
+  } else if (params.pullback.pullbackMaxDrawdownPercent > 12) {
+    score -= 20;
+  } else if (params.pullback.pullbackMaxDrawdownPercent > 9) {
+    score -= 12;
+  } else if (params.pullback.pullbackMaxDrawdownPercent > 7) {
+    score -= 6;
+  }
+
+  if (params.pullback.pullbackRangePercent > 20) {
+    score -= 18;
+  } else if (params.pullback.pullbackRangePercent > 15) {
+    score -= 10;
+  } else if (params.pullback.pullbackRangePercent > 10) {
+    score -= 4;
+  }
+
+  if (params.pullback.pullbackDownSessions > 6) {
+    score -= 12;
+  } else if (params.pullback.pullbackDownSessions > 4) {
+    score -= 6;
+  }
+
+  if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -8) {
+    score -= 14;
+  } else if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -4) {
+    score -= 8;
+  }
+
+  if (params.invalidationPrice != null) {
+    if (params.referenceClose <= params.invalidationPrice * 1.02) {
+      score -= 20;
+    } else if (params.referenceClose <= params.invalidationPrice * 1.06) {
+      score -= 10;
+    }
+  }
+
+  return clamp(Math.round(score), 0, 100);
+}
+
+function deriveVolumeContractionScore(pullback: PullbackAssessment) {
+  const ratioToLeadIn = pullback.pullbackVolumeRatioToLeadIn;
+  if (ratioToLeadIn == null) {
+    return 45;
+  }
+
+  if (ratioToLeadIn <= 0.18) {
+    return 92;
+  }
+
+  if (ratioToLeadIn <= 0.3) {
+    return 78;
+  }
+
+  if (ratioToLeadIn <= 0.45) {
+    return 58;
+  }
+
+  return 34;
+}
+
+function scoreCandleQuality(
+  point: ChartPoint,
+  previousClose: number | undefined,
+  stage: "setup" | "breakout"
+): {
+  candleQualityScore: number;
+  tags: SmartMoneyClassificationTag[];
+  penaltyFactors: SmartMoneyPenaltyFactor[];
+} {
+  const open = point.open ?? previousClose ?? point.close;
+  const high = getPointHigh(point);
+  const low = getPointLow(point);
+  const range = Math.max(high - low, Math.max(point.close * 0.001, 0.01));
+  const body = Math.abs(point.close - open);
+  const upperWick = Math.max(0, high - Math.max(open, point.close));
+  const closePosition = (point.close - low) / range;
+  const bodyRatio = body / range;
+  const upperWickRatio = upperWick / range;
+  const gapUpPercent = previousClose != null ? percentChange(open, previousClose) ?? 0 : 0;
+  const gapRejected = gapUpPercent >= 3 && point.close < open && closePosition < 0.55;
+  const tags: SmartMoneyClassificationTag[] = [];
+  const penaltyFactors: SmartMoneyPenaltyFactor[] = [];
+  let score = stage === "breakout" ? 84 : 78;
+
+  if (upperWickRatio >= 0.32) {
+    score -= 18;
+    tags.push("tag_candle_rejection");
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "upper_wick_rejection",
+        "Upper wick rejection",
+        18,
+        `Upper wick consumed ${(upperWickRatio * 100).toFixed(0)}% of the candle range.`
+      )
+    );
+  }
+
+  if (closePosition < 0.68) {
+    score -= 10;
+    tags.push("tag_candle_weak");
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "weak_close_position",
+        "Weak close location",
+        10,
+        `Close finished only ${(closePosition * 100).toFixed(0)}% up the candle range.`
+      )
+    );
+  }
+
+  if (bodyRatio < 0.28) {
+    score -= 8;
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "small_body",
+        "Small real body",
+        8,
+        `Real body was only ${(bodyRatio * 100).toFixed(0)}% of the full range.`
+      )
+    );
+  }
+
+  if (gapRejected) {
+    score -= 16;
+    tags.push("tag_candle_rejection");
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "gap_rejection",
+        "Gap rejection",
+        16,
+        `Gap extension of ${gapUpPercent.toFixed(1)}% was sold back intraday.`
+      )
+    );
+  }
+
+  return {
+    candleQualityScore: clamp(Math.round(score), 0, 100),
+    tags: [...new Set(tags)],
+    penaltyFactors
+  };
 }
 
 function resolveEntryPriceAdjustmentPercent(market: MarketEvaluation): number {
@@ -425,7 +680,9 @@ function hasReachedSma20BuyZone(referenceClose: number, buyPlan: SmartMoneyBuyPl
     return false;
   }
 
-  return referenceClose <= buyPlan.firstBuyPrice * (1 + proximityPercent / 100);
+  const upperBound = buyPlan.firstBuyPrice * (1 + proximityPercent / 100);
+  const lowerBound = buyPlan.firstBuyPrice * (1 - proximityPercent / 100);
+  return referenceClose <= upperBound && referenceClose >= lowerBound;
 }
 
 function isPullbackBuyActionable(
@@ -461,18 +718,75 @@ function deriveEntryStrategy(stage: SmartMoneyPatternMatch["stage"], status: Sma
   return undefined;
 }
 
-function scoreVolumeQuality(point: ChartPoint, averageVolume20: number | undefined, minVolumeRatio: number, minTurnoverValue: number) {
+function scoreVolumeQuality(
+  point: ChartPoint,
+  averageVolume20: number | undefined,
+  averageTurnover20: number | undefined,
+  minVolumeRatio: number,
+  minVolumeShares: number,
+  minTurnoverValue: number
+) {
   const volumeRatio20d = ratio(point.volume, averageVolume20);
+  const absoluteVolume = point.volume;
   const turnoverValue = getTurnoverValue(point);
+  const turnoverProxy20d = ratio(turnoverValue, averageTurnover20);
   const relativeScore =
     volumeRatio20d == null ? 0 : volumeRatio20d >= minVolumeRatio + 2 ? 95 : volumeRatio20d >= minVolumeRatio ? 70 : volumeRatio20d >= minVolumeRatio * 0.75 ? 45 : 20;
-  const absoluteScore =
+  const absoluteVolumeScore =
+    absoluteVolume == null ? 0 : absoluteVolume >= minVolumeShares * 3 ? 95 : absoluteVolume >= minVolumeShares ? 68 : absoluteVolume >= minVolumeShares * 0.7 ? 42 : 15;
+  const turnoverScore =
     turnoverValue == null ? 0 : turnoverValue >= minTurnoverValue * 3 ? 95 : turnoverValue >= minTurnoverValue ? 68 : turnoverValue >= minTurnoverValue * 0.7 ? 42 : 15;
+  const turnoverProxyScore =
+    turnoverProxy20d == null ? 0 : turnoverProxy20d >= minVolumeRatio * 0.9 ? 92 : turnoverProxy20d >= minVolumeRatio * 0.7 ? 70 : turnoverProxy20d >= minVolumeRatio * 0.5 ? 45 : 18;
+  const lowPricePenalty = point.close < 1500 ? 10 : point.close < 5000 ? 5 : 0;
+  const weakValuePenalty = turnoverValue != null && turnoverValue < minTurnoverValue * 0.85 ? 6 : 0;
+  const penaltyFactors: SmartMoneyPenaltyFactor[] = [];
+  const tags: SmartMoneyClassificationTag[] = [];
+
+  if (lowPricePenalty > 0) {
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "low_price_liquidity",
+        "Low price liquidity drag",
+        lowPricePenalty,
+        `Reference price ${point.close.toFixed(0)} is low enough that raw share count can overstate true liquidity.`
+      )
+    );
+  }
+
+  if (weakValuePenalty > 0) {
+    penaltyFactors.push(
+      createPenaltyFactor(
+        "weak_turnover_value",
+        "Weak trading value",
+        weakValuePenalty,
+        `Trading value ${Math.round(turnoverValue ?? 0).toLocaleString("en-US")} is still below the preferred turnover quality band.`
+      )
+    );
+    tags.push("tag_volume_weak");
+  } else if (turnoverProxy20d != null && turnoverProxy20d >= minVolumeRatio) {
+    tags.push("tag_volume_turnover_strong");
+  }
+
   return {
+    absoluteVolume,
     volumeRatio20d,
     turnoverValue,
-    volumeQualityScore: clamp(Math.round(relativeScore * 0.55 + absoluteScore * 0.45), 0, 100),
-    passed: volumeRatio20d != null && volumeRatio20d >= minVolumeRatio && turnoverValue != null && turnoverValue >= minTurnoverValue
+    turnoverProxy20d,
+    penaltyFactors,
+    tags,
+    volumeQualityScore: clamp(
+      Math.round(relativeScore * 0.35 + absoluteVolumeScore * 0.15 + turnoverScore * 0.35 + turnoverProxyScore * 0.15 - lowPricePenalty - weakValuePenalty),
+      0,
+      100
+    ),
+    passed:
+      volumeRatio20d != null &&
+      volumeRatio20d >= minVolumeRatio &&
+      absoluteVolume != null &&
+      absoluteVolume >= minVolumeShares &&
+      turnoverValue != null &&
+      turnoverValue >= minTurnoverValue
   };
 }
 
@@ -800,6 +1114,7 @@ function toSummary(match: SmartMoneyPatternMatch, rejectReasons: string[]): Smar
     stage: match.stage === "none" ? "setup" : match.stage,
     status: match.status,
     entryStrategy: match.entryStrategy,
+    executionBucket: match.executionBucket,
     buyPlan: match.buyPlan,
     referenceSma20: match.referenceSma20,
     stopLossReferenceDate: match.stopLossReferenceDate,
@@ -826,6 +1141,13 @@ function toSummary(match: SmartMoneyPatternMatch, rejectReasons: string[]): Smar
     freshnessScore: match.freshnessScore ?? 0,
     validityScore: match.validityScore ?? 0,
     executionReadinessScore: match.executionReadinessScore ?? 0,
+    candleQualityScore: match.candleQualityScore,
+    volumeContractionScore: match.volumeContractionScore,
+    supportStabilityScore: match.supportStabilityScore,
+    sma20SlopePercent: match.sma20SlopePercent,
+    riskRewardRatio: match.riskRewardRatio,
+    tags: match.tags,
+    penaltyFactors: match.penaltyFactors,
     reasons: match.reasons,
     rejectReasons
   };
@@ -850,11 +1172,16 @@ function buildCandidateMatch(params: {
   setupScore: number;
   breakoutScore: number;
   volumeQualityScore: number;
+  candleQualityScore?: number;
   breakoutStrengthScore: number;
   breakoutFailureRiskScore: number;
   freshnessScore: number;
   validityScore: number;
   executionReadinessScore: number;
+  volumeContractionScore?: number;
+  supportStabilityScore?: number;
+  sma20SlopePercent?: number;
+  riskRewardRatio?: number;
   pullback: PullbackAssessment;
   leadInPriceChangePercent: number;
   surgeAdvancePercent?: number;
@@ -874,6 +1201,9 @@ function buildCandidateMatch(params: {
   referenceCloseVsBreakoutLevelPercent?: number;
   matched: boolean;
   actionable: boolean;
+  tags?: SmartMoneyClassificationTag[];
+  penaltyFactors?: SmartMoneyPenaltyFactor[];
+  classificationReasons?: string[];
   reasons: string[];
   entryZoneLow?: number;
   entryZoneHigh?: number;
@@ -940,11 +1270,16 @@ function buildCandidateMatch(params: {
     marketContext: params.market.appliedContext,
     riskFactors: [],
     volumeQualityScore: params.volumeQualityScore,
+    candleQualityScore: params.candleQualityScore,
     breakoutStrengthScore: params.breakoutStrengthScore,
     breakoutFailureRiskScore: params.breakoutFailureRiskScore,
     freshnessScore: params.freshnessScore,
     validityScore: params.validityScore,
     executionReadinessScore: params.executionReadinessScore,
+    volumeContractionScore: params.volumeContractionScore,
+    supportStabilityScore: params.supportStabilityScore,
+    sma20SlopePercent: params.sma20SlopePercent,
+    riskRewardRatio: params.riskRewardRatio,
     debugInfo: {
       pullbackDays: params.pullbackPoints.length,
       breakoutStatus: params.stage === "breakout" ? "ready" : "watch",
@@ -955,6 +1290,9 @@ function buildCandidateMatch(params: {
     },
     rejectionReasons: [],
     tradePlan: undefined,
+    tags: [...new Set(params.tags ?? [])],
+    penaltyFactors: params.penaltyFactors ?? [],
+    classificationReasons: [...new Set(params.classificationReasons ?? [])],
     referenceDate: params.referenceDate,
     windowStartDate: params.windowPoints[0]?.date,
     windowEndDate: params.windowPoints.at(-1)?.date,
@@ -1049,7 +1387,15 @@ export function evaluateSmartMoneyPattern(
       }
 
       const leadInPriceChangePercent = percentChange(leadInPoint.close, leadInPrevious.close);
-      const leadInVolume = scoreVolumeQuality(leadInPoint, getAverageVolumeBefore(points, leadInIndex, 20), filters.minLeadInVolumeRatio, filters.minTurnoverValue);
+      const leadInVolume = scoreVolumeQuality(
+        leadInPoint,
+        getAverageVolumeBefore(points, leadInIndex, 20),
+        getAverageTurnoverBefore(points, leadInIndex, 20),
+        filters.minLeadInVolumeRatio,
+        filters.minLeadInVolumeShares,
+        filters.minTurnoverValue
+      );
+      const leadInCandleQuality = scoreCandleQuality(leadInPoint, leadInPrevious.close, "setup");
       const leadInReferenceOpen = leadInPoint.open ?? leadInPrevious.close;
       const leadInBullishBody = leadInPoint.close > leadInReferenceOpen;
       const leadInClosedStrong = leadInPoint.close >= getPointHigh(leadInPoint) * 0.94;
@@ -1060,7 +1406,9 @@ export function evaluateSmartMoneyPattern(
         !leadInBullishBody ||
         !leadInClosedStrong
       ) {
-        rejected.push(createRejectReason("setup", lookbackWindowDays, "Lead-in impulse failed price, relative volume, or turnover filters.", leadInPoint.date));
+        rejected.push(
+          createRejectReason("setup", lookbackWindowDays, "Lead-in impulse failed price, relative volume, absolute volume, or turnover filters.", leadInPoint.date)
+        );
         continue;
       }
 
@@ -1097,6 +1445,7 @@ export function evaluateSmartMoneyPattern(
         const setupEntryZone = resolveSetupEntryZone({
           breakoutLevel: setupPullback.breakoutLevel,
           pullbackLow: setupPullback.pullbackLow,
+          referenceSma20,
           setupType: setupPullback.setupType,
           filters
         });
@@ -1156,7 +1505,33 @@ export function evaluateSmartMoneyPattern(
         );
         const pullbackBuyStillValid =
           pullbackBuyPlan != null && referencePoint.close > pullbackBuyPlan.stopLossPrice;
-        const validityScore =
+        const volumeContractionScore = deriveVolumeContractionScore(setupPullback);
+        const supportStabilityScore = deriveSupportStabilityScore({
+          pullback: setupPullback,
+          referenceClose: referencePoint.close,
+          referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
+          invalidationPrice: stopLossReference.price
+        });
+        const sma20SlopePercent = getSma20SlopePercent(points, referenceIndex);
+        const sma20SlopeScore =
+          sma20SlopePercent == null ? 58 : sma20SlopePercent >= 1 ? 90 : sma20SlopePercent >= 0 ? 74 : sma20SlopePercent >= -1 ? 46 : 24;
+        const riskRewardRatio = getRiskRewardRatioFromCandidate(
+          pullbackBuyPlan,
+          effectiveEntryZoneLow,
+          effectiveEntryZoneHigh,
+          stopLossReference.price,
+          setupPullback.breakoutLevel,
+          referencePoint.close
+        );
+        const riskRewardScore =
+          riskRewardRatio == null
+            ? 42
+            : riskRewardRatio >= filters.executionReadyRiskRewardMin
+              ? 90
+              : riskRewardRatio >= filters.executionProbeRiskRewardMin
+                ? 66
+                : 28;
+        const baseValidityScore =
           pullbackBuyEligible && pullbackBuyPlan
             ? !pullbackBuyStillValid
               ? 10
@@ -1174,7 +1549,7 @@ export function evaluateSmartMoneyPattern(
                   : setupDistancePercent <= filters.maxBreakoutExtensionPercent
                     ? 72
                     : 38;
-        const executionReadinessScore =
+        const baseExecutionReadinessScore =
           pullbackBuyEligible && pullbackBuyPlan
             ? !pullbackBuyStillValid
               ? 8
@@ -1192,13 +1567,79 @@ export function evaluateSmartMoneyPattern(
                   : setupDistancePercent <= 2
                     ? 74
                     : 34;
+        const validityScore = clamp(
+          Math.round(baseValidityScore * 0.55 + volumeContractionScore * 0.15 + supportStabilityScore * 0.2 + sma20SlopeScore * 0.1),
+          0,
+          100
+        );
+        const executionReadinessScore = clamp(
+          Math.round(baseExecutionReadinessScore * 0.5 + supportStabilityScore * 0.15 + sma20SlopeScore * 0.1 + leadInCandleQuality.candleQualityScore * 0.1 + riskRewardScore * 0.15),
+          0,
+          100
+        );
+        const setupActionableThresholds = deriveActionableThresholds("setup", market, filters);
+        const setupTags: SmartMoneyClassificationTag[] = [
+          "tag_sma20_primary",
+          ...(Math.abs(setupDistancePercent) <= 2 ? (["tag_alt_anchor_pivot_retest"] as const) : []),
+          ...(setupPullback.setupType === "support_holding_pullback" ? (["tag_alt_anchor_box_support"] as const) : []),
+          ...(setupPullback.pullbackType === "time_correction" || setupPullback.pullbackMaxDrawdownPercent <= 4 ? (["tag_alt_anchor_shallow_pullback"] as const) : []),
+          ...leadInVolume.tags,
+          ...leadInCandleQuality.tags,
+          ...(volumeContractionScore < 55 ? (["tag_volume_weak"] as const) : []),
+          ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
+          ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : [])
+        ];
+        const setupPenaltyFactors: SmartMoneyPenaltyFactor[] = [
+          ...leadInVolume.penaltyFactors,
+          ...leadInCandleQuality.penaltyFactors,
+          ...(volumeContractionScore < 55
+            ? [
+                createPenaltyFactor(
+                  "weak_volume_contraction",
+                  "Weak volume contraction",
+                  12,
+                  `Pullback volume stayed at ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor.`
+                )
+              ]
+            : []),
+          ...(sma20SlopePercent != null && sma20SlopePercent < 0
+            ? [
+                createPenaltyFactor(
+                  "negative_sma20_slope",
+                  "Negative SMA20 slope",
+                  14,
+                  `SMA20 slope is ${sma20SlopePercent.toFixed(2)}% over the recent lookback.`
+                )
+              ]
+            : []),
+          ...(supportStabilityScore < 55
+            ? [
+                createPenaltyFactor(
+                  "unstable_support",
+                  "Unstable support",
+                  16,
+                  `Support stability score dropped to ${supportStabilityScore}.`
+                )
+              ]
+            : [])
+        ];
+        const setupClassificationReasons = [
+          "matched_setup",
+          pullbackBuyStarted ? "entry_sma20_hit" : withinSetupEntryZone ? "entry_zone_hit" : "entry_zone_pending",
+          volumeContractionScore < 55 ? "weak_volume_contraction" : "volume_contraction_ok",
+          leadInCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
+          sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
+          supportStabilityScore < 55 ? "unstable_support" : "support_holding",
+          riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok"
+        ];
         const rangePenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.6 : 5;
         const drawdownPenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.2 : 2.5;
         const setupBaseScore = clamp(
           Math.round(
-            leadInVolume.volumeQualityScore * 0.15 +
-              Math.min(100, (leadInPriceChangePercent / filters.minLeadInPriceChangePercent) * 40) * 0.25 +
-              Math.min(100, (surgeAdvancePercent / filters.minSetupSurgeAdvancePercent) * 35) * 0.2 +
+            leadInVolume.volumeQualityScore * 0.12 +
+              leadInCandleQuality.candleQualityScore * 0.08 +
+              Math.min(100, (leadInPriceChangePercent / filters.minLeadInPriceChangePercent) * 40) * 0.22 +
+              Math.min(100, (surgeAdvancePercent / filters.minSetupSurgeAdvancePercent) * 35) * 0.18 +
               clamp(100 - setupPullback.pullbackRangePercent * rangePenaltyMultiplier, 0, 100) * 0.2 +
               clamp(100 - setupPullback.pullbackMaxDrawdownPercent * drawdownPenaltyMultiplier, 0, 100) * 0.2
           ),
@@ -1224,8 +1665,9 @@ export function evaluateSmartMoneyPattern(
           matched &&
           pullbackBuyEligible &&
           pullbackBuyActionable &&
-          validityScore >= filters.minActionableValidityScore &&
-          executionReadinessScore >= filters.minExecutionReadinessScore &&
+          validityScore >= setupActionableThresholds.validityMin &&
+          executionReadinessScore >= setupActionableThresholds.executionMin &&
+          (riskRewardRatio ?? 0) >= filters.executionReadyRiskRewardMin &&
           market.actionableAllowed;
         const setupMatch = buildCandidateMatch({
           stage: "setup",
@@ -1241,11 +1683,16 @@ export function evaluateSmartMoneyPattern(
           setupScore,
           breakoutScore: 0,
           volumeQualityScore: leadInVolume.volumeQualityScore,
+          candleQualityScore: leadInCandleQuality.candleQualityScore,
           breakoutStrengthScore: 0,
           breakoutFailureRiskScore: 0,
           freshnessScore: clamp(92 - (referenceIndex - surgePeakIndex) * 6, 35, 95),
           validityScore,
           executionReadinessScore,
+          volumeContractionScore,
+          supportStabilityScore,
+          sma20SlopePercent,
+          riskRewardRatio,
           pullback: setupPullback,
           leadInPriceChangePercent,
           surgeAdvancePercent,
@@ -1261,6 +1708,9 @@ export function evaluateSmartMoneyPattern(
           referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
           matched,
           actionable,
+          tags: setupTags,
+          penaltyFactors: setupPenaltyFactors,
+          classificationReasons: setupClassificationReasons,
           entryZoneLow: effectiveEntryZoneLow,
           entryZoneHigh: effectiveEntryZoneHigh,
           invalidationPrice: stopLossReference.price,
@@ -1295,7 +1745,9 @@ export function evaluateSmartMoneyPattern(
             ? [`Setup score ${setupScore} was below the active threshold ${setupThresholdScore}.`]
             : actionable
               ? []
-              : ["Setup is not actionable because validity, readiness, buy-zone location, or regime is weak."]
+              : [
+                  `Setup is not actionable because validity/readiness/risk-reward did not clear the active gate (${setupActionableThresholds.validityMin}/${setupActionableThresholds.executionMin}/${filters.executionReadyRiskRewardMin.toFixed(1)}).`
+                ]
         });
         allCandidates.push({
           match: enhancedSetupMatch,
@@ -1311,7 +1763,15 @@ export function evaluateSmartMoneyPattern(
           }
 
           const breakoutPriceChangePercent = percentChange(breakoutPoint.close, breakoutPrevious.close);
-          const breakoutVolume = scoreVolumeQuality(breakoutPoint, getAverageVolumeBefore(points, breakoutIndex, 20), filters.minBreakoutVolumeRatio, filters.minBreakoutTurnoverValue);
+          const breakoutVolume = scoreVolumeQuality(
+            breakoutPoint,
+            getAverageVolumeBefore(points, breakoutIndex, 20),
+            getAverageTurnoverBefore(points, breakoutIndex, 20),
+            filters.minBreakoutVolumeRatio,
+            filters.minBreakoutVolumeShares,
+            filters.minBreakoutTurnoverValue
+          );
+          const breakoutCandleQuality = scoreCandleQuality(breakoutPoint, breakoutPrevious.close, "breakout");
           const breakout20d = (getHighestCloseBefore(points, breakoutIndex, filters.breakoutLookbackDays) ?? -Infinity) <= breakoutPoint.close;
           const closedNearHigh = breakoutPoint.high != null ? breakoutPoint.close >= breakoutPoint.high * filters.closeNearHighRatio : false;
           if (breakoutPriceChangePercent == null || breakoutPriceChangePercent < filters.minBreakoutPriceChangePercent || !breakoutVolume.passed || !breakout20d || !closedNearHigh || breakoutPoint.close < setupPullback.breakoutLevel) {
@@ -1320,9 +1780,16 @@ export function evaluateSmartMoneyPattern(
 
           const sessionsSinceBreakout = referenceIndex - breakoutIndex;
           const extensionPercent = percentChange(referencePoint.close, setupPullback.breakoutLevel) ?? 0;
-          const validityBreakoutScore = referencePoint.close < setupPullback.breakoutLevel * (1 - filters.breakoutHoldTolerancePercent / 100) ? 35 : 88;
-          const executionBreakoutScore = extensionPercent > filters.maxBreakoutExtensionPercent ? 35 : clamp(92 - Math.max(0, extensionPercent) * 7, 20, 95);
-          const breakoutFailureRiskScore = referencePoint.close < setupPullback.breakoutLevel ? 65 : extensionPercent > filters.maxBreakoutExtensionPercent ? 48 : 18;
+          const supportStabilityScore = deriveSupportStabilityScore({
+            pullback: setupPullback,
+            referenceClose: referencePoint.close,
+            referenceCloseVsBreakoutLevelPercent: extensionPercent,
+            invalidationPrice: stopLossReference.price
+          });
+          const sma20SlopePercent = getSma20SlopePercent(points, referenceIndex);
+          const sma20SlopeScore =
+            sma20SlopePercent == null ? 58 : sma20SlopePercent >= 1 ? 90 : sma20SlopePercent >= 0 ? 74 : sma20SlopePercent >= -1 ? 46 : 24;
+          const baseValidityBreakoutScore = referencePoint.close < setupPullback.breakoutLevel * (1 - filters.breakoutHoldTolerancePercent / 100) ? 35 : 88;
           const breakoutEntryZone = resolveBreakoutRetestZone(
             setupPullback.breakoutLevel,
             setupPullback.pullbackLow,
@@ -1335,10 +1802,95 @@ export function evaluateSmartMoneyPattern(
             market,
             options?.pricingContext
           );
-          const breakoutStrengthScore = clamp(Math.round(Math.min(100, (breakoutPriceChangePercent / filters.minBreakoutPriceChangePercent) * 45) * 0.35 + breakoutVolume.volumeQualityScore * 0.35 + (closedNearHigh ? 92 : 60) * 0.15 + clamp((percentChange(breakoutPoint.close, setupPullback.breakoutLevel) ?? 0) * 10 + 60, 0, 100) * 0.15), 0, 100);
+          const riskRewardRatio = getRiskRewardRatioFromCandidate(
+            undefined,
+            adjustedBreakoutEntryZone.entryZoneLow,
+            adjustedBreakoutEntryZone.entryZoneHigh,
+            stopLossReference.price,
+            setupPullback.breakoutLevel,
+            referencePoint.close
+          );
+          const riskRewardScore =
+            riskRewardRatio == null
+              ? 42
+              : riskRewardRatio >= filters.executionReadyRiskRewardMin
+                ? 90
+                : riskRewardRatio >= filters.executionProbeRiskRewardMin
+                  ? 66
+                  : 28;
+          const baseExecutionBreakoutScore = extensionPercent > filters.maxBreakoutExtensionPercent ? 35 : clamp(92 - Math.max(0, extensionPercent) * 7, 20, 95);
+          const validityBreakoutScore = clamp(
+            Math.round(baseValidityBreakoutScore * 0.55 + supportStabilityScore * 0.2 + breakoutCandleQuality.candleQualityScore * 0.15 + sma20SlopeScore * 0.1),
+            0,
+            100
+          );
+          const executionBreakoutScore = clamp(
+            Math.round(baseExecutionBreakoutScore * 0.45 + breakoutCandleQuality.candleQualityScore * 0.2 + breakoutVolume.volumeQualityScore * 0.15 + sma20SlopeScore * 0.05 + riskRewardScore * 0.15),
+            0,
+            100
+          );
+          const breakoutFailureRiskScore = referencePoint.close < setupPullback.breakoutLevel ? 65 : extensionPercent > filters.maxBreakoutExtensionPercent ? 48 : 18;
+          const breakoutStrengthScore = clamp(
+            Math.round(
+              Math.min(100, (breakoutPriceChangePercent / filters.minBreakoutPriceChangePercent) * 45) * 0.25 +
+                breakoutVolume.volumeQualityScore * 0.3 +
+                breakoutCandleQuality.candleQualityScore * 0.2 +
+                (closedNearHigh ? 92 : 60) * 0.1 +
+                clamp((percentChange(breakoutPoint.close, setupPullback.breakoutLevel) ?? 0) * 10 + 60, 0, 100) * 0.15
+            ),
+            0,
+            100
+          );
           const breakoutScore = clamp(Math.round(setupScore * 0.35 + breakoutStrengthScore * 0.45 + (100 - breakoutFailureRiskScore) * 0.2), 0, 100);
           const matchedBreakout = breakoutScore >= breakoutThresholdScore;
-          const actionableBreakout = matchedBreakout && sessionsSinceBreakout <= filters.recentSignalSessions + 2 && validityBreakoutScore >= filters.minActionableValidityScore && executionBreakoutScore >= filters.minExecutionReadinessScore && market.actionableAllowed;
+          const breakoutActionableThresholds = deriveActionableThresholds("breakout", market, filters);
+          const breakoutTags: SmartMoneyClassificationTag[] = [
+            "tag_sma20_primary",
+            "tag_alt_anchor_pivot_retest",
+            ...breakoutVolume.tags,
+            ...breakoutCandleQuality.tags,
+            ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
+            ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : [])
+          ];
+          const breakoutPenaltyFactors: SmartMoneyPenaltyFactor[] = [
+            ...breakoutVolume.penaltyFactors,
+            ...breakoutCandleQuality.penaltyFactors,
+            ...(sma20SlopePercent != null && sma20SlopePercent < 0
+              ? [
+                  createPenaltyFactor(
+                    "negative_sma20_slope",
+                    "Negative SMA20 slope",
+                    12,
+                    `SMA20 slope is ${sma20SlopePercent.toFixed(2)}% over the recent lookback.`
+                  )
+                ]
+              : []),
+            ...(supportStabilityScore < 55
+              ? [
+                  createPenaltyFactor(
+                    "unstable_support",
+                    "Unstable support",
+                    14,
+                    `Support stability score dropped to ${supportStabilityScore}.`
+                  )
+                ]
+              : [])
+          ];
+          const breakoutClassificationReasons = [
+            "matched_breakout",
+            sessionsSinceBreakout <= filters.recentSignalSessions + 2 ? "breakout_recent" : "breakout_stale",
+            breakoutCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
+            sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
+            supportStabilityScore < 55 ? "unstable_support" : "support_holding",
+            riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok"
+          ];
+          const actionableBreakout =
+            matchedBreakout &&
+            sessionsSinceBreakout <= filters.recentSignalSessions + 2 &&
+            validityBreakoutScore >= breakoutActionableThresholds.validityMin &&
+            executionBreakoutScore >= breakoutActionableThresholds.executionMin &&
+            (riskRewardRatio ?? 0) >= filters.executionReadyRiskRewardMin &&
+            market.actionableAllowed;
           const breakoutMatch = buildCandidateMatch({
             stage: "breakout",
             referenceDate,
@@ -1354,11 +1906,15 @@ export function evaluateSmartMoneyPattern(
             setupScore,
             breakoutScore,
             volumeQualityScore: breakoutVolume.volumeQualityScore,
+            candleQualityScore: breakoutCandleQuality.candleQualityScore,
             breakoutStrengthScore,
             breakoutFailureRiskScore,
             freshnessScore: clamp(95 - sessionsSinceBreakout * 12, 30, 95),
             validityScore: validityBreakoutScore,
             executionReadinessScore: executionBreakoutScore,
+            supportStabilityScore,
+            sma20SlopePercent,
+            riskRewardRatio,
             pullback: setupPullback,
             leadInPriceChangePercent,
             surgeAdvancePercent,
@@ -1378,6 +1934,9 @@ export function evaluateSmartMoneyPattern(
             referenceCloseVsBreakoutLevelPercent: extensionPercent,
             matched: matchedBreakout,
             actionable: actionableBreakout,
+            tags: breakoutTags,
+            penaltyFactors: breakoutPenaltyFactors,
+            classificationReasons: breakoutClassificationReasons,
             entryZoneLow: adjustedBreakoutEntryZone.entryZoneLow,
             entryZoneHigh: adjustedBreakoutEntryZone.entryZoneHigh,
             invalidationPrice: stopLossReference.price,
@@ -1400,11 +1959,13 @@ export function evaluateSmartMoneyPattern(
             referenceIndex,
             filters,
             pricingContext: options?.pricingContext,
-            rejectionReasons: !matchedBreakout
+          rejectionReasons: !matchedBreakout
               ? [`Breakout score ${breakoutScore} was below the active threshold ${breakoutThresholdScore}.`]
               : actionableBreakout
                 ? []
-                : ["Breakout is not actionable because it is stale, weakly held, too extended, or regime is poor."]
+                : [
+                    `Breakout is not actionable because freshness/validity/readiness/risk-reward did not clear the active gate (${breakoutActionableThresholds.validityMin}/${breakoutActionableThresholds.executionMin}/${filters.executionReadyRiskRewardMin.toFixed(1)}).`
+                  ]
           });
           allCandidates.push({
             match: enhancedBreakoutMatch,

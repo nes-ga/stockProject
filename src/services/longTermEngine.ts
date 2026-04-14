@@ -2,51 +2,29 @@ import { createLogger } from "../lib/logger.js";
 import type {
   FundamentalsSummary,
   LongTermReviewAnalysis,
-  LongTermScanCandidate,
   LongTermScanFilters,
   LongTermScanResult,
-  LongTermScoreBreakdown,
   LongTermUniverseSeed,
   StockUniverseItem
 } from "../types.js";
 import { fetchFundamentals } from "./fundamentals.js";
-import {
-  calculateCorrectionScore,
-  hasMeaningfulCorrection,
-  resolveLongTermCorrectionContext
-} from "./longTerm/correctionScore.js";
 import { resolveLongTermScanFilters } from "./longTerm/config.js";
 import { evaluateLongTermFinancials, type LongTermFinancialEvaluation } from "./longTerm/fundamentalScore.js";
-import {
-  buildLongTermReasonSummary,
-  classifyLongTermCandidateGroup,
-  classifyLongTermLabel
-} from "./longTerm/labels.js";
-import { calculateLeaderScore } from "./longTerm/leaderScore.js";
-import { calculateLiquidityScore } from "./longTerm/liquidityScore.js";
 import { fetchLongTermChart } from "./longTerm/marketData.js";
 import { evaluateLongTermMetrics, type LongTermMetricSnapshot } from "./longTerm/metrics.js";
 import { calculateStabilizationScore } from "./longTerm/stabilizationScore.js";
-import { calculateTrendScore } from "./longTerm/trendScore.js";
+import {
+  buildLongTermCandidate,
+  resolveLongTermFilterReasons,
+  type LongTermRankedEntry
+} from "./longTerm/strategy.js";
 import { LONG_TERM_UNIVERSE } from "./longTerm/universe.js";
 import { getStockUniverse } from "./stockUniverse.js";
 
 const logger = createLogger("longTermEngine");
 const UNIVERSE_SCAN_CHUNK_SIZE = 8;
 
-type RankedMetric = {
-  seed: LongTermUniverseSeed;
-  seedSource: "curated" | "ad_hoc";
-  market?: StockUniverseItem["market"];
-  sector?: string;
-  metrics: LongTermMetricSnapshot;
-  turnoverRank?: number;
-  sectorTurnoverRank?: number;
-  sectorPeerCount?: number;
-  financialEvaluation: LongTermFinancialEvaluation;
-};
-
-function passesUniverseLeaderProxy(entry: RankedMetric) {
+function passesUniverseLeaderProxy(entry: LongTermRankedEntry) {
   if (entry.seedSource === "curated") {
     return true;
   }
@@ -64,33 +42,6 @@ function passesUniverseLeaderProxy(entry: RankedMetric) {
   }
 
   return (entry.sectorPeerCount ?? 0) >= 3 && (entry.sectorTurnoverRank ?? Number.POSITIVE_INFINITY) <= 2;
-}
-
-function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">, filters: LongTermScanFilters) {
-  return Math.round(
-    scores.leaderScore * filters.leaderWeight +
-      scores.correctionScore * filters.correctionWeight +
-      scores.trendScore * filters.trendWeight +
-      scores.liquidityScore * filters.liquidityWeight +
-      scores.stabilizationScore * filters.stabilizationWeight +
-      scores.financialScore * filters.financialWeight
-  );
-}
-
-function isTradableEnough(metrics: LongTermMetricSnapshot, filters: LongTermScanFilters) {
-  return (
-    (metrics.liquidity.avgTurnover20 ?? 0) >= filters.minimumTradableTurnover20 ||
-    (metrics.liquidity.avgTurnover60 ?? 0) >= filters.minimumTradableTurnover60
-  );
-}
-
-function isStructurallyBroken(metrics: LongTermMetricSnapshot, filters: LongTermScanFilters) {
-  return (
-    (metrics.structure.ma120Slope ?? 0) <= -4 &&
-    (metrics.structure.ma240Slope ?? 0) <= -1.5 &&
-    (metrics.structure.priceVsMA240Pct ?? 0) <= -filters.farBelowMa240Pct &&
-    metrics.baseStructure.daysSinceLastLowBreak <= filters.lowBreakPenaltyDays
-  );
 }
 
 function resolveLongTermSeed(symbol: string, name?: string): {
@@ -116,108 +67,8 @@ function resolveLongTermSeed(symbol: string, name?: string): {
   };
 }
 
-function resolveFilterReasons(
-  entry: RankedMetric,
-  filters: LongTermScanFilters,
-  candidate?: LongTermScanCandidate
-): string[] {
-  const reasons: string[] = [];
-
-  if (entry.market === "ETF" || entry.market === "ETN") {
-    reasons.push("ETF/ETN is out of scope for the long-term leader engine.");
-  }
-
-  if (!hasMeaningfulCorrection(entry.metrics, filters)) {
-    reasons.push("Price has not corrected enough from the prior high.");
-  }
-
-  if (!isTradableEnough(entry.metrics, filters)) {
-    reasons.push("Average turnover is below the long-term review floor.");
-  }
-
-  if (isStructurallyBroken(entry.metrics, filters)) {
-    reasons.push("Long-term moving-average structure still looks broken.");
-  }
-
-  if (entry.financialEvaluation.hardExcluded) {
-    reasons.push(...entry.financialEvaluation.hardExclusionReasons);
-  }
-
-  if (candidate && entry.seedSource === "ad_hoc" && candidate.scores.leaderScore < 55) {
-    reasons.push("Representative status is too weak for the curated long-term framework.");
-  }
-
-  return reasons;
-}
-
-function buildCandidate(entry: RankedMetric, filters: LongTermScanFilters): LongTermScanCandidate {
-  const correctionContext = resolveLongTermCorrectionContext(entry.metrics, filters);
-  const leaderScore = calculateLeaderScore({
-    seed: entry.seed,
-    turnoverRank: entry.turnoverRank,
-    sectorTurnoverRank: entry.sectorTurnoverRank,
-    sectorPeerCount: entry.sectorPeerCount,
-    isCurated: entry.seedSource === "curated"
-  });
-  const correctionScore = calculateCorrectionScore(entry.metrics, filters);
-  const trendScore = calculateTrendScore(entry.metrics, filters);
-  const liquidityScore = calculateLiquidityScore(entry.metrics, filters);
-  const stabilizationScore = calculateStabilizationScore(entry.metrics, filters);
-  const financialScore = entry.financialEvaluation.financialScore;
-
-  const partialScores = {
-    leaderScore,
-    correctionScore,
-    trendScore,
-    liquidityScore,
-    stabilizationScore,
-    financialScore,
-    durabilityScore: financialScore
-  };
-
-  const scores: LongTermScoreBreakdown = {
-    totalScore: calculateTotalScore(partialScores, filters),
-    ...partialScores
-  };
-
-  const label = classifyLongTermLabel(scores, entry.metrics, entry.financialEvaluation.snapshot);
-  const candidateGroup = classifyLongTermCandidateGroup(
-    scores,
-    entry.metrics,
-    label,
-    filters,
-    entry.financialEvaluation.snapshot
-  );
-  return {
-    symbol: entry.seed.symbol,
-    name: entry.seed.name,
-    sector: entry.sector,
-    price: entry.metrics.price,
-    high52w: entry.metrics.high52w,
-    high2y: entry.metrics.high2y,
-    high5y: entry.metrics.high5y,
-    drawdownPct: correctionContext.drawdownPct ?? entry.metrics.drawdownPct,
-    drawdown5yPct: entry.metrics.drawdown5yPct,
-    drawdownReference: correctionContext.reference,
-    scores,
-    structure: entry.metrics.structure,
-    baseStructure: entry.metrics.baseStructure,
-    liquidity: entry.metrics.liquidity,
-    financials: entry.financialEvaluation.snapshot,
-    fundamentals: entry.financialEvaluation.snapshot,
-    candidateGroup,
-    label,
-    reasonSummary: buildLongTermReasonSummary(
-      scores,
-      entry.metrics,
-      entry.financialEvaluation.snapshot,
-      correctionContext
-    )
-  };
-}
-
-function rankMetrics(loaded: RankedMetric[]): RankedMetric[] {
-  const sectorBuckets = new Map<string, RankedMetric[]>();
+function rankMetrics(loaded: LongTermRankedEntry[]): LongTermRankedEntry[] {
+  const sectorBuckets = new Map<string, LongTermRankedEntry[]>();
 
   for (const item of loaded) {
     if (!item.sector) {
@@ -264,7 +115,7 @@ async function loadRankedMetric(options: {
   filters: LongTermScanFilters;
   fundamentals?: FundamentalsSummary;
   fetchFinancials?: boolean;
-}): Promise<RankedMetric> {
+}): Promise<LongTermRankedEntry> {
   const points = await fetchLongTermChart(options.seed.symbol, options.filters.historySessions);
   const metrics = evaluateLongTermMetrics(points, options.filters);
   const stabilizationScore = calculateStabilizationScore(metrics, options.filters);
@@ -288,11 +139,11 @@ async function loadRankedMetric(options: {
 }
 
 async function enrichRankedMetricsWithFundamentals(
-  entries: RankedMetric[],
+  entries: LongTermRankedEntry[],
   filters: LongTermScanFilters,
   chunkSize = 4
-): Promise<RankedMetric[]> {
-  const enriched: RankedMetric[] = [];
+): Promise<LongTermRankedEntry[]> {
+  const enriched: LongTermRankedEntry[] = [];
 
   for (let index = 0; index < entries.length; index += chunkSize) {
     const chunk = entries.slice(index, index + chunkSize);
@@ -308,7 +159,7 @@ async function enrichRankedMetricsWithFundamentals(
             stabilizationScore,
             isStabilizing: entry.metrics.baseStructure.isStabilizing
           })
-        } satisfies RankedMetric;
+        } satisfies LongTermRankedEntry;
       })
     );
 
@@ -323,16 +174,16 @@ async function enrichRankedMetricsWithFundamentals(
 }
 
 function buildScanResult(
-  rankedItems: RankedMetric[],
+  rankedItems: LongTermRankedEntry[],
   filters: LongTermScanFilters,
   requestedUniverseSize: number
 ): LongTermScanResult {
   const candidates = rankedItems
     .map((item) => {
-      const candidate = buildCandidate(item, filters);
+      const candidate = buildLongTermCandidate(item, filters);
       return {
         candidate,
-        filterReasons: resolveFilterReasons(item, filters, candidate)
+        filterReasons: resolveLongTermFilterReasons(item, filters, candidate)
       };
     })
     .filter((entry) => entry.filterReasons.length === 0)
@@ -394,7 +245,7 @@ export async function scanLongTermLeaders(options?: {
     )
   );
 
-  const loaded: RankedMetric[] = [];
+  const loaded: LongTermRankedEntry[] = [];
   for (const result of settled) {
     if (result.status === "fulfilled") {
       loaded.push(result.value);
@@ -425,7 +276,7 @@ export async function scanLongTermUniverse(options?: {
     universeSize: targets.length
   });
 
-  const loaded: RankedMetric[] = [];
+  const loaded: LongTermRankedEntry[] = [];
 
   for (let index = 0; index < targets.length; index += UNIVERSE_SCAN_CHUNK_SIZE) {
     const chunk = targets.slice(index, index + UNIVERSE_SCAN_CHUNK_SIZE);
@@ -459,18 +310,19 @@ export async function scanLongTermUniverse(options?: {
 
   const ranked = rankMetrics(loaded);
   const prelimEntries = ranked.filter((item) => {
-    const candidate = buildCandidate(item, filters);
-    const filterReasons = resolveFilterReasons(item, filters, candidate);
+    const candidate = buildLongTermCandidate(item, filters);
+    const filterReasons = resolveLongTermFilterReasons(item, filters, candidate);
+    const secondaryRecovery = candidate.tags.includes("watch_secondary_recovery");
 
     if (filterReasons.length > 0) {
       return false;
     }
 
-    if (!passesUniverseLeaderProxy(item)) {
+    if (!passesUniverseLeaderProxy(item) && !secondaryRecovery) {
       return false;
     }
 
-    if (candidate.scores.leaderScore < 58) {
+    if (candidate.scores.leaderScore < 58 && !secondaryRecovery) {
       return false;
     }
 
@@ -485,19 +337,20 @@ export async function scanLongTermUniverse(options?: {
   const candidates = enrichedEntries
     .map((item) => ({
       item,
-      candidate: buildCandidate(item, filters)
+      candidate: buildLongTermCandidate(item, filters)
     }))
     .filter(({ item, candidate }) => {
-      const filterReasons = resolveFilterReasons(item, filters, candidate);
+      const filterReasons = resolveLongTermFilterReasons(item, filters, candidate);
+      const secondaryRecovery = candidate.tags.includes("watch_secondary_recovery");
       if (filterReasons.length > 0) {
         return false;
       }
 
-      if (!passesUniverseLeaderProxy(item)) {
+      if (!passesUniverseLeaderProxy(item) && !secondaryRecovery) {
         return false;
       }
 
-      if (candidate.scores.leaderScore < 58) {
+      if (candidate.scores.leaderScore < 58 && !secondaryRecovery) {
         return false;
       }
 
@@ -567,8 +420,8 @@ export async function analyzeLongTermCandidate(options: {
     filters,
     fundamentals: options.fundamentals
   });
-  const candidate = buildCandidate(entry, filters);
-  const filterReasons = resolveFilterReasons(entry, filters, candidate);
+  const candidate = buildLongTermCandidate(entry, filters);
+  const filterReasons = resolveLongTermFilterReasons(entry, filters, candidate);
 
   return {
     symbol: options.symbol,

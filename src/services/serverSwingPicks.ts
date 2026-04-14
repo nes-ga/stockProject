@@ -9,11 +9,21 @@ export type ServerSwingPick = {
   latestMentionDate?: string;
   note?: string;
   bucket?: ServerSwingPickBucket;
+  tags?: string[];
+  reasons?: string[];
+  penaltyFactors?: Array<{
+    code: string;
+    label: string;
+    impact: number;
+    reason: string;
+  }>;
+  haltCategory?: string;
+  haltAction?: string;
   category: "swing";
   source?: string;
 };
 
-export type ServerSwingPickBucket = "execution" | "watch";
+export type ServerSwingPickBucket = "execution" | "execution_ready" | "execution_probe" | "watch";
 
 export type ServerSwingPickPayload = {
   executionItems: ServerSwingPick[];
@@ -49,7 +59,38 @@ function normalizeServerSwingPick(item: unknown, fallbackBucket: ServerSwingPick
     anchorDate: candidate.anchorDate,
     latestMentionDate: typeof candidate.latestMentionDate === "string" ? candidate.latestMentionDate : undefined,
     note: typeof candidate.note === "string" ? candidate.note : undefined,
-    bucket: candidate.bucket === "watch" ? "watch" : candidate.bucket === "execution" ? "execution" : fallbackBucket,
+    bucket:
+      candidate.bucket === "watch"
+        ? "watch"
+        : candidate.bucket === "execution_ready"
+          ? "execution_ready"
+          : candidate.bucket === "execution_probe"
+            ? "execution_probe"
+            : candidate.bucket === "execution"
+              ? "execution"
+              : fallbackBucket,
+    tags: Array.isArray(candidate.tags) ? candidate.tags.filter((item): item is string => typeof item === "string") : undefined,
+    reasons: Array.isArray(candidate.reasons) ? candidate.reasons.filter((item): item is string => typeof item === "string") : undefined,
+    penaltyFactors: Array.isArray(candidate.penaltyFactors)
+      ? candidate.penaltyFactors.filter(
+          (
+            item
+          ): item is {
+            code: string;
+            label: string;
+            impact: number;
+            reason: string;
+          } =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as { code?: unknown }).code === "string" &&
+            typeof (item as { label?: unknown }).label === "string" &&
+            typeof (item as { impact?: unknown }).impact === "number" &&
+            typeof (item as { reason?: unknown }).reason === "string"
+        )
+      : undefined,
+    haltCategory: typeof candidate.haltCategory === "string" ? candidate.haltCategory : undefined,
+    haltAction: typeof candidate.haltAction === "string" ? candidate.haltAction : undefined,
     category: "swing",
     source: typeof candidate.source === "string" ? candidate.source : undefined
   };

@@ -466,11 +466,12 @@ function buildConditionChecks(
       label: "Lead-in impulse",
       passed:
         (match.leadInPriceChangePercent ?? 0) >= filters.minLeadInPriceChangePercent &&
-        (match.leadInVolumeRatio20d ?? 0) >= filters.minLeadInVolumeRatio,
+        (match.leadInVolumeRatio20d ?? 0) >= filters.minLeadInVolumeRatio &&
+        (match.leadInVolume ?? 0) >= filters.minLeadInVolumeShares,
       actual: match.leadInPriceChangePercent,
       threshold: filters.minLeadInPriceChangePercent,
       comparator: ">=",
-      details: `Lead-in day rose ${match.leadInPriceChangePercent?.toFixed(1) ?? "-"}% with ${match.leadInVolumeRatio20d?.toFixed(1) ?? "-"}x volume.`
+      details: `Lead-in day rose ${match.leadInPriceChangePercent?.toFixed(1) ?? "-"}% with ${match.leadInVolumeRatio20d?.toFixed(1) ?? "-"}x volume and ${Math.round(match.leadInVolume ?? 0).toLocaleString("ko-KR")} shares.`
     },
     {
       key: "surge_follow_through",
