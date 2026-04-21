@@ -1011,6 +1011,56 @@ export type DividendReviewAnalysis = {
   candidate?: DividendScanCandidate;
 };
 
+export type DividendEtfCategory = "high dividend" | "dividend growth";
+
+export type DividendEtfDistributionStability = "stable" | "mixed" | "unstable";
+
+export type DividendEtfExclusionFlag =
+  | "thematic"
+  | "leveraged"
+  | "inverse"
+  | "covered_call"
+  | "high_risk_bond"
+  | "general_growth"
+  | "broad_market_weak_dividend";
+
+export type DividendEtfUniverseItem = {
+  symbol: string;
+  name: string;
+  category: DividendEtfCategory;
+  dividendYield?: number;
+  expenseRatio?: number;
+  dividendHistoryYears?: number;
+  dividendHistory?: DividendHistoryRecord[];
+  distributionStability?: DividendEtfDistributionStability;
+  exclusionFlags?: DividendEtfExclusionFlag[];
+};
+
+export type DividendEtfFilters = {
+  minDividendYield: number;
+  maxExpenseRatio: number;
+  minimumDividendHistoryYears: number;
+  excludeUnstableDistributions: boolean;
+};
+
+export type DividendEtfRecommendation = {
+  symbol: string;
+  name: string;
+  dividendYield?: number;
+  expenseRatio?: number;
+  dividendHistoryYears?: number;
+  dividendHistory?: DividendHistoryRecord[];
+  category: DividendEtfCategory;
+  distributionStability?: DividendEtfDistributionStability;
+  note: string;
+};
+
+export type DividendEtfFilterResult = {
+  filters: DividendEtfFilters;
+  universeSize: number;
+  items: DividendEtfRecommendation[];
+};
+
 export type NewsMetadata = {
   title: string;
   source: string;

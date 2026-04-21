@@ -121,6 +121,99 @@ body {
   display: block;
 }
 
+.toast-viewport {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1600;
+  display: grid;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  color: #fff7ee;
+  box-shadow: 0 20px 48px rgba(42, 24, 7, 0.24);
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.app-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.app-toast.is-leaving {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+.app-toast.neutral {
+  background:
+    linear-gradient(135deg, rgba(61, 44, 22, 0.98), rgba(42, 30, 15, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+}
+
+.app-toast.positive {
+  background:
+    linear-gradient(135deg, rgba(22, 98, 66, 0.98), rgba(15, 72, 49, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.app-toast.negative {
+  background:
+    linear-gradient(135deg, rgba(145, 45, 34, 0.98), rgba(101, 27, 21, 0.96)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.app-toast-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-toast-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+.app-toast-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-toast-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.app-toast-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 .news-signal-root {
   display: grid;
   gap: 20px;
@@ -638,6 +731,19 @@ body {
   font-size: 15px;
 }
 
+.market-event-today-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px;
+  border: 1px solid rgba(196, 90, 45, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 244, 229, 0.96), rgba(255, 250, 243, 0.98));
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(196, 90, 45, 0.08);
+}
+
 .market-event-error-box {
   margin-bottom: 0;
 }
@@ -732,8 +838,22 @@ body {
   box-shadow: inset 0 0 0 1px rgba(196, 90, 45, 0.08);
 }
 
+.market-event-calendar-cell.today {
+  border-color: rgba(196, 90, 45, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(196, 90, 45, 0.12),
+    0 10px 18px rgba(196, 90, 45, 0.08);
+}
+
 .market-event-calendar-cell.today .market-event-calendar-day {
   color: var(--accent-strong);
+}
+
+.market-event-calendar-cell.today.selected {
+  border-color: rgba(196, 90, 45, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(196, 90, 45, 0.16),
+    0 12px 22px rgba(196, 90, 45, 0.1);
 }
 
 .market-event-calendar-cell.empty {
@@ -787,8 +907,29 @@ body {
   gap: 6px;
 }
 
+.market-event-calendar-day-flags {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
 .market-event-calendar-day {
   font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.market-event-calendar-today-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(196, 90, 45, 0.14);
+  color: var(--accent-strong);
+  font-size: 10px;
   font-weight: 900;
   line-height: 1;
 }
@@ -1523,6 +1664,116 @@ body {
 .stock-selector {
   display: grid;
   gap: 10px;
+}
+
+.stock-selector-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recommendation-subsection {
+  margin-bottom: 2px;
+}
+
+.recommendation-subsection-head {
+  margin-bottom: 0;
+  padding: 2px 0;
+}
+
+.dividend-etf-section {
+  display: grid;
+  gap: 12px;
+}
+
+.dividend-etf-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.dividend-etf-card {
+  border: 1px solid rgba(78, 58, 32, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(196, 90, 45, 0.1), transparent 34%),
+    rgba(255, 255, 255, 0.78);
+  padding: 0;
+  overflow: hidden;
+}
+
+.dividend-etf-card.selected {
+  border-color: rgba(196, 90, 45, 0.3);
+  background:
+    radial-gradient(circle at top right, rgba(196, 90, 45, 0.16), transparent 34%),
+    rgba(255, 248, 242, 0.92);
+}
+
+.dividend-etf-button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.dividend-etf-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dividend-etf-card h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.dividend-etf-symbol {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dividend-etf-category {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(196, 90, 45, 0.12);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dividend-etf-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dividend-etf-metric-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(31, 26, 20, 0.06);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dividend-etf-note {
+  margin: 12px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .selector-toolbar,
@@ -3589,6 +3840,13 @@ body {
     width: 100%;
   }
 
+  .toast-viewport {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+  }
+
   .movers-field {
     width: 100%;
   }
@@ -3621,6 +3879,16 @@ body {
   .market-event-month-nav {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .market-event-month-nav strong {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .market-event-today-chip {
+    width: 100%;
+    justify-content: center;
   }
 
   .market-event-stat-list {

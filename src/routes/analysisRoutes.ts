@@ -19,6 +19,7 @@ import {
   diffAndRememberLongTermUniverseAlerts,
   diffAndRememberSwingUniverseAlerts
 } from "../services/recommendationUniverseAlerts.js";
+import { getDividendEtfRecommendations } from "../services/dividendEtfService.js";
 import { readServerDividendPicks, writeServerDividendPicks } from "../services/serverDividendPicks.js";
 import { readServerLongTermPicks, writeServerLongTermPicks } from "../services/serverLongTermPicks.js";
 import { readServerSwingPickPayload, writeServerSwingPicks } from "../services/serverSwingPicks.js";
@@ -30,6 +31,7 @@ import {
 } from "../services/stockAnalysis.js";
 import { getNewsSignalDashboard } from "../services/newsSignals.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
+import { getSwingProfileFilterOverrides, resolveSwingEngineProfile } from "../services/swingProfiles.js";
 
 export const analysisRoutes = Router();
 const logger = createLogger("analysisRoutes");
@@ -128,6 +130,7 @@ const recommendationPatternSchema = z.object({
 
 const smartMoneyPatternSchema = z.object({
   items: z.array(smartMoneyItemSchema).min(1),
+  profile: z.enum(["default", "smallcap"]).optional().default("default"),
   marketContext: marketContextSchema.optional(),
   debug: z.coerce.boolean().optional().default(false),
   filters: z
@@ -232,8 +235,13 @@ const stockUniverseQuerySchema = z.object({
   forceRefresh: z.coerce.boolean().optional().default(false)
 });
 
+const swingProfileQuerySchema = z.object({
+  profile: z.enum(["default", "smallcap"]).optional().default("default")
+});
+
 const recommendationUniverseScanSchema = z.object({
   category: z.enum(["longTerm", "dividend", "swing"]),
+  swingProfile: z.enum(["default", "smallcap"]).optional().default("default"),
   discord: z
     .object({
       enabled: z.coerce.boolean().optional().default(true),
@@ -267,6 +275,7 @@ const serverSwingPickSchema = z.object({
   haltCategory: z.string().min(1).optional(),
   haltAction: z.string().min(1).optional(),
   category: z.literal("swing"),
+  swingProfile: z.enum(["default", "smallcap"]).optional(),
   source: z.string().min(1).max(100).optional()
 });
 
@@ -392,7 +401,11 @@ analysisRoutes.post("/recommendation-patterns", async (request, response, next) 
 analysisRoutes.post("/smart-money-patterns", async (request, response, next) => {
   try {
     const input = smartMoneyPatternSchema.parse(request.body);
-    const filters = resolveSmartMoneyPatternFilters(input.filters);
+    const profile = resolveSwingEngineProfile(input.profile);
+    const filters = resolveSmartMoneyPatternFilters({
+      ...getSwingProfileFilterOverrides(profile),
+      ...input.filters
+    });
     const analyses = await analyzeSmartMoneyPatterns(
       input.items.map((item) => ({
         ...item,
@@ -481,10 +494,14 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
 analysisRoutes.post("/recommendation-universe-scan", async (request, response, next) => {
   try {
     const input = recommendationUniverseScanSchema.parse(request.body);
-    const payload = await scanRecommendationUniverse(input.category);
+    const swingProfile = resolveSwingEngineProfile(input.swingProfile);
+    const payload = await scanRecommendationUniverse(input.category, {
+      swingProfile
+    });
     const universeDiff =
       payload.category === "swing"
         ? await diffAndRememberSwingUniverseAlerts({
+            profile: swingProfile,
             executionItems: payload.executionItems,
             watchItems: payload.watchItems
           })
@@ -515,6 +532,7 @@ analysisRoutes.post("/recommendation-universe-scan", async (request, response, n
 
     logger.info("recommendation-universe-scan:success", {
       category: input.category,
+      swingProfile,
       count: payload.count,
       discordSent,
       discordMessageCount,
@@ -534,10 +552,13 @@ analysisRoutes.post("/recommendation-universe-scan", async (request, response, n
   }
 });
 
-analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
+analysisRoutes.get("/server-swing-picks", async (request, response, next) => {
   try {
-    const payload = await readServerSwingPickPayload();
+    const input = swingProfileQuerySchema.parse(request.query);
+    const profile = resolveSwingEngineProfile(input.profile);
+    const payload = await readServerSwingPickPayload(profile);
     logger.info("server-swing-picks:get:success", {
+      profile,
       count: payload.items.length,
       executionCount: payload.executionItems.length,
       watchCount: payload.watchItems.length
@@ -558,9 +579,12 @@ analysisRoutes.get("/server-swing-picks", async (_request, response, next) => {
 
 analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
   try {
+    const query = swingProfileQuerySchema.parse(request.query);
+    const profile = resolveSwingEngineProfile(query.profile);
     const input = serverSwingPickBatchSchema.parse(request.body);
-    const payload = await writeServerSwingPicks(input);
+    const payload = await writeServerSwingPicks(input, { profile });
     logger.info("server-swing-picks:save:success", {
+      profile,
       count: payload.items.length,
       executionCount: payload.executionItems.length,
       watchCount: payload.watchItems.length
@@ -616,13 +640,18 @@ analysisRoutes.post("/server-long-term-picks", async (request, response, next) =
 
 analysisRoutes.get("/server-dividend-picks", async (_request, response, next) => {
   try {
-    const items = await readServerDividendPicks();
+    const stocks = await readServerDividendPicks();
+    const etfResult = getDividendEtfRecommendations();
     logger.info("server-dividend-picks:get:success", {
-      count: items.length
+      count: stocks.length,
+      etfCount: etfResult.items.length
     });
     response.json({
-      count: items.length,
-      items
+      count: stocks.length,
+      etfCount: etfResult.items.length,
+      items: stocks,
+      stocks,
+      etfs: etfResult.items
     });
   } catch (error) {
     logger.error("server-dividend-picks:get:failed", toErrorContext(error));
@@ -633,14 +662,19 @@ analysisRoutes.get("/server-dividend-picks", async (_request, response, next) =>
 analysisRoutes.post("/server-dividend-picks", async (request, response, next) => {
   try {
     const input = serverDividendPickBatchSchema.parse(request.body);
-    const items = await writeServerDividendPicks(input.items);
+    const stocks = await writeServerDividendPicks(input.items);
+    const etfResult = getDividendEtfRecommendations();
     logger.info("server-dividend-picks:save:success", {
-      count: items.length
+      count: stocks.length,
+      etfCount: etfResult.items.length
     });
     response.json({
       ok: true,
-      count: items.length,
-      items
+      count: stocks.length,
+      etfCount: etfResult.items.length,
+      items: stocks,
+      stocks,
+      etfs: etfResult.items
     });
   } catch (error) {
     logger.error("server-dividend-picks:save:failed", toErrorContext(error));

@@ -3,8 +3,9 @@ import path from "node:path";
 import type { ServerDividendPick } from "./serverDividendPicks.js";
 import type { ServerLongTermPick } from "./serverLongTermPicks.js";
 import type { ServerSwingPick } from "./serverSwingPicks.js";
+import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
-export type RecommendationUniverseAlertCategory = "longTerm" | "dividend" | "swing";
+export type RecommendationUniverseAlertCategory = "longTerm" | "dividend" | "swing" | "smallcapSwing";
 export type RecommendationUniverseAlertBucket = "buy" | "execution" | "watch";
 
 type RecommendationUniverseAlertItem = {
@@ -195,19 +196,23 @@ function diffAlertItems(params: {
 }
 
 export async function diffAndRememberSwingUniverseAlerts(payload: {
+  profile?: SwingEngineProfile;
   executionItems: ServerSwingPick[];
   watchItems: ServerSwingPick[];
 }): Promise<RecommendationUniverseAlertDiff> {
   const state = await readRecommendationUniverseAlertState();
+  const profile = resolveSwingEngineProfile(payload.profile);
+  const category = profile === "smallcap" ? "smallcapSwing" : "swing";
   const currentItems = buildSwingAlertItems(payload);
-  const previousItems = Array.isArray(state.swing?.items) ? sortAlertItems(state.swing.items) : [];
+  const previousSnapshot = state[category];
+  const previousItems = Array.isArray(previousSnapshot?.items) ? sortAlertItems(previousSnapshot.items) : [];
   const diff = diffAlertItems({
-    category: "swing",
+    category,
     previous: previousItems,
     current: currentItems
   });
 
-  state.swing = {
+  state[category] = {
     updatedAt: new Date().toISOString(),
     items: currentItems
   };

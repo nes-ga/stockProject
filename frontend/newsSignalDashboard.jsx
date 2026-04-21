@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect, useState } from "react";
+import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const eventLabels = {
@@ -22,6 +22,8 @@ function NewsSignalDashboard() {
   const [payload, setPayload] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const hasHydratedSignalsRef = useRef(false);
+  const seenSignalKeysRef = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +42,16 @@ function NewsSignalDashboard() {
         }
 
         if (!cancelled) {
+          const nextSignals = Array.isArray(data.signals) ? data.signals : [];
+          const nextKeys = new Set(nextSignals.map((signal) => createSignalToastKey(signal)));
+          if (hasHydratedSignalsRef.current) {
+            const newSignals = nextSignals.filter((signal) => !seenSignalKeysRef.current.has(createSignalToastKey(signal)));
+            if (newSignals.length) {
+              announceNewsSignals(newSignals);
+            }
+          }
+          seenSignalKeysRef.current = nextKeys;
+          hasHydratedSignalsRef.current = true;
           setPayload(data);
         }
       } catch (loadError) {
@@ -321,6 +333,31 @@ function isLiveNewsUrl(value) {
   } catch {
     return false;
   }
+}
+
+function createSignalToastKey(signal) {
+  return [signal?.ticker, signal?.eventType, signal?.timestamp, signal?.summary].filter(Boolean).join("|");
+}
+
+function announceNewsSignals(signals) {
+  if (typeof window === "undefined" || typeof window.showAppToast !== "function" || !signals.length) {
+    return;
+  }
+
+  const sorted = [...signals].sort(
+    (left, right) => Math.abs(right.score ?? 0) - Math.abs(left.score ?? 0) || Date.parse(right.timestamp) - Date.parse(left.timestamp)
+  );
+  const headline = sorted[0];
+  const eventLabel = eventLabels[headline.eventType] ?? headline.eventType ?? "이벤트";
+  const title = signals.length > 1 ? `새 뉴스 이벤트 ${signals.length}건` : "새 뉴스 이벤트";
+  const message = `${headline.companyName} · ${eventLabel} · 점수 ${formatScore(headline.score)}${signals.length > 1 ? " 포함" : ""}`;
+
+  window.showAppToast({
+    title,
+    message,
+    tone: headline.sentiment === "negative" ? "negative" : "positive",
+    duration: 5200
+  });
 }
 
 const rootElement = document.querySelector("#newsSignalRoot");

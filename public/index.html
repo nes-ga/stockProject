@@ -99,6 +99,11 @@
                 <button class="category-tab" type="button" data-category="swing">스윙</button>
               </div>
 
+              <div class="category-tabs long-term-bucket-tabs hidden" id="swingProfileTabs">
+                <button class="category-tab active" type="button" data-swing-profile="default">기본 스윙</button>
+                <button class="category-tab" type="button" data-swing-profile="smallcap">소형 스윙</button>
+              </div>
+
               <div class="recommendation-scope-panel">
                 <div class="recommendation-scope-copy">
                   <span class="section-meta">현재 추천 화면</span>
@@ -399,6 +404,8 @@
         <div id="marketEventModalBody" class="market-event-modal-body"></div>
       </div>
     </div>
+
+    <div id="toastViewport" class="toast-viewport" aria-live="polite" aria-atomic="false"></div>
 
     <script type="module" src="/app.js"></script>
     <script type="module" src="/news-signal-dashboard.js"></script>

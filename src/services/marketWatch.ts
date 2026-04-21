@@ -91,6 +91,17 @@ function resolveLatestDate(dailyPoints: ChartPoint[], intradayPoints: ChartPoint
   return intradayLatestDate > dailyLatestDate ? intradayLatestDate : dailyLatestDate;
 }
 
+function resolveLatestDateWithCandidate(dailyPoints: ChartPoint[], intradayPoints: ChartPoint[], latestDateCandidate?: string) {
+  const fallback = resolveLatestDate(dailyPoints, intradayPoints);
+  if (!latestDateCandidate) {
+    return fallback;
+  }
+  if (!fallback) {
+    return latestDateCandidate;
+  }
+  return latestDateCandidate > fallback ? latestDateCandidate : fallback;
+}
+
 function resolvePreviousClose(params: {
   definition: MarketWatchDefinition;
   latestDate?: string;
@@ -202,7 +213,8 @@ function percentChange(current?: number, previous?: number): number | undefined 
 
 function buildLatestSessionPointFromIntraday(
   points: ChartPoint[],
-  latestPrice?: number
+  latestPrice?: number,
+  latestDateOverride?: string
 ): ChartPoint | undefined {
   const latestDate = getLatestPoint(points)?.date;
   if (!latestDate) {
@@ -227,7 +239,7 @@ function buildLatestSessionPointFromIntraday(
   }
 
   return {
-    date: latestDate,
+    date: latestDateOverride || latestDate,
     open: firstPoint.open ?? firstPoint.close,
     high,
     low,
@@ -337,7 +349,8 @@ async function fetchChartPoints(symbol: string, interval: string, range: string)
 
   return {
     meta: chartPayload.chart.result?.[0]?.meta,
-    points: buildChartPoints(chartPayload)
+    points: buildChartPoints(chartPayload),
+    latestTimestamp: chartPayload.chart.result?.[0]?.timestamp?.at(-1)
   };
 }
 
@@ -430,9 +443,17 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
   const rawDailyPoints = dailyPayload.points;
   const rawWeeklyPoints = weeklyPayload.points;
   const rawMonthlyPoints = monthlyPayload.points;
+  const latestIntradaySeoulDate =
+    typeof intradayPayload.latestTimestamp === "number"
+      ? formatDateInTimeZone(new Date(intradayPayload.latestTimestamp * 1000), SEOUL_TIME_ZONE)
+      : undefined;
   const resolvedLatestPrice =
     intradayPayload.meta?.regularMarketPrice ?? dailyPayload.meta?.regularMarketPrice ?? getLatestPoint(rawDailyPoints)?.close;
-  const latestIntradaySessionPoint = buildLatestSessionPointFromIntraday(intradayPoints, resolvedLatestPrice);
+  const latestIntradaySessionPoint = buildLatestSessionPointFromIntraday(
+    intradayPoints,
+    resolvedLatestPrice,
+    definition.category === "index" ? undefined : latestIntradaySeoulDate
+  );
   const mergedDailyPoints = upsertLatestDailyPoint(rawDailyPoints, latestIntradaySessionPoint);
   const chartDailyPoints = mergedDailyPoints;
   const chartWeeklyPoints = definition.category === "crypto" ? aggregateWeeklyPoints(chartDailyPoints) : rawWeeklyPoints;
@@ -443,8 +464,21 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
   const latestDailyPoint = getLatestPoint(rawDailyPoints);
   const previousDailyPoint = rawDailyPoints.at(-2);
   const price = latestDisplayPoint?.close ?? resolvedLatestPrice;
-  const latestDate = resolveLatestDate(rawDailyPoints, intradayPoints);
-  const previousClose = previousDisplayPoint?.close;
+  const latestDate = resolveLatestDateWithCandidate(
+    rawDailyPoints,
+    intradayPoints,
+    definition.category === "index" ? undefined : latestIntradaySeoulDate
+  );
+  const intradayPreviousClose = intradayPayload.meta?.previousClose;
+  const dailyMetaPreviousClose = dailyPayload.meta?.previousClose;
+  const previousCloseResolution = resolvePreviousClose({
+    definition,
+    latestDate,
+    intradayPreviousClose,
+    dailyPreviousClose: dailyMetaPreviousClose,
+    previousDailyClose: previousDailyPoint?.close
+  });
+  const previousClose = previousCloseResolution.previousClose;
   const today = getCurrentIsoDate(SEOUL_TIME_ZONE);
   const dailyLatestDate = latestDailyPoint?.date;
   const intradayLatestDate = getLatestPoint(intradayPoints)?.date;
@@ -453,13 +487,10 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
   if (price == null || !rawDailyPoints.length) {
     throw new Error(`${definition.name} chart data is unavailable.`);
   }
-
-  const intradayPreviousClose = intradayPayload.meta?.previousClose;
-  const dailyMetaPreviousClose = dailyPayload.meta?.previousClose;
   if (
     isFiniteNumber(intradayPreviousClose) &&
-    isFiniteNumber(previousClose) &&
-    Math.abs(intradayPreviousClose - previousClose) >= 0.01
+    isFiniteNumber(previousDisplayPoint?.close) &&
+    Math.abs(intradayPreviousClose - previousDisplayPoint.close) >= 0.01
   ) {
     logger.warn("item:previous-close:mismatch", {
       key: definition.key,
@@ -467,7 +498,7 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
       intradayPreviousClose,
       dailyPreviousClose: dailyMetaPreviousClose,
       previousDailyClose: previousDailyPoint?.close,
-      previousDisplayClose: previousClose
+      previousDisplayClose: previousDisplayPoint.close
     });
   }
 
@@ -494,7 +525,7 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
     price,
     changePercent: snapshot.changePercent,
     previousClose,
-    previousCloseSource: "display-daily-series",
+    previousCloseSource: previousCloseResolution.source,
     laggingDailySeries: isDailySeriesLagging,
     dailyLatestDate,
     intradayLatestDate

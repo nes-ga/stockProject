@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
 export type ServerSwingPick = {
   key: string;
@@ -20,6 +21,7 @@ export type ServerSwingPick = {
   haltCategory?: string;
   haltAction?: string;
   category: "swing";
+  swingProfile?: SwingEngineProfile;
   source?: string;
 };
 
@@ -31,13 +33,23 @@ export type ServerSwingPickPayload = {
   items: ServerSwingPick[];
 };
 
-const serverSwingPicksPath = path.resolve(process.cwd(), "data", "server-swing-picks.json");
-
-async function ensureDir() {
-  await mkdir(path.dirname(serverSwingPicksPath), { recursive: true });
+function getServerSwingPicksPath(profile: SwingEngineProfile) {
+  return path.resolve(
+    process.cwd(),
+    "data",
+    profile === "smallcap" ? "server-smallcap-swing-picks.json" : "server-swing-picks.json"
+  );
 }
 
-function normalizeServerSwingPick(item: unknown, fallbackBucket: ServerSwingPickBucket): ServerSwingPick | null {
+async function ensureDir(profile: SwingEngineProfile) {
+  await mkdir(path.dirname(getServerSwingPicksPath(profile)), { recursive: true });
+}
+
+function normalizeServerSwingPick(
+  item: unknown,
+  fallbackBucket: ServerSwingPickBucket,
+  profile: SwingEngineProfile
+): ServerSwingPick | null {
   if (!item || typeof item !== "object") {
     return null;
   }
@@ -92,14 +104,15 @@ function normalizeServerSwingPick(item: unknown, fallbackBucket: ServerSwingPick
     haltCategory: typeof candidate.haltCategory === "string" ? candidate.haltCategory : undefined,
     haltAction: typeof candidate.haltAction === "string" ? candidate.haltAction : undefined,
     category: "swing",
+    swingProfile: typeof candidate.swingProfile === "string" ? resolveSwingEngineProfile(candidate.swingProfile) : profile,
     source: typeof candidate.source === "string" ? candidate.source : undefined
   };
 }
 
-function buildServerSwingPickPayload(raw: unknown): ServerSwingPickPayload {
+function buildServerSwingPickPayload(raw: unknown, profile: SwingEngineProfile): ServerSwingPickPayload {
   if (Array.isArray(raw)) {
     const executionItems = raw
-      .map((item) => normalizeServerSwingPick(item, "execution"))
+      .map((item) => normalizeServerSwingPick(item, "execution", profile))
       .filter((item): item is ServerSwingPick => Boolean(item));
     return {
       executionItems,
@@ -125,10 +138,10 @@ function buildServerSwingPickPayload(raw: unknown): ServerSwingPickPayload {
   const executionSource = Array.isArray(parsed.executionItems) ? parsed.executionItems : legacyItems;
   const watchSource = Array.isArray(parsed.watchItems) ? parsed.watchItems : [];
   const executionItems = executionSource
-    .map((item) => normalizeServerSwingPick(item, "execution"))
+    .map((item) => normalizeServerSwingPick(item, "execution", profile))
     .filter((item): item is ServerSwingPick => Boolean(item));
   const watchItems = watchSource
-    .map((item) => normalizeServerSwingPick(item, "watch"))
+    .map((item) => normalizeServerSwingPick(item, "watch", profile))
     .filter((item): item is ServerSwingPick => Boolean(item));
   const merged = new Map<string, ServerSwingPick>();
 
@@ -149,11 +162,13 @@ function buildServerSwingPickPayload(raw: unknown): ServerSwingPickPayload {
   };
 }
 
-export async function readServerSwingPickPayload(): Promise<ServerSwingPickPayload> {
+export async function readServerSwingPickPayload(profileInput?: SwingEngineProfile): Promise<ServerSwingPickPayload> {
+  const profile = resolveSwingEngineProfile(profileInput);
+  const serverSwingPicksPath = getServerSwingPicksPath(profile);
   try {
     const raw = await readFile(serverSwingPicksPath, "utf8");
     const parsed = JSON.parse(raw);
-    return buildServerSwingPickPayload(parsed);
+    return buildServerSwingPickPayload(parsed, profile);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("ENOENT")) {
@@ -167,8 +182,8 @@ export async function readServerSwingPickPayload(): Promise<ServerSwingPickPaylo
   }
 }
 
-export async function readServerSwingPicks(): Promise<ServerSwingPick[]> {
-  const payload = await readServerSwingPickPayload();
+export async function readServerSwingPicks(profileInput?: SwingEngineProfile): Promise<ServerSwingPick[]> {
+  const payload = await readServerSwingPickPayload(profileInput);
   return payload.items;
 }
 
@@ -179,10 +194,13 @@ export async function writeServerSwingPicks(
         executionItems?: ServerSwingPick[];
         watchItems?: ServerSwingPick[];
         items?: ServerSwingPick[];
-      }
+      },
+  options?: { profile?: SwingEngineProfile }
 ) {
-  const payload = buildServerSwingPickPayload(input);
-  await ensureDir();
+  const profile = resolveSwingEngineProfile(options?.profile);
+  const payload = buildServerSwingPickPayload(input, profile);
+  const serverSwingPicksPath = getServerSwingPicksPath(profile);
+  await ensureDir(profile);
   await writeFile(
     serverSwingPicksPath,
     JSON.stringify(
@@ -198,4 +216,4 @@ export async function writeServerSwingPicks(
   return payload;
 }
 
-export { serverSwingPicksPath };
+export { getServerSwingPicksPath };

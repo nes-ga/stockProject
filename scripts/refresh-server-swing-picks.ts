@@ -1,4 +1,5 @@
 import { analyzeSmartMoneyPatterns } from "../src/services/stockAnalysis.js";
+import { classifySwingCandidate } from "../src/services/recommendationUniverse.js";
 import { readServerSwingPicks, writeServerSwingPicks } from "../src/services/serverSwingPicks.js";
 
 type Pattern = Awaited<ReturnType<typeof analyzeSmartMoneyPatterns>>[number]["pattern"];
@@ -55,8 +56,11 @@ async function main() {
         return right.pattern.patternScore - left.pattern.patternScore;
       }
       return right.tradingReferenceDate.localeCompare(left.tradingReferenceDate);
-    })
-    .map((analysis) => ({
+    });
+
+  const refreshed = filtered.map((analysis) => {
+    const classification = classifySwingCandidate(analysis);
+    return {
       key: `${analysis.name ?? analysis.symbol}-${analysis.symbol}`,
       name: analysis.name ?? analysis.symbol,
       symbol: analysis.symbol,
@@ -65,17 +69,32 @@ async function main() {
           ? analysis.pattern.breakoutDate ?? analysis.tradingReferenceDate
           : analysis.tradingReferenceDate,
       note: buildNote(analysis.name ?? analysis.symbol, analysis.pattern),
-      category: "swing" as const
-    }));
+      bucket: classification.bucket,
+      tags: classification.tags,
+      reasons: classification.reasons,
+      penaltyFactors: classification.penaltyFactors,
+      haltCategory: analysis.haltCategory,
+      haltAction: analysis.haltAction,
+      category: "swing" as const,
+      source: "server-refresh" as const
+    };
+  });
 
-  await writeServerSwingPicks(filtered);
+  const executionItems = refreshed.filter((item) => item.bucket !== "watch");
+  const watchItems = refreshed.filter((item) => item.bucket === "watch");
+  await writeServerSwingPicks({
+    executionItems,
+    watchItems
+  });
 
-  console.log(`Refreshed server swing picks: ${filtered.length} matched / ${current.length} scanned`);
-  for (const item of filtered) {
+  console.log(
+    `Refreshed server swing picks: ${refreshed.length} matched / ${current.length} scanned / ${executionItems.length} execution / ${watchItems.length} watch`
+  );
+  for (const item of refreshed) {
     console.log(`- ${item.name} (${item.symbol}) :: ${item.note}`);
   }
 
-  const removed = current.filter((item) => !filtered.some((next) => next.symbol === item.symbol));
+  const removed = current.filter((item) => !refreshed.some((next) => next.symbol === item.symbol));
   if (removed.length) {
     console.log("Removed from batch:");
     for (const item of removed) {

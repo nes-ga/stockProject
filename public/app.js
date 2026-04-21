@@ -16,6 +16,7 @@ const DEFAULT_CATEGORY = "longTerm";
 const DIVIDEND_CATEGORY = "dividend";
 const DEFAULT_LONG_TERM_BUCKET = "buy";
 const DEFAULT_SWING_BUCKET = "execution";
+const DEFAULT_SWING_PROFILE = "default";
 const SWING_LOOKBACK_DAYS = 45;
 const SERVER_RECOMMENDATION_REFRESH_INTERVAL_MS = 60 * 1000;
 const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
@@ -422,6 +423,9 @@ let currentLongTermBucket = isValidLongTermBucket(persistedUiState?.currentLongT
 let currentSwingBucket = isValidSwingBucket(persistedUiState?.currentSwingBucket)
   ? persistedUiState.currentSwingBucket
   : DEFAULT_SWING_BUCKET;
+let currentSwingProfile = isValidSwingProfile(persistedUiState?.currentSwingProfile)
+  ? persistedUiState.currentSwingProfile
+  : DEFAULT_SWING_PROFILE;
 let currentAnalysis = null;
 let selectedKey = typeof persistedUiState?.selectedKey === "string" ? persistedUiState.selectedKey : getFilteredInitialKey();
 let activeChart = null;
@@ -455,11 +459,17 @@ let stockModalPointerDownOnBackdrop = false;
 let marketEventModalPointerDownOnBackdrop = false;
 let serverDividendPicksLoaded = false;
 let serverLongTermPicksLoaded = false;
-let serverSwingPicksLoaded = false;
+let dividendEtfRecommendations = [];
+let selectedDividendEtfSymbol = null;
+const serverSwingPicksLoadedByProfile = {
+  default: false,
+  smallcap: false
+};
 const recommendationUniverseScanLoadingByCategory = {
   longTerm: false,
   dividend: false,
-  swing: false
+  swing: false,
+  "swing:smallcap": false
 };
 let swingPatternByKey = new Map();
 let realtimeStockSnapshots = new Map();
@@ -472,6 +482,8 @@ let serverRecommendationRefreshTimer = null;
 let serverRecommendationSyncInFlight = false;
 let latestRiseMovers = [];
 let latestFallMovers = [];
+let toastSequence = 0;
+const toastDismissTimers = new Map();
 
 const appTabs = document.querySelector("#appTabs");
 const newsView = document.querySelector("#newsView");
@@ -528,6 +540,7 @@ const stockSymbolInput = document.querySelector("#stockSymbolInput");
 const stockPriceInput = document.querySelector("#stockPriceInput");
 const stockDateInput = document.querySelector("#stockDateInput");
 const stockCategoryTabs = document.querySelector("#stockCategoryTabs");
+const swingProfileTabs = document.querySelector("#swingProfileTabs");
 const longTermBucketTabs = document.querySelector("#longTermBucketTabs");
 const swingBucketTabs = document.querySelector("#swingBucketTabs");
 const stockCategorySelect = document.querySelector("#stockCategorySelect");
@@ -552,6 +565,23 @@ const fallMoversList = document.querySelector("#fallMoversList");
 const riseCountLabel = document.querySelector("#riseCountLabel");
 const fallCountLabel = document.querySelector("#fallCountLabel");
 const scoreGuideIcons = document.querySelectorAll("[data-score-guide]");
+const toastViewport = document.querySelector("#toastViewport");
+
+window.showAppToast = showAppToast;
+
+toastViewport?.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-toast-dismiss]");
+  if (!closeButton) {
+    return;
+  }
+
+  const toast = closeButton.closest("[data-toast-id]");
+  if (!toast) {
+    return;
+  }
+
+  dismissToast(toast.dataset.toastId);
+});
 
 initializeApp();
 
@@ -672,6 +702,25 @@ stockSelector.addEventListener("click", async (event) => {
     return;
   }
 
+  const etfButton = event.target.closest("[data-dividend-etf-symbol]");
+  if (etfButton) {
+    const symbol = etfButton.dataset.dividendEtfSymbol;
+    if (!symbol) {
+      return;
+    }
+
+    const item = createDividendEtfAnalysisItem(symbol);
+    if (!item) {
+      return;
+    }
+
+    selectedDividendEtfSymbol = symbol;
+    selectedKey = null;
+    renderSelector();
+    await runAnalysisForRecommendation(item);
+    return;
+  }
+
   const button = event.target.closest("[data-stock-key]");
   if (!button) {
     return;
@@ -682,6 +731,7 @@ stockSelector.addEventListener("click", async (event) => {
     return;
   }
 
+  selectedDividendEtfSymbol = null;
   selectedKey = key;
   renderSelector();
   await runAnalysisByKey(key);
@@ -710,6 +760,31 @@ stockCategoryTabs?.addEventListener("click", (event) => {
   startStockSnapshotAutoRefresh();
   renderCategoryTabs();
   renderLongTermBucketTabs();
+  renderSwingBucketTabs();
+  renderSelector();
+  if (selectedKey) {
+    void runAnalysisByKey(selectedKey);
+    return;
+  }
+
+  renderEmptyResultsForCurrentFilter();
+});
+
+swingProfileTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-swing-profile]");
+  if (!button || currentCategory !== "swing") {
+    return;
+  }
+
+  const nextProfile = button.dataset.swingProfile;
+  if (!isValidSwingProfile(nextProfile) || nextProfile === currentSwingProfile) {
+    return;
+  }
+
+  currentSwingProfile = nextProfile;
+  currentPage = 1;
+  selectedKey = getFilteredCatalog()[0]?.key ?? null;
+  renderSwingProfileTabs();
   renderSwingBucketTabs();
   renderSelector();
   if (selectedKey) {
@@ -893,6 +968,11 @@ stockForm.addEventListener("submit", async (event) => {
   renderLongTermBucketTabs();
   renderSwingBucketTabs();
   renderSelector();
+  showAppToast({
+    title: "추천 종목 추가",
+    message: `${item.name}을 ${getCategoryDisplayLabel(item.category ?? DEFAULT_CATEGORY)} 목록에 추가했습니다.`,
+    tone: "positive"
+  });
   await runAnalysisByKey(item.key);
 });
 
@@ -931,7 +1011,7 @@ stockSearchResults?.addEventListener("click", (event) => {
 });
 
 refreshMoversBtn?.addEventListener("click", async () => {
-  await loadMovers();
+  await loadMovers({ toast: true });
 });
 
 results.addEventListener("click", (event) => {
@@ -976,7 +1056,8 @@ async function initializeApp() {
   stockSearchUniverse = buildStockSearchUniverse();
   await loadServerDividendPicks();
   await loadServerLongTermPicks();
-  await loadServerSwingPicks();
+  await loadServerSwingPicks("default");
+  await loadServerSwingPicks("smallcap");
   await refreshSwingPatternSnapshots();
   restoreUiState();
   applyScoreGuideTooltips();
@@ -1035,14 +1116,73 @@ function mergeRecommendations(baseItems, incomingItems) {
   return [...merged.values()];
 }
 
+function preferLongTermRecommendation(existingItem, nextItem) {
+  if (isServerUniverseRecommendation(nextItem) && !isServerUniverseRecommendation(existingItem)) {
+    return nextItem;
+  }
+
+  if (!isServerUniverseRecommendation(nextItem) && isServerUniverseRecommendation(existingItem)) {
+    return existingItem;
+  }
+
+  return nextItem;
+}
+
+function dedupeLongTermRecommendations(items) {
+  const deduped = [];
+  const indexBySymbol = new Map();
+
+  for (const item of items) {
+    const normalized = normalizeRecommendation(item);
+    if ((normalized.category ?? DEFAULT_CATEGORY) !== DEFAULT_CATEGORY || !normalized.symbol) {
+      deduped.push(normalized);
+      continue;
+    }
+
+    const existingIndex = indexBySymbol.get(normalized.symbol);
+    if (existingIndex == null) {
+      indexBySymbol.set(normalized.symbol, deduped.length);
+      deduped.push(normalized);
+      continue;
+    }
+
+    deduped[existingIndex] = preferLongTermRecommendation(deduped[existingIndex], normalized);
+  }
+
+  return deduped;
+}
+
 function isServerUniverseRecommendation(item) {
   return item?.source === "server-universe";
+}
+
+function removeOverlappingSmallcapSwingRecommendations(items) {
+  const defaultSwingSymbols = new Set(
+    items
+      .filter(
+        (item) =>
+          (item.category ?? DEFAULT_CATEGORY) === "swing" &&
+          isServerUniverseRecommendation(item) &&
+          resolveSwingProfile(item.swingProfile) === "default"
+      )
+      .map((item) => item.symbol)
+  );
+
+  return items.filter(
+    (item) =>
+      !(
+        (item.category ?? DEFAULT_CATEGORY) === "swing" &&
+        isServerUniverseRecommendation(item) &&
+        resolveSwingProfile(item.swingProfile) === "smallcap" &&
+        defaultSwingSymbols.has(item.symbol)
+      )
+  );
 }
 
 function syncServerLongTermRecommendations(baseItems, incomingItems) {
   const preserved = baseItems.filter((item) => (item.category ?? DEFAULT_CATEGORY) !== DEFAULT_CATEGORY || !isServerUniverseRecommendation(item));
   const normalizedIncoming = incomingItems.map((item) => normalizeRecommendation(item));
-  return mergeRecommendations(normalizedIncoming, preserved);
+  return dedupeLongTermRecommendations(mergeRecommendations(normalizedIncoming, preserved));
 }
 
 function syncServerDividendRecommendations(baseItems, incomingItems) {
@@ -1051,10 +1191,15 @@ function syncServerDividendRecommendations(baseItems, incomingItems) {
   return mergeRecommendations(normalizedIncoming, preserved);
 }
 
-function syncServerSwingRecommendations(baseItems, incomingItems) {
-  const preserved = baseItems.filter((item) => (item.category ?? DEFAULT_CATEGORY) !== "swing" || !isServerUniverseRecommendation(item));
+function syncServerSwingRecommendations(baseItems, incomingItems, profile = DEFAULT_SWING_PROFILE) {
+  const preserved = baseItems.filter(
+    (item) =>
+      (item.category ?? DEFAULT_CATEGORY) !== "swing" ||
+      !isServerUniverseRecommendation(item) ||
+      resolveSwingProfile(item.swingProfile) !== profile
+  );
   const normalizedIncoming = incomingItems.map((item) => normalizeRecommendation(item));
-  return mergeRecommendations(normalizedIncoming, preserved);
+  return removeOverlappingSmallcapSwingRecommendations(mergeRecommendations(normalizedIncoming, preserved));
 }
 
 function syncSelectedKeyWithCatalog() {
@@ -1106,7 +1251,8 @@ async function loadServerDividendPicks(force = false) {
       throw new Error(payload.error ?? "서버 배당 종목을 불러오지 못했습니다.");
     }
 
-    const items = Array.isArray(payload.items) ? payload.items : [];
+    const items = Array.isArray(payload.stocks) ? payload.stocks : Array.isArray(payload.items) ? payload.items : [];
+    dividendEtfRecommendations = Array.isArray(payload.etfs) ? payload.etfs : [];
     const nextCatalog = syncServerDividendRecommendations(recommendationCatalog, items);
     const changed = JSON.stringify(nextCatalog) !== JSON.stringify(recommendationCatalog);
     recommendationCatalog = nextCatalog;
@@ -1123,13 +1269,14 @@ async function loadServerDividendPicks(force = false) {
   }
 }
 
-async function loadServerSwingPicks(force = false) {
-  if (serverSwingPicksLoaded && !force) {
+async function loadServerSwingPicks(profile = DEFAULT_SWING_PROFILE, force = false) {
+  const resolvedProfile = resolveSwingProfile(profile);
+  if (serverSwingPicksLoadedByProfile[resolvedProfile] && !force) {
     return false;
   }
 
   try {
-    const response = await fetch("/analysis/server-swing-picks");
+    const response = await fetch(`/analysis/server-swing-picks?profile=${encodeURIComponent(resolvedProfile)}`);
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error ?? "서버 스윙 종목을 불러오지 못했습니다.");
@@ -1140,13 +1287,13 @@ async function loadServerSwingPicks(force = false) {
     const items =
       executionItems.length || watchItems.length
         ? [
-            ...executionItems.map((item) => ({ ...item, bucket: "execution" })),
-            ...watchItems.map((item) => ({ ...item, bucket: "watch" }))
+            ...executionItems.map((item) => ({ ...item, bucket: "execution", swingProfile: resolvedProfile })),
+            ...watchItems.map((item) => ({ ...item, bucket: "watch", swingProfile: resolvedProfile }))
           ]
-        : Array.isArray(payload.items)
-          ? payload.items
+          : Array.isArray(payload.items)
+          ? payload.items.map((item) => ({ ...item, swingProfile: resolvedProfile }))
           : [];
-    const nextCatalog = syncServerSwingRecommendations(recommendationCatalog, items);
+    const nextCatalog = syncServerSwingRecommendations(recommendationCatalog, items, resolvedProfile);
     const changed = JSON.stringify(nextCatalog) !== JSON.stringify(recommendationCatalog);
     recommendationCatalog = nextCatalog;
     if (changed) {
@@ -1166,7 +1313,7 @@ async function loadServerSwingPicks(force = false) {
     console.error(error);
     return false;
   } finally {
-    serverSwingPicksLoaded = true;
+    serverSwingPicksLoadedByProfile[resolvedProfile] = true;
   }
 }
 
@@ -1178,17 +1325,18 @@ async function syncServerRecommendations(options = {}) {
   serverRecommendationSyncInFlight = true;
 
   try {
-    const [dividendChanged, longTermChanged, swingChanged] = await Promise.all([
+    const [dividendChanged, longTermChanged, swingChanged, smallcapSwingChanged] = await Promise.all([
       loadServerDividendPicks(true),
       loadServerLongTermPicks(true),
-      loadServerSwingPicks(true)
+      loadServerSwingPicks("default", true),
+      loadServerSwingPicks("smallcap", true)
     ]);
 
-    if (!dividendChanged && !longTermChanged && !swingChanged) {
+    if (!dividendChanged && !longTermChanged && !swingChanged && !smallcapSwingChanged) {
       return;
     }
 
-    if (swingChanged) {
+    if (swingChanged || smallcapSwingChanged) {
       await refreshSwingPatternSnapshots();
     }
 
@@ -1202,12 +1350,19 @@ async function syncServerRecommendations(options = {}) {
     }
 
     if (!options.silent) {
-      const swingItems = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === "swing");
-      const executionCount = swingItems.filter((item) => item.swingBucket === "execution").length;
-      const watchCount = swingItems.filter((item) => item.swingBucket === "watch").length;
+      const defaultSwingItems = recommendationCatalog.filter(
+        (item) => (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === "default"
+      );
+      const smallcapSwingItems = recommendationCatalog.filter(
+        (item) => (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === "smallcap"
+      );
+      const executionCount = defaultSwingItems.filter((item) => item.swingBucket === "execution").length;
+      const watchCount = defaultSwingItems.filter((item) => item.swingBucket === "watch").length;
+      const smallcapExecutionCount = smallcapSwingItems.filter((item) => item.swingBucket === "execution").length;
+      const smallcapWatchCount = smallcapSwingItems.filter((item) => item.swingBucket === "watch").length;
       const dividendCount = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === DIVIDEND_CATEGORY).length;
       showSummary(
-        `서버 추천 종목을 다시 반영했습니다. 배당 ${dividendCount}개 / 스윙 매수후보 ${executionCount}개 / 관심후보 ${watchCount}개입니다.`
+        `서버 추천 종목을 다시 반영했습니다. 배당 ${dividendCount}개 / 배당 ETF ${dividendEtfRecommendations.length}개 / 기본 스윙 매수후보 ${executionCount}개·관심후보 ${watchCount}개 / 소형 스윙 매수후보 ${smallcapExecutionCount}개·관심후보 ${smallcapWatchCount}개입니다.`
       );
     }
   } catch (error) {
@@ -1225,33 +1380,42 @@ async function refreshSwingPatternSnapshots() {
   }
 
   try {
-    const response = await fetch("/analysis/smart-money-patterns", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        items: swingItems.map((item) => ({
-          name: item.name,
-          symbol: item.symbol,
-          note: item.note
-        })),
-        filters: {
-          lookbackTradingDays: SWING_LOOKBACK_DAYS
-        }
-      })
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error ?? "스윙 패턴 상태를 불러오지 못했습니다.");
-    }
-
-    const bySymbol = new Map(swingItems.map((item) => [item.symbol, item.key]));
     const next = new Map();
-    for (const analysis of Array.isArray(payload.analyses) ? payload.analyses : []) {
-      const key = bySymbol.get(analysis.symbol);
-      if (key) {
-        next.set(key, analysis);
+
+    for (const profile of ["default", "smallcap"]) {
+      const profileItems = swingItems.filter((item) => resolveSwingProfile(item.swingProfile) === profile);
+      if (!profileItems.length) {
+        continue;
+      }
+
+      const response = await fetch("/analysis/smart-money-patterns", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          profile,
+          items: profileItems.map((item) => ({
+            name: item.name,
+            symbol: item.symbol,
+            note: item.note
+          })),
+          filters: {
+            lookbackTradingDays: SWING_LOOKBACK_DAYS
+          }
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "스윙 패턴 상태를 불러오지 못했습니다.");
+      }
+
+      const bySymbol = new Map(profileItems.map((item) => [item.symbol, item.key]));
+      for (const analysis of Array.isArray(payload.analyses) ? payload.analyses : []) {
+        const key = bySymbol.get(analysis.symbol);
+        if (key) {
+          next.set(key, analysis);
+        }
       }
     }
 
@@ -1343,7 +1507,7 @@ function renderIndexWatchList() {
                       <span class="index-watch-card-price-state">${formatSignedPointDelta(priceDirectionValue)}</span>
                     </div>
                     <div class="index-watch-card-change ${trendClass}">${formatPercent(displayMetrics.changePercent)}</div>
-                    <div class="index-watch-card-hint">${escapeHtml(marketWatchDisplayDate)} 업데이트 · 카드를 누르면 차트가 열립니다.</div>
+                    <div class="index-watch-card-hint">${escapeHtml(marketWatchDisplayDate)} 기준 · 카드를 누르면 차트가 열립니다.</div>
                   </div>
                 `
                 : `
@@ -1448,12 +1612,13 @@ function renderMarketEventCalendarBoard() {
     events: [],
     summaries: []
   };
+  const today = getTodayInSeoulDateText();
   const selectedDate = marketEventCalendarSelectedDate || getTodayInSeoulDateText();
   const visibleMonth = marketEventCalendarVisibleMonth || getMonthKeyFromDate(selectedDate);
   const eventsByDate = groupMarketEventsByDate(payload.events);
   const summariesByDate = new Map((payload.summaries ?? []).map((summary) => [summary.date, summary]));
   const highImportanceCount = payload.events.filter((event) => event.importance === "high").length;
-  const upcomingCount = payload.events.filter((event) => event.date >= getTodayInSeoulDateText()).length;
+  const upcomingCount = payload.events.filter((event) => event.date >= today).length;
   const statusKind = marketEventCalendarError
     ? "error"
     : marketEventCalendarLoading && !marketEventCalendarLoaded
@@ -1482,6 +1647,7 @@ function renderMarketEventCalendarBoard() {
       <div class="market-event-month-nav">
         <button class="ghost-button small-button" type="button" data-calendar-nav="prev">이전</button>
         <strong>${escapeHtml(formatMarketEventMonthLabel(visibleMonth))}</strong>
+        <span class="market-event-today-chip">오늘 ${escapeHtml(formatMarketEventTodayLabel(today))}</span>
         <button class="ghost-button small-button" type="button" data-calendar-nav="next">다음</button>
       </div>
     </div>
@@ -1546,7 +1712,10 @@ function renderEventCalendarCell(cell, summary, selectedDate) {
     <button class="${classNames}" type="button" data-calendar-date="${escapeHtml(cell.date)}">
       <span class="market-event-calendar-day-row">
         <span class="market-event-calendar-day">${escapeHtml(String(cell.dayNumber))}</span>
-        ${summary?.hasHighImportance ? '<span class="market-event-priority-flag">!</span>' : ""}
+        <span class="market-event-calendar-day-flags">
+          ${isToday ? '<span class="market-event-calendar-today-badge">오늘</span>' : ""}
+          ${summary?.hasHighImportance ? '<span class="market-event-priority-flag">!</span>' : ""}
+        </span>
       </span>
       ${
         summary
@@ -1751,14 +1920,12 @@ function getTodayInSeoulDateText() {
   return formatter.format(new Date());
 }
 
-function getMarketWatchDisplayDate() {
-  return typeof marketWatchFetchedAt === "string" && marketWatchFetchedAt
-    ? marketWatchFetchedAt.slice(0, 10)
-    : getTodayInSeoulDateText();
-}
-
 function getMonthKeyFromDate(dateText) {
   return typeof dateText === "string" ? dateText.slice(0, 7) : "";
+}
+
+function getMarketWatchDisplayDate() {
+  return getTodayInSeoulDateText();
 }
 
 function addMonthsToMonthKey(monthKey, delta) {
@@ -1776,6 +1943,20 @@ function formatMarketEventMonthLabel(monthKey) {
   return new Intl.DateTimeFormat("ko-KR", {
     year: "numeric",
     month: "long",
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function formatMarketEventTodayLabel(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return dateText;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "short",
     timeZone: "UTC"
   }).format(date);
 }
@@ -2160,19 +2341,22 @@ function createMarketWatchChartState(container, tooltip) {
       color: "#177245",
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: false
+      lastValueVisible: false,
+      crosshairMarkerVisible: false
     }),
     chart.addSeries(LineSeries, {
       color: "#d84c3f",
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: false
+      lastValueVisible: false,
+      crosshairMarkerVisible: false
     }),
     chart.addSeries(LineSeries, {
       color: "#2563eb",
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: false
+      lastValueVisible: false,
+      crosshairMarkerVisible: false
     })
   ];
 
@@ -2234,6 +2418,16 @@ function createMarketWatchChartState(container, tooltip) {
   return state;
 }
 
+function getMarketWatchChartBoundaryDate(points) {
+  const latestDate = Array.isArray(points) && points.length ? points.at(-1)?.date : "";
+  const displayDate = getMarketWatchDisplayDate();
+  if (!latestDate || !displayDate) {
+    return latestDate || displayDate || "";
+  }
+
+  return latestDate < displayDate ? displayDate : latestDate;
+}
+
 function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   if (!container) {
     return;
@@ -2272,24 +2466,32 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchChartState.tooltip = tooltip;
   marketWatchChartState.points = points;
   marketWatchChartState.viewportKey = viewportKey;
+  const chartBoundaryDate = getMarketWatchChartBoundaryDate(points);
+  const shouldExtendToDisplayDate = Boolean(chartBoundaryDate && chartBoundaryDate > (points.at(-1)?.date ?? ""));
 
-  marketWatchChartState.candleSeries.setData(
-    points.map((point) => ({
-      time: point.date,
-      open: point.open ?? point.close,
-      high: point.high ?? point.close,
-      low: point.low ?? point.close,
-      close: point.close
-    }))
-  );
-  marketWatchChartState.volumeSeries.setData(
-    points.map((point) => ({
-      time: point.date,
-      value: point.volume ?? 0,
-      color:
-        (point.close ?? 0) >= (point.open ?? point.close ?? 0) ? "rgba(216,76,63,0.34)" : "rgba(47,110,229,0.3)"
-    }))
-  );
+  const candleSeriesData = points.map((point) => ({
+    time: point.date,
+    open: point.open ?? point.close,
+    high: point.high ?? point.close,
+    low: point.low ?? point.close,
+    close: point.close
+  }));
+  if (shouldExtendToDisplayDate) {
+    candleSeriesData.push({ time: chartBoundaryDate });
+  }
+  marketWatchChartState.candleSeries.setData(candleSeriesData);
+
+  const volumeSeriesData = points.map((point) => ({
+    time: point.date,
+    value: point.volume ?? 0,
+    color:
+      (point.close ?? 0) >= (point.open ?? point.close ?? 0) ? "rgba(216,76,63,0.34)" : "rgba(47,110,229,0.3)"
+  }));
+  if (shouldExtendToDisplayDate) {
+    volumeSeriesData.push({ time: chartBoundaryDate });
+  }
+  marketWatchChartState.volumeSeries.setData(volumeSeriesData);
+
   for (const [index, series] of marketWatchChartState.movingAverageSeries.entries()) {
     const config = movingAverageConfig[index];
     if (!config) {
@@ -2298,13 +2500,18 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
     }
 
     series.applyOptions({ color: config.color });
-    series.setData(buildIndexMovingAverage(points, config.period));
+    const movingAverageData = buildIndexMovingAverage(points, config.period);
+    if (shouldExtendToDisplayDate && movingAverageData.length) {
+      movingAverageData.push({ time: chartBoundaryDate });
+    }
+    series.setData(movingAverageData);
   }
 
   if (tooltip) {
     tooltip.classList.add("hidden");
   }
 
+  const chartPointCount = points.length + (shouldExtendToDisplayDate ? 1 : 0);
   if (
     currentVisibleRange &&
     previousViewportKey === viewportKey &&
@@ -2315,19 +2522,19 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   } else if (savedViewport) {
     marketWatchChartState.chart.timeScale().setVisibleLogicalRange(savedViewport);
   } else {
-    setDefaultMarketWatchVisibleRange(marketWatchChartState.chart, points, timeframe);
+    setDefaultMarketWatchVisibleRange(marketWatchChartState.chart, chartPointCount, timeframe);
   }
 }
 
-function setDefaultMarketWatchVisibleRange(chart, points, timeframe) {
+function setDefaultMarketWatchVisibleRange(chart, pointCount, timeframe) {
   const visibleSessions = DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS[timeframe] ?? DEFAULT_VISIBLE_TRADING_SESSIONS;
-  if (!Array.isArray(points) || !points.length) {
+  if (!Number.isFinite(pointCount) || pointCount <= 0) {
     chart.timeScale().fitContent();
     return;
   }
 
-  const endIndex = points.length - 1;
-  const startIndex = Math.max(0, points.length - visibleSessions);
+  const endIndex = pointCount - 1;
+  const startIndex = Math.max(0, pointCount - visibleSessions);
 
   chart.timeScale().setVisibleLogicalRange({
     from: startIndex - 1,
@@ -2710,6 +2917,12 @@ function selectStockOption(item) {
   }
 
   renderStockSearchResults();
+  showAppToast({
+    title: "종목 선택",
+    message: `${item.name} (${item.code})을 입력 폼에 반영했습니다.`,
+    tone: "neutral",
+    duration: 2600
+  });
   stockPriceInput.focus();
 }
 
@@ -2736,6 +2949,7 @@ function getMoversFilters() {
 async function loadMovers(options = {}) {
   const filters = getMoversFilters();
   const preserveMoversUi = Boolean(options.preserveMoversUi);
+  const shouldNotify = Boolean(options.toast);
   setMoversStatus("loading", "\uC21C\uC704 \uC870\uD68C \uC911");
   showMoversSummary("");
   showMoversError("");
@@ -2771,6 +2985,13 @@ async function loadMovers(options = {}) {
     showMoversSummary(
       `${filters.market === "all" ? "\uC804\uCCB4 \uC2DC\uC7A5" : filters.market} \uAE30\uC900\uC73C\uB85C \uAE09\uB4F1 ${risePayload.analyses.length}\uAC1C, \uAE09\uB77D ${fallPayload.analyses.length}\uAC1C\uB97C \uD45C\uC2DC\uD588\uC2B5\uB2C8\uB2E4.`
     );
+    if (shouldNotify) {
+      showAppToast({
+        title: "급등락 순위 갱신",
+        message: `${filters.market === "all" ? "전체 시장" : filters.market} 기준 급등 ${risePayload.analyses.length}개, 급락 ${fallPayload.analyses.length}개를 표시했습니다.`,
+        tone: "positive"
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "\uC21C\uC704\uB97C \uBD88\uB7EC\uC624\uB294 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.";
     setMoversStatus("error", "\uC870\uD68C \uC2E4\uD328");
@@ -2786,6 +3007,14 @@ async function loadMovers(options = {}) {
     }
     if (fallCountLabel) {
       fallCountLabel.textContent = "0개";
+    }
+    if (shouldNotify) {
+      showAppToast({
+        title: "급등락 순위 오류",
+        message,
+        tone: "negative",
+        duration: 5200
+      });
     }
   }
 }
@@ -2895,8 +3124,7 @@ function getSectorLabel(symbol) {
 
 function renderSelector() {
   const pagedItems = getPagedItems();
-
-  stockSelector.innerHTML = pagedItems
+  const stockCards = pagedItems
     .map((item) => {
       const selected = item.key === selectedKey;
       const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
@@ -2993,7 +3221,26 @@ function renderSelector() {
     })
     .join("");
 
-  if (!pagedItems.length) {
+  if (isDividendCategory(currentCategory)) {
+    const filteredCount = getFilteredCatalog().length;
+    const stockSectionIntro = renderDividendSectionIntro(
+      "Dividend Recommendation Stocks",
+      "기존 배당 추천 종목 엔진 결과를 그대로 유지합니다.",
+      `${filteredCount}개`
+    );
+    const stockSectionBody = stockCards || `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
+    stockSelector.innerHTML = `
+      ${stockSectionIntro}
+      <div class="stock-selector-list">
+        ${stockSectionBody}
+      </div>
+      ${renderDividendEtfSection()}
+    `;
+  } else {
+    stockSelector.innerHTML = stockCards;
+  }
+
+  if (!pagedItems.length && !isDividendCategory(currentCategory)) {
     stockSelector.innerHTML = `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
   }
 
@@ -3053,6 +3300,7 @@ function persistUiState() {
     currentCategory,
     currentLongTermBucket,
     currentSwingBucket,
+    currentSwingProfile,
     selectedKey,
     itemsPerPage,
     currentPage
@@ -3209,7 +3457,12 @@ function renderCategoryTabs() {
     tab.classList.toggle("active", tab.dataset.category === currentCategory);
   }
 
+  renderSwingProfileTabs();
   renderRecommendationScopePanel();
+}
+
+function getRecommendationScanLoadingKey(category = currentCategory, swingProfile = currentSwingProfile) {
+  return isSwingCategory(category) && swingProfile === "smallcap" ? "swing:smallcap" : category;
 }
 
 function updateUniverseRecommendationButton() {
@@ -3217,13 +3470,14 @@ function updateUniverseRecommendationButton() {
     return;
   }
 
-  const isCurrentCategoryLoading = recommendationUniverseScanLoadingByCategory[currentCategory] === true;
+  const isCurrentCategoryLoading =
+    recommendationUniverseScanLoadingByCategory[getRecommendationScanLoadingKey(currentCategory, currentSwingProfile)] === true;
   runUniverseRecommendationBtn.disabled = isCurrentCategoryLoading;
   if (!isCurrentCategoryLoading) {
     runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
       ? "배당 추천 검색"
       : isSwingCategory(currentCategory)
-        ? "스윙 추천 검색"
+        ? `${getSwingProfileLabel(currentSwingProfile)} 추천 검색`
         : "중장기 추천 검색";
     return;
   }
@@ -3231,7 +3485,7 @@ function updateUniverseRecommendationButton() {
   runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
     ? "배당 추천 검색 중..."
     : isSwingCategory(currentCategory)
-      ? "스윙 추천 검색 중..."
+      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 검색 중...`
       : "중장기 추천 검색 중...";
 }
 
@@ -3242,26 +3496,53 @@ function renderRecommendationScopePanel() {
     : getNonSwingBucketLabel(currentCategory, currentLongTermBucket);
 
   if (recommendationScopeTitle) {
-    recommendationScopeTitle.textContent = `${categoryLabel} 추천 / ${activeBucketLabel}`;
+    recommendationScopeTitle.textContent = isSwingCategory(currentCategory)
+      ? `${categoryLabel} 추천 / ${getSwingProfileLabel(currentSwingProfile)} / ${activeBucketLabel}`
+      : `${categoryLabel} 추천 / ${activeBucketLabel}`;
   }
 
   if (recommendationScopeHelp) {
     recommendationScopeHelp.textContent = isSwingCategory(currentCategory)
-      ? "상단에서 스윙 흐름을 고르고, 매수후보와 관심후보를 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
+      ? currentSwingProfile === "smallcap"
+        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 소형주형 기준으로 추린 매수후보와 관심후보를 같은 화면에서 넘겨보며 관리합니다."
+        : "상단에서 스윙 흐름을 고르고, 매수후보와 관심후보를 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
       : isDividendCategory(currentCategory)
-        ? "배당 탭은 중장기 형식과 같은 카드/상세 화면을 쓰되, 배당 엔진 기준 후보와 관찰군을 따로 관리합니다."
+        ? "배당 탭은 배당 추천 종목과 별도 Dividend ETF 섹션을 함께 보여 주되, ETF는 점수 엔진이 아닌 전용 필터 목록으로 분리해 관리합니다."
         : "상단에서 중장기 흐름을 유지한 채 매수후보군과 관찰군을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
   }
 
   if (openAddStockBtn) {
     openAddStockBtn.textContent = isSwingCategory(currentCategory)
-      ? "스윙 추천 추가"
+      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 추가`
       : isDividendCategory(currentCategory)
         ? "배당 종목 추가"
         : "중장기 추천 추가";
   }
 
   updateUniverseRecommendationButton();
+}
+
+function renderSwingProfileTabs() {
+  if (!swingProfileTabs) {
+    return;
+  }
+
+  const isVisible = currentCategory === "swing";
+  swingProfileTabs.classList.toggle("hidden", !isVisible);
+  if (!isVisible) {
+    return;
+  }
+
+  const counts = getSwingProfileCounts();
+  for (const tab of swingProfileTabs.querySelectorAll("[data-swing-profile]")) {
+    const profile = tab.dataset.swingProfile;
+    if (!isValidSwingProfile(profile)) {
+      continue;
+    }
+
+    tab.classList.toggle("active", profile === currentSwingProfile);
+    tab.textContent = `${getSwingProfileLabel(profile)} ${counts[profile]}개`;
+  }
 }
 
 function renderLongTermBucketTabs() {
@@ -3322,15 +3603,28 @@ async function runRecommendationUniverseScan() {
     : isDividendCategory(currentCategory)
       ? DIVIDEND_CATEGORY
       : DEFAULT_CATEGORY;
-  if (recommendationUniverseScanLoadingByCategory[requestedCategory]) {
+  const requestedSwingProfile = isSwingCategory(currentCategory) ? currentSwingProfile : DEFAULT_SWING_PROFILE;
+  const requestedLoadingKey = getRecommendationScanLoadingKey(requestedCategory, requestedSwingProfile);
+  if (recommendationUniverseScanLoadingByCategory[requestedLoadingKey]) {
     return;
   }
-  const requestedLabel = requestedCategory === "swing" ? "스윙" : requestedCategory === DIVIDEND_CATEGORY ? "배당" : "중장기";
+  const requestedLabel =
+    requestedCategory === "swing"
+      ? getSwingProfileLabel(requestedSwingProfile)
+      : requestedCategory === DIVIDEND_CATEGORY
+        ? "배당"
+        : "중장기";
 
-  recommendationUniverseScanLoadingByCategory[requestedCategory] = true;
+  recommendationUniverseScanLoadingByCategory[requestedLoadingKey] = true;
   updateUniverseRecommendationButton();
   showError("");
   showSummary(`${requestedLabel} universe 검색을 시작했습니다. 종목 수가 많아 시간이 걸릴 수 있습니다.`);
+  showAppToast({
+    title: `${requestedLabel} 추천 검색`,
+    message: "검색을 시작했습니다. 결과가 준비되면 목록을 갱신합니다.",
+    tone: "neutral",
+    duration: 2600
+  });
 
   try {
     const response = await fetch("/analysis/recommendation-universe-scan", {
@@ -3339,7 +3633,8 @@ async function runRecommendationUniverseScan() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        category: requestedCategory
+        category: requestedCategory,
+        swingProfile: requestedSwingProfile
       })
     });
     const payload = await response.json();
@@ -3353,18 +3648,18 @@ async function runRecommendationUniverseScan() {
       const items =
         executionItems.length || watchItems.length
           ? [
-              ...executionItems.map((item) => ({ ...item, bucket: "execution" })),
-              ...watchItems.map((item) => ({ ...item, bucket: "watch" }))
+              ...executionItems.map((item) => ({ ...item, bucket: "execution", swingProfile: requestedSwingProfile })),
+              ...watchItems.map((item) => ({ ...item, bucket: "watch", swingProfile: requestedSwingProfile }))
             ]
           : Array.isArray(payload.items)
-            ? payload.items
+            ? payload.items.map((item) => ({ ...item, swingProfile: requestedSwingProfile }))
             : [];
 
-      recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items);
-      serverSwingPicksLoaded = true;
+      recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items, requestedSwingProfile);
+      serverSwingPicksLoadedByProfile[requestedSwingProfile] = true;
       await refreshSwingPatternSnapshots();
 
-      if (currentCategory === "swing") {
+      if (currentCategory === "swing" && currentSwingProfile === requestedSwingProfile) {
         currentPage = 1;
         if (currentSwingBucket === "execution" && !executionItems.length && watchItems.length) {
           currentSwingBucket = "watch";
@@ -3381,14 +3676,19 @@ async function runRecommendationUniverseScan() {
       renderSwingBucketTabs();
       renderSelector();
 
-      if (currentCategory === "swing" && selectedKey) {
+      if (currentCategory === "swing" && currentSwingProfile === requestedSwingProfile && selectedKey) {
         await runAnalysisByKey(selectedKey);
       }
 
       const swingDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
       showSummary(
-        `스윙 universe 검색이 완료되었습니다. 매수후보 ${payload.executionCount ?? executionItems.length}개 / 관심후보 ${payload.watchCount ?? watchItems.length}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+        `${requestedLabel} universe 검색이 완료되었습니다. 매수후보 ${payload.executionCount ?? executionItems.length}개 / 관심후보 ${payload.watchCount ?? watchItems.length}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
       );
+      showAppToast({
+        title: `${requestedLabel} 추천 검색 완료`,
+        message: `매수후보 ${payload.executionCount ?? executionItems.length}개, 관심후보 ${payload.watchCount ?? watchItems.length}개를 반영했습니다.`,
+        tone: swingDiffCount ? "positive" : "neutral"
+      });
       return;
     }
 
@@ -3422,6 +3722,11 @@ async function runRecommendationUniverseScan() {
       showSummary(
         `배당 universe 검색이 완료되었습니다. 후보 ${payload.buyCount ?? 0}개 / 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.${dividendDiffCount ? ` 변화 ${dividendDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
       );
+      showAppToast({
+        title: "배당 추천 검색 완료",
+        message: `후보 ${payload.buyCount ?? 0}개, 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.`,
+        tone: dividendDiffCount ? "positive" : "neutral"
+      });
       return;
     }
 
@@ -3454,13 +3759,24 @@ async function runRecommendationUniverseScan() {
     showSummary(
       `중장기 universe 검색이 완료되었습니다. 매수후보 ${payload.buyCount ?? 0}개 / 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.${longTermDiffCount ? ` 변화 ${longTermDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
     );
+    showAppToast({
+      title: "중장기 추천 검색 완료",
+      message: `매수후보 ${payload.buyCount ?? 0}개, 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.`,
+      tone: longTermDiffCount ? "positive" : "neutral"
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "universe 검색 중 오류가 발생했습니다.";
     console.error(error);
     showError(message);
     showSummary("");
+    showAppToast({
+      title: `${requestedLabel} 추천 검색 실패`,
+      message,
+      tone: "negative",
+      duration: 5200
+    });
   } finally {
-    recommendationUniverseScanLoadingByCategory[requestedCategory] = false;
+    recommendationUniverseScanLoadingByCategory[requestedLoadingKey] = false;
     updateUniverseRecommendationButton();
   }
 }
@@ -3469,22 +3785,22 @@ function loadCatalog() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) {
-      return defaultRecommendationCatalog.map(normalizeRecommendation);
+      return dedupeLongTermRecommendations(defaultRecommendationCatalog.map(normalizeRecommendation));
     }
 
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || !parsed.length) {
-      return defaultRecommendationCatalog.map(normalizeRecommendation);
+      return dedupeLongTermRecommendations(defaultRecommendationCatalog.map(normalizeRecommendation));
     }
 
-    const normalized = parsed.filter(isValidRecommendation).map(normalizeRecommendation).map(repairRecommendationText);
+    const normalized = dedupeLongTermRecommendations(parsed.filter(isValidRecommendation).map(normalizeRecommendation)).map(repairRecommendationText);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
     if (localStorage.getItem(LEGACY_STORAGE_KEY)) {
       localStorage.removeItem(LEGACY_STORAGE_KEY);
     }
     return normalized;
   } catch {
-    return defaultRecommendationCatalog.map(normalizeRecommendation);
+    return dedupeLongTermRecommendations(defaultRecommendationCatalog.map(normalizeRecommendation));
   }
 }
 
@@ -3504,18 +3820,20 @@ function isValidRecommendation(item) {
 
 function normalizeRecommendation(item) {
   const category = resolveRecommendationCategory(item?.category);
+  const swingProfile = category === "swing" ? resolveSwingProfile(item?.swingProfile) : undefined;
   const normalizedName = typeof item?.name === "string" ? item.name : typeof item?.symbol === "string" ? item.symbol : "종목";
   const normalizedSymbol = typeof item?.symbol === "string" ? item.symbol : "";
   const baseKey =
     typeof item?.key === "string" && item.key.trim()
       ? item.key.trim()
-      : createRecommendationKey(normalizedName, normalizedSymbol, category);
+      : createRecommendationKey(normalizedName, normalizedSymbol, category, swingProfile);
   return {
     ...item,
-    key: scopeRecommendationKey(baseKey, category),
+    key: scopeRecommendationKey(baseKey, category, swingProfile),
     category,
     longTermBucket: category === "swing" ? undefined : resolveLongTermBucket(item),
     swingBucket: category === "swing" ? resolveSwingBucket(item) : undefined,
+    swingProfile,
     source: typeof item?.source === "string" ? item.source : undefined
   };
 }
@@ -3546,6 +3864,18 @@ function isValidLongTermBucket(value) {
   return value === "buy" || value === "watch";
 }
 
+function resolveSwingProfile(value) {
+  return value === "smallcap" ? "smallcap" : DEFAULT_SWING_PROFILE;
+}
+
+function isValidSwingProfile(value) {
+  return value === "default" || value === "smallcap";
+}
+
+function getSwingProfileLabel(profile) {
+  return profile === "smallcap" ? "소형 스윙" : "기본 스윙";
+}
+
 function isSwingCategory(category) {
   return category === "swing";
 }
@@ -3566,13 +3896,18 @@ function resolveRecommendationCategory(category) {
   return DEFAULT_CATEGORY;
 }
 
-function scopeRecommendationKey(key, category) {
+function scopeRecommendationKey(key, category, swingProfile = DEFAULT_SWING_PROFILE) {
   if (!key) {
     return key;
   }
 
   if (category === DEFAULT_CATEGORY) {
-    return key.replace(/-(dividend|swing)$/u, "");
+    return key.replace(/-(dividend|swing(?:-smallcap)?)$/u, "");
+  }
+
+  if (category === "swing") {
+    const suffix = swingProfile === "smallcap" ? "swing-smallcap" : "swing";
+    return key.endsWith(`-${suffix}`) ? key : `${key}-${suffix}`;
   }
 
   return key.endsWith(`-${category}`) ? key : `${key}-${category}`;
@@ -3649,9 +3984,100 @@ function formatDividendYield(value) {
   return `${formatDecimal(value, 2)}%`;
 }
 
+function formatExpenseRatio(value) {
+  if (value == null || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return `${formatDecimal(value, 2)}%`;
+}
+
+function renderDividendSectionIntro(title, caption, meta = "") {
+  return `
+    <section class="recommendation-subsection">
+      <div class="section-head recommendation-subsection-head">
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="field-help">${escapeHtml(caption)}</p>
+        </div>
+        ${meta ? `<span class="section-meta">${escapeHtml(meta)}</span>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderDividendEtfSection() {
+  const items = Array.isArray(dividendEtfRecommendations) ? dividendEtfRecommendations : [];
+  const intro = renderDividendSectionIntro(
+    "Dividend ETF",
+    "배당 중심 ETF만 별도 필터로 추려서 표시합니다. 종목형 배당 점수는 적용하지 않습니다.",
+    `${items.length}개`
+  );
+
+  if (!items.length) {
+    return `
+      ${intro}
+      <section class="dividend-etf-section">
+        <div class="empty-state">
+          <p>No dividend ETFs match the current filter conditions.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    ${intro}
+    <section class="dividend-etf-section">
+      <div class="dividend-etf-list">
+        ${items
+          .map(
+            (item) => `
+              <article class="dividend-etf-card ${selectedDividendEtfSymbol === item.symbol ? "selected" : ""}">
+                <button class="dividend-etf-button" type="button" data-dividend-etf-symbol="${escapeHtml(item.symbol)}">
+                  <div class="dividend-etf-card-head">
+                    <div>
+                      <h4>${escapeHtml(item.name || item.symbol)}</h4>
+                      <p class="dividend-etf-symbol">${escapeHtml(item.symbol)}</p>
+                    </div>
+                    <span class="dividend-etf-category">${escapeHtml(item.category || "-")}</span>
+                  </div>
+                  <div class="dividend-etf-metrics">
+                    <span class="dividend-etf-metric-chip">Dividend Yield ${escapeHtml(formatDividendYield(item.dividendYield))}</span>
+                    <span class="dividend-etf-metric-chip">Expense Ratio ${escapeHtml(formatExpenseRatio(item.expenseRatio))}</span>
+                    <span class="dividend-etf-metric-chip">History ${escapeHtml(formatNumber(item.dividendHistoryYears))}y</span>
+                  </div>
+                  <p class="dividend-etf-note">${escapeHtml(item.note || "Passed dividend ETF filters / meets base conditions")}</p>
+                </button>
+              </article>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function getDividendHistoryEntries(item) {
   if (!isDividendCategory(item?.category)) {
     return [];
+  }
+
+  if (Array.isArray(item?.etfDividendHistory) && item.etfDividendHistory.length) {
+    return item.etfDividendHistory
+      .slice(0, 4)
+      .map((entry, index) => ({
+        label: typeof entry?.label === "string" && entry.label ? entry.label : `최근 ${index + 1}`,
+        dividendDateLabel:
+          typeof entry?.dividendDateLabel === "string" && entry.dividendDateLabel
+            ? entry.dividendDateLabel
+            : typeof entry?.label === "string" && entry.label
+              ? entry.label
+              : "-",
+        dividendAmount:
+          typeof entry?.dividendAmount === "number" && Number.isFinite(entry.dividendAmount) ? entry.dividendAmount : undefined,
+        dividendYield:
+          typeof entry?.dividendYield === "number" && Number.isFinite(entry.dividendYield) ? entry.dividendYield : undefined
+      }));
   }
 
   const history = Array.isArray(item?.fundamentals?.dividendHistory) ? item.fundamentals.dividendHistory.slice(-4) : [];
@@ -3712,6 +4138,7 @@ function buildDividendInfoLine(item) {
     return "";
   }
 
+  const isEtfHistory = Array.isArray(item?.etfDividendHistory) && item.etfDividendHistory.length;
   const latestHistory = getDividendHistoryEntries(item)[0];
   const date =
     typeof item?.latestDividendDate === "string" && item.latestDividendDate
@@ -3723,8 +4150,11 @@ function buildDividendInfoLine(item) {
       : latestHistory?.dividendAmount;
   const amountText = amountValue != null ? formatDividendAmount(amountValue) : "";
   const yieldText = formatDividendYield(latestHistory?.dividendYield);
+  const dateLabel = isEtfHistory ? "최근 분배일" : "최근 배당일";
+  const amountLabel = isEtfHistory ? "분배금" : "배당액";
+  const yieldLabel = isEtfHistory ? "추정 분배수익률" : "추정 배당수익률";
 
-  return [`최근 배당일 ${date || "-"}`, `배당액 ${amountText || "-"}`, `추정 배당수익률 ${yieldText}`].join(" / ");
+  return [`${dateLabel} ${date || "-"}`, `${amountLabel} ${amountText || "-"}`, `${yieldLabel} ${yieldText}`].join(" / ");
 }
 
 function buildDividendHistoryPanel(item) {
@@ -3732,15 +4162,20 @@ function buildDividendHistoryPanel(item) {
     return "";
   }
 
+  const isEtfHistory = Array.isArray(item?.etfDividendHistory) && item.etfDividendHistory.length;
   const entries = getDividendHistoryEntries(item);
+  const historyTitle = isEtfHistory ? "최근 ETF 분배 이력" : "최근 4년 배당 이력";
+  const historyEmpty = isEtfHistory ? "최근 ETF 분배일과 분배금을 아직 불러오지 못했습니다." : "최근 4년 배당일과 배당액을 아직 불러오지 못했습니다.";
+  const yieldHeader = isEtfHistory ? "추정 분배수익률" : "추정 배당수익률";
+  const emptyLabel = isEtfHistory ? "분배 데이터 없음" : "배당 데이터 없음";
   if (!entries.length) {
     return `
       <div class="dividend-history-block">
         <div class="dividend-history-head">
-          <strong>최근 4년 배당 이력</strong>
-          <span>배당 데이터 없음</span>
+          <strong>${historyTitle}</strong>
+          <span>${emptyLabel}</span>
         </div>
-        <div class="dividend-history-empty">최근 4년 배당일과 배당액을 아직 불러오지 못했습니다.</div>
+        <div class="dividend-history-empty">${historyEmpty}</div>
       </div>
     `;
   }
@@ -3748,15 +4183,15 @@ function buildDividendHistoryPanel(item) {
   return `
     <div class="dividend-history-block">
       <div class="dividend-history-head">
-        <strong>최근 4년 배당 이력</strong>
+        <strong>${historyTitle}</strong>
         <span>최신순</span>
       </div>
-      <div class="dividend-history-table" role="table" aria-label="최근 4년 배당 이력">
+      <div class="dividend-history-table" role="table" aria-label="${historyTitle}">
         <div class="dividend-history-row dividend-history-row-head" role="row">
           <span role="columnheader">구분</span>
           <span role="columnheader">배당일</span>
           <span role="columnheader">배당액</span>
-          <span role="columnheader">추정 배당수익률</span>
+          <span role="columnheader">${yieldHeader}</span>
         </div>
         ${entries
           .map(
@@ -3800,6 +4235,15 @@ function getEngineReviewEmptyText(category) {
 }
 
 function getMarketWatchDisplayMetrics(snapshot, timeframe = "daily") {
+  if (timeframe === "daily") {
+    return {
+      price: snapshot?.price,
+      changeAmount: snapshot?.changeAmount,
+      changePercent: snapshot?.changePercent,
+      latestDate: snapshot?.latestDate ?? snapshot?.chartSets?.daily?.endDate
+    };
+  }
+
   const chartWindow = snapshot?.chartSets?.[timeframe] ?? snapshot?.chartSets?.daily;
   const points = chartWindow?.points ?? [];
   const latestPoint = points.at(-1);
@@ -3849,7 +4293,12 @@ function repairRecommendationText(item, fallbackName) {
   }
 
   if (looksCorruptedText(next.key)) {
-    next.key = createRecommendationKey(next.name, next.symbol, resolveRecommendationCategory(next.category));
+    next.key = createRecommendationKey(
+      next.name,
+      next.symbol,
+      resolveRecommendationCategory(next.category),
+      resolveSwingProfile(next.swingProfile)
+    );
   }
 
   if (looksCorruptedText(next.note)) {
@@ -3882,7 +4331,10 @@ function getFilteredCatalog() {
     }
 
     if (isSwingCategory(currentCategory)) {
-      return (item.swingBucket ?? DEFAULT_SWING_BUCKET) === currentSwingBucket;
+      return (
+        resolveSwingProfile(item.swingProfile) === currentSwingProfile &&
+        (item.swingBucket ?? DEFAULT_SWING_BUCKET) === currentSwingBucket
+      );
     }
 
     return (item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET) === currentLongTermBucket;
@@ -3969,7 +4421,7 @@ function openStockModal() {
   stockForm.reset();
   if (stockModalTitle) {
     stockModalTitle.textContent = isSwingCategory(currentCategory)
-      ? "스윙 추천 추가"
+      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 추가`
       : isDividendCategory(currentCategory)
         ? "배당 종목 추가"
         : "중장기 추천 추가";
@@ -4005,6 +4457,7 @@ function buildStockFromForm() {
   const symbol = stockSymbolInput.value.trim();
   const anchorDate = stockDateInput.value;
   const category = resolveRecommendationCategory(stockCategorySelect?.value);
+  const swingProfile = category === "swing" ? currentSwingProfile : undefined;
   const longTermBucket = category === "swing" ? undefined : isValidLongTermBucket(longTermBucketSelect?.value) ? longTermBucketSelect.value : DEFAULT_LONG_TERM_BUCKET;
   const swingBucket = category === "swing" ? currentSwingBucket : undefined;
   const recommendedPrice = Number(stockPriceInput.value);
@@ -4021,8 +4474,16 @@ function buildStockFromForm() {
     return null;
   }
 
-  const key = createRecommendationKey(name, symbol, category);
-  if (recommendationCatalog.some((item) => item.key === key || (item.symbol === symbol && (item.category ?? DEFAULT_CATEGORY) === category))) {
+  const key = createRecommendationKey(name, symbol, category, swingProfile);
+  if (
+    recommendationCatalog.some(
+      (item) =>
+        item.key === key ||
+        (item.symbol === symbol &&
+          (item.category ?? DEFAULT_CATEGORY) === category &&
+          (!isSwingCategory(category) || resolveSwingProfile(item.swingProfile) === swingProfile))
+    )
+  ) {
     showError("같은 탭에는 동일한 종목을 중복 등록할 수 없습니다.");
     return null;
   }
@@ -4035,6 +4496,7 @@ function buildStockFromForm() {
     source: "manual",
     longTermBucket,
     swingBucket,
+    swingProfile,
     latestDividendDate,
     latestDividendAmount,
     anchorDate,
@@ -4096,9 +4558,25 @@ function getLongTermBucketCounts(category = DEFAULT_CATEGORY) {
     );
 }
 
-function getSwingBucketCounts() {
+function getSwingProfileCounts() {
   return recommendationCatalog
     .filter((item) => (item.category ?? DEFAULT_CATEGORY) === "swing")
+    .reduce(
+      (counts, item) => {
+        const profile = resolveSwingProfile(item.swingProfile);
+        counts[profile] += 1;
+        return counts;
+      },
+      { default: 0, smallcap: 0 }
+    );
+}
+
+function getSwingBucketCounts() {
+  return recommendationCatalog
+    .filter(
+      (item) =>
+        (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === currentSwingProfile
+    )
     .reduce(
       (counts, item) => {
         const bucket = item.swingBucket === "watch" ? "watch" : "execution";
@@ -4112,8 +4590,8 @@ function getSwingBucketCounts() {
 function getCurrentFilterEmptyMessage() {
   if (isSwingCategory(currentCategory)) {
     return currentSwingBucket === "watch"
-      ? "관심후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다."
-      : "매수후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.";
+      ? `${getSwingProfileLabel(currentSwingProfile)} 관심후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`
+      : `${getSwingProfileLabel(currentSwingProfile)} 매수후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`;
   }
 
   return `${getNonSwingBucketLabel(currentCategory, currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;
@@ -4128,17 +4606,51 @@ function renderEmptyResultsForCurrentFilter() {
   results.innerHTML = `<div class="empty-state"><p>${getCurrentFilterEmptyMessage()}</p></div>`;
 }
 
-function createRecommendationKey(name, symbol, category = DEFAULT_CATEGORY) {
+function createRecommendationKey(name, symbol, category = DEFAULT_CATEGORY, swingProfile = DEFAULT_SWING_PROFILE) {
   const baseKey = `${name}-${symbol}`;
-  return scopeRecommendationKey(baseKey, resolveRecommendationCategory(category));
+  return scopeRecommendationKey(baseKey, resolveRecommendationCategory(category), resolveSwingProfile(swingProfile));
 }
 
-async function runAnalysisByKey(key) {
-  const item = recommendationCatalog.find((candidate) => candidate.key === key);
-  if (!item) {
-    return;
+function getRecentKoreaBusinessDate() {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - 1);
+
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() - 1);
   }
 
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function createDividendEtfAnalysisItem(symbol) {
+  const item = dividendEtfRecommendations.find((candidate) => candidate.symbol === symbol);
+  if (!item) {
+    return null;
+  }
+
+  const latestHistory = Array.isArray(item.dividendHistory) ? item.dividendHistory[0] : null;
+
+  return {
+    key: `dividend-etf-${item.symbol}`,
+    name: item.name,
+    symbol: item.symbol,
+    anchorDate: getRecentKoreaBusinessDate(),
+    note: item.note,
+    category: DIVIDEND_CATEGORY,
+    longTermBucket: "watch",
+    etfCategory: item.category,
+    etfExpenseRatio: item.expenseRatio,
+    etfDividendHistory: Array.isArray(item.dividendHistory) ? item.dividendHistory : [],
+    latestDividendDate: latestHistory?.dividendDateLabel,
+    latestDividendAmount: latestHistory?.dividendAmount
+  };
+}
+
+async function runAnalysisForRecommendation(item) {
   setStatus("loading", "분석 중");
   showSummary("");
   showError("");
@@ -4167,12 +4679,14 @@ async function runAnalysisByKey(key) {
     let swingPatternAnalysis = null;
     if (item.category === "swing") {
       try {
+        const profile = resolveSwingProfile(item.swingProfile);
         const swingResponse = await fetch("/analysis/smart-money-patterns", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
+            profile,
             items: [
               {
                 name: item.name,
@@ -4239,6 +4753,15 @@ async function runAnalysisByKey(key) {
     results.classList.add("empty");
     results.innerHTML = `<div class="empty-state"><p>오류를 해결한 뒤 다시 선택해주세요.</p></div>`;
   }
+}
+
+async function runAnalysisByKey(key) {
+  const item = recommendationCatalog.find((candidate) => candidate.key === key);
+  if (!item) {
+    return;
+  }
+
+  await runAnalysisForRecommendation(item);
 }
 
 function enrichAnalysis(analysis, item, swingPatternAnalysis = null) {
@@ -4551,6 +5074,72 @@ function fillMissingWeekdayPoints(points) {
   }
 
   return filled;
+}
+
+function showAppToast(input = {}) {
+  if (!toastViewport) {
+    return;
+  }
+
+  const payload =
+    typeof input === "string"
+      ? { message: input }
+      : input && typeof input === "object"
+        ? input
+        : {};
+  const title = typeof payload.title === "string" && payload.title.trim() ? payload.title.trim() : "알림";
+  const message = typeof payload.message === "string" && payload.message.trim() ? payload.message.trim() : "";
+  if (!message) {
+    return;
+  }
+
+  const tone = payload.tone === "positive" || payload.tone === "negative" ? payload.tone : "neutral";
+  const duration = Number.isFinite(payload.duration) ? Math.max(1800, Number(payload.duration)) : 4200;
+  const toastId = `toast-${toastSequence += 1}`;
+  const toast = document.createElement("article");
+  toast.className = `app-toast ${tone}`;
+  toast.dataset.toastId = toastId;
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `
+    <div class="app-toast-head">
+      <span class="app-toast-title">${escapeHtml(title)}</span>
+      <button class="app-toast-close" type="button" data-toast-dismiss aria-label="닫기">×</button>
+    </div>
+    <p class="app-toast-message">${escapeHtml(message)}</p>
+  `;
+
+  toastViewport.append(toast);
+  requestAnimationFrame(() => {
+    toast.classList.add("is-visible");
+  });
+
+  const timerId = window.setTimeout(() => {
+    dismissToast(toastId);
+  }, duration);
+  toastDismissTimers.set(toastId, timerId);
+}
+
+function dismissToast(toastId) {
+  if (!toastId || !toastViewport) {
+    return;
+  }
+
+  const timerId = toastDismissTimers.get(toastId);
+  if (timerId) {
+    window.clearTimeout(timerId);
+    toastDismissTimers.delete(toastId);
+  }
+
+  const toast = toastViewport.querySelector(`[data-toast-id="${toastId}"]`);
+  if (!toast || toast.classList.contains("is-leaving")) {
+    return;
+  }
+
+  toast.classList.remove("is-visible");
+  toast.classList.add("is-leaving");
+  window.setTimeout(() => {
+    toast.remove();
+  }, 220);
 }
 
 function setStatus(kind, text) {
@@ -6133,19 +6722,22 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null) {
     color: "#177245",
     lineWidth: 2,
     priceLineVisible: false,
-    lastValueVisible: false
+    lastValueVisible: false,
+    crosshairMarkerVisible: false
   });
   const ma20Series = priceChart.addSeries(LineSeries, {
     color: "#d84c3f",
     lineWidth: 2,
     priceLineVisible: false,
-    lastValueVisible: false
+    lastValueVisible: false,
+    crosshairMarkerVisible: false
   });
   const ma60Series = priceChart.addSeries(LineSeries, {
     color: "#2563eb",
     lineWidth: 2,
     priceLineVisible: false,
-    lastValueVisible: false
+    lastValueVisible: false,
+    crosshairMarkerVisible: false
   });
   const chartState = {
     points

@@ -2,15 +2,17 @@ import { scanDividendUniverse } from "./dividendEngine.js";
 import { scanLongTermUniverse } from "./longTermEngine.js";
 import { writeServerDividendPicks } from "./serverDividendPicks.js";
 import { writeServerLongTermPicks } from "./serverLongTermPicks.js";
-import { writeServerSwingPicks } from "./serverSwingPicks.js";
+import { readServerSwingPickPayload, writeServerSwingPicks } from "./serverSwingPicks.js";
 import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
+import { getSwingProfileFilterOverrides, resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 import { getTradingHaltLookup } from "./tradingHalts.js";
 
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
 
 type RecommendationUniverseCategory = "longTerm" | "dividend" | "swing";
+type RecommendationUniverseScanScope = RecommendationUniverseCategory | `swing:${SwingEngineProfile}`;
 type UniverseItem = Awaited<ReturnType<typeof getStockUniverse>>["items"][number];
 type SmartMoneyAnalysis = Awaited<ReturnType<typeof analyzeSmartMoneyPattern>>;
 type DividendScanResult = Awaited<ReturnType<typeof scanDividendUniverse>>;
@@ -54,7 +56,7 @@ type RecommendationUniverseScanResult =
       watchItems: Awaited<ReturnType<typeof writeServerSwingPicks>>["watchItems"];
     };
 
-const activeScanByCategory = new Map<RecommendationUniverseCategory, Promise<RecommendationUniverseScanResult>>();
+const activeScanByCategory = new Map<RecommendationUniverseScanScope, Promise<RecommendationUniverseScanResult>>();
 
 function formatLongTermNoteLabel(label: LongTermUniverseCandidate["label"]) {
   switch (label) {
@@ -289,6 +291,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const pattern = analysis.pattern;
   const riskRewardRatio = pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio ?? 0;
   const withinEntryZone = isWithinSwingEntryZone(pattern);
+  const setupPullbackReady = pattern.stage !== "setup" || pattern.status === "buy_ready";
   const weakVolumeContraction = pattern.stage === "setup" && (pattern.volumeContractionScore ?? 0) < 60;
   const poorCandleStructure = (pattern.candleQualityScore ?? 100) < 60;
   const negativeSma20Slope = (pattern.sma20SlopePercent ?? 0) < 0;
@@ -298,7 +301,8 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const haltPenalty = analysis.haltAction === "allow_with_penalty";
   const lowQuality = weakVolumeContraction || poorCandleStructure || negativeSma20Slope || unstableSupport || weakRiskReward;
   const readyByEngine = pattern.actionable && !haltWatchOnly && !haltPenalty;
-  const probeByLocation = pattern.matched && withinEntryZone && !haltWatchOnly;
+  // Setup names should stay on watch until the pullback has progressed to the engine's buy-ready state.
+  const probeByLocation = pattern.matched && withinEntryZone && setupPullbackReady && !haltWatchOnly;
 
   if (readyByEngine && !lowQuality) {
     return {
@@ -344,7 +348,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     reasons: dedupeStrings([
       ...(pattern.classificationReasons ?? []),
       pattern.status === "breakout_extended" ? "extended_leader_watch" : "",
-      pattern.stage === "setup" && !withinEntryZone ? "pullback_pending" : "",
+      pattern.stage === "setup" && (!withinEntryZone || pattern.status !== "buy_ready") ? "pullback_pending" : "",
       lowQuality ? "quality_not_ready" : "",
       haltPenalty ? "halt_penalty_active" : "",
       haltWatchOnly ? "halt_watch_only" : ""
@@ -366,14 +370,14 @@ function isSwingWatchEligible(analysis: SmartMoneyAnalysis) {
   return analysis.pattern.matched && analysis.pattern.status !== "pullback_early" && classifySwingCandidate(analysis).bucket === "watch";
 }
 
-async function scanSwingChunk(chunk: UniverseItem[]) {
+async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile) {
   const settled = await Promise.allSettled(
     chunk.map(async (item) => ({
       item,
       analysis: await analyzeSmartMoneyPattern({
         symbol: item.code,
         name: item.name
-      })
+      }, getSwingProfileFilterOverrides(profile))
     }))
   );
 
@@ -465,7 +469,8 @@ async function scanAndSaveDividendUniverse(): Promise<RecommendationUniverseScan
   };
 }
 
-async function scanAndSaveSwingUniverse(): Promise<RecommendationUniverseScanResult> {
+async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Promise<RecommendationUniverseScanResult> {
+  const profile = resolveSwingEngineProfile(profileInput);
   const universe = await getStockUniverse({ forceRefresh: true });
   const targets = universe.items.filter((item) => SWING_TARGET_MARKETS.has(item.market));
   const tradingHaltLookup = await getTradingHaltLookup({ forceRefresh: true });
@@ -476,7 +481,7 @@ async function scanAndSaveSwingUniverse(): Promise<RecommendationUniverseScanRes
 
   for (let index = 0; index < activeTargets.length; index += SWING_CHUNK_SIZE) {
     const chunk = activeTargets.slice(index, index + SWING_CHUNK_SIZE);
-    const result = await scanSwingChunk(chunk);
+    const result = await scanSwingChunk(chunk, profile);
     actionable.push(...result.actionable);
     watch.push(...result.watch);
     failures += result.failures;
@@ -485,10 +490,29 @@ async function scanAndSaveSwingUniverse(): Promise<RecommendationUniverseScanRes
   actionable.sort(compareSwingAnalyses);
   watch.sort(compareSwingAnalyses);
 
-  const payload = await writeServerSwingPicks({
-    executionItems: actionable.map(({ item, analysis }) => toServerSwingPick(item, analysis, classifySwingCandidate(analysis))),
-    watchItems: watch.map(({ item, analysis }) => toServerSwingPick(item, analysis, classifySwingCandidate(analysis)))
-  });
+  const defaultSwingSymbols =
+    profile === "smallcap"
+      ? new Set((await readServerSwingPickPayload("default")).items.map((item) => item.symbol))
+      : null;
+  const filteredActionable =
+    defaultSwingSymbols == null ? actionable : actionable.filter(({ item }) => !defaultSwingSymbols.has(item.code));
+  const filteredWatch = defaultSwingSymbols == null ? watch : watch.filter(({ item }) => !defaultSwingSymbols.has(item.code));
+
+  const payload = await writeServerSwingPicks(
+    {
+      executionItems: filteredActionable.map(({ item, analysis }) => ({
+        ...toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        swingProfile: profile
+      })),
+      watchItems: filteredWatch.map(({ item, analysis }) => ({
+        ...toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        swingProfile: profile
+      }))
+    },
+    {
+      profile
+    }
+  );
 
   return {
     category: "swing",
@@ -503,8 +527,14 @@ async function scanAndSaveSwingUniverse(): Promise<RecommendationUniverseScanRes
   };
 }
 
-export async function scanRecommendationUniverse(category: RecommendationUniverseCategory): Promise<RecommendationUniverseScanResult> {
-  const existing = activeScanByCategory.get(category);
+export async function scanRecommendationUniverse(
+  category: RecommendationUniverseCategory,
+  options?: { swingProfile?: SwingEngineProfile }
+): Promise<RecommendationUniverseScanResult> {
+  const swingProfile = resolveSwingEngineProfile(options?.swingProfile);
+  const scopeKey: RecommendationUniverseScanScope =
+    category === "swing" ? (`swing:${swingProfile}` as const) : category;
+  const existing = activeScanByCategory.get(scopeKey);
   if (existing) {
     return existing;
   }
@@ -514,11 +544,11 @@ export async function scanRecommendationUniverse(category: RecommendationUnivers
       ? scanAndSaveLongTermUniverse()
       : category === "dividend"
         ? scanAndSaveDividendUniverse()
-        : scanAndSaveSwingUniverse()
+        : scanAndSaveSwingUniverse(swingProfile)
   ).finally(() => {
-    activeScanByCategory.delete(category);
+    activeScanByCategory.delete(scopeKey);
   });
 
-  activeScanByCategory.set(category, nextScan);
+  activeScanByCategory.set(scopeKey, nextScan);
   return nextScan;
 }

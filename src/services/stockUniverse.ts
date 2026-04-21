@@ -45,7 +45,7 @@ function parseCode(value: string): string | undefined {
     return undefined;
   }
 
-  const directMatch = normalized.match(/\b[0-9A-Z]{6}\b/);
+  const directMatch = normalized.match(/\b\d{6}\b/);
   if (directMatch) {
     return directMatch[0];
   }

@@ -21739,6 +21739,8 @@ function NewsSignalDashboard() {
   const [payload, setPayload] = (0, import_react.useState)(null);
   const [isLoading, setIsLoading] = (0, import_react.useState)(true);
   const [error, setError] = (0, import_react.useState)("");
+  const hasHydratedSignalsRef = (0, import_react.useRef)(false);
+  const seenSignalKeysRef = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
     let cancelled = false;
     async function loadSignals({ keepPrevious = false } = {}) {
@@ -21753,6 +21755,16 @@ function NewsSignalDashboard() {
           throw new Error(data.error ?? "\uB274\uC2A4 \uC2DC\uADF8\uB110 \uB370\uC774\uD130\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
         }
         if (!cancelled) {
+          const nextSignals = Array.isArray(data.signals) ? data.signals : [];
+          const nextKeys = new Set(nextSignals.map((signal) => createSignalToastKey(signal)));
+          if (hasHydratedSignalsRef.current) {
+            const newSignals = nextSignals.filter((signal) => !seenSignalKeysRef.current.has(createSignalToastKey(signal)));
+            if (newSignals.length) {
+              announceNewsSignals(newSignals);
+            }
+          }
+          seenSignalKeysRef.current = nextKeys;
+          hasHydratedSignalsRef.current = true;
           setPayload(data);
         }
       } catch (loadError) {
@@ -21984,6 +21996,27 @@ function isLiveNewsUrl(value) {
   } catch {
     return false;
   }
+}
+function createSignalToastKey(signal) {
+  return [signal?.ticker, signal?.eventType, signal?.timestamp, signal?.summary].filter(Boolean).join("|");
+}
+function announceNewsSignals(signals) {
+  if (typeof window === "undefined" || typeof window.showAppToast !== "function" || !signals.length) {
+    return;
+  }
+  const sorted = [...signals].sort(
+    (left, right) => Math.abs(right.score ?? 0) - Math.abs(left.score ?? 0) || Date.parse(right.timestamp) - Date.parse(left.timestamp)
+  );
+  const headline = sorted[0];
+  const eventLabel = eventLabels[headline.eventType] ?? headline.eventType ?? "\uC774\uBCA4\uD2B8";
+  const title = signals.length > 1 ? `\uC0C8 \uB274\uC2A4 \uC774\uBCA4\uD2B8 ${signals.length}\uAC74` : "\uC0C8 \uB274\uC2A4 \uC774\uBCA4\uD2B8";
+  const message = `${headline.companyName} \xB7 ${eventLabel} \xB7 \uC810\uC218 ${formatScore(headline.score)}${signals.length > 1 ? " \uD3EC\uD568" : ""}`;
+  window.showAppToast({
+    title,
+    message,
+    tone: headline.sentiment === "negative" ? "negative" : "positive",
+    duration: 5200
+  });
 }
 var rootElement = document.querySelector("#newsSignalRoot");
 if (rootElement) {
