@@ -1,4 +1,4 @@
-# Stock Project Dashboard
+# stockMon Dashboard
 
 TypeScript + Express 기반의 국내 주식 분석 대시보드입니다.
 현재 저장소는 추천 종목 추적, 스마트머니/스윙 엔진, 장기 엔진, 급등/급락 탐지, 시장 감시, 실시간 알림 기능을 중심으로 구성되어 있습니다.

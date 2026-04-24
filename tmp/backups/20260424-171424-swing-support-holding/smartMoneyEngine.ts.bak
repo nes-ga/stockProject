@@ -212,13 +212,6 @@ function resolveSetupEntryZone(params: {
     return resolveBreakoutRetestZone(params.breakoutLevel, normalizedPullbackLow, params.filters.maxSetupDistanceBelowBreakoutLevelPercent);
   }
 
-  if (params.setupType === "support_holding_pullback") {
-    return {
-      entryZoneLow: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.05),
-      entryZoneHigh: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.35)
-    };
-  }
-
   const normalizedSma20 =
     typeof params.referenceSma20 === "number" && Number.isFinite(params.referenceSma20) && params.referenceSma20 > 0
       ? clamp(params.referenceSma20, normalizedPullbackLow, params.breakoutLevel)
@@ -244,6 +237,10 @@ function resolveSetupEntryZone(params: {
   } else if (params.setupType === "volatile_power_digestion") {
     lowRatio = params.filters.volatileDigestionBuyZoneLowRetracementRatio;
     highRatio = params.filters.volatileDigestionBuyZoneHighRetracementRatio;
+  } else if (params.setupType === "support_holding_pullback") {
+    // Deep support-holding pullbacks should focus entries near the defended low, not near the old breakout.
+    lowRatio = 0.05;
+    highRatio = 0.35;
   }
 
   const normalizedLowRatio = clampRatio(Math.min(lowRatio, highRatio));
@@ -341,10 +338,8 @@ function deriveSupportStabilityScore(params: {
   referenceCloseVsBreakoutLevelPercent?: number;
   referenceClose: number;
   invalidationPrice?: number;
-  setupType?: SmartMoneySetupType;
 }) {
-  const supportHoldingMode = params.setupType === "support_holding_pullback";
-  let score = supportHoldingMode ? 96 : 88;
+  let score = 88;
 
   if (params.pullback.closeRangePercent <= 6) {
     score += 4;
@@ -353,36 +348,30 @@ function deriveSupportStabilityScore(params: {
   }
 
   if (params.pullback.pullbackMaxDrawdownPercent > 15) {
-    score -= supportHoldingMode ? 12 : 28;
+    score -= 28;
   } else if (params.pullback.pullbackMaxDrawdownPercent > 12) {
-    score -= supportHoldingMode ? 8 : 20;
+    score -= 20;
   } else if (params.pullback.pullbackMaxDrawdownPercent > 9) {
-    score -= supportHoldingMode ? 4 : 12;
+    score -= 12;
   } else if (params.pullback.pullbackMaxDrawdownPercent > 7) {
-    score -= supportHoldingMode ? 2 : 6;
+    score -= 6;
   }
 
   if (params.pullback.pullbackRangePercent > 20) {
-    score -= supportHoldingMode ? 8 : 18;
+    score -= 18;
   } else if (params.pullback.pullbackRangePercent > 15) {
-    score -= supportHoldingMode ? 4 : 10;
+    score -= 10;
   } else if (params.pullback.pullbackRangePercent > 10) {
-    score -= supportHoldingMode ? 2 : 4;
+    score -= 4;
   }
 
   if (params.pullback.pullbackDownSessions > 6) {
-    score -= supportHoldingMode ? 6 : 12;
+    score -= 12;
   } else if (params.pullback.pullbackDownSessions > 4) {
-    score -= supportHoldingMode ? 3 : 6;
+    score -= 6;
   }
 
-  if (supportHoldingMode) {
-    if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -28) {
-      score -= 8;
-    } else if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -20) {
-      score -= 4;
-    }
-  } else if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -8) {
+  if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -8) {
     score -= 14;
   } else if ((params.referenceCloseVsBreakoutLevelPercent ?? 0) < -4) {
     score -= 8;
@@ -418,67 +407,6 @@ function deriveVolumeContractionScore(pullback: PullbackAssessment) {
   }
 
   return 34;
-}
-
-function isBaseReclaimWatchEligible(params: {
-  pullback: PullbackAssessment;
-  pullbackSessions: number;
-  referenceCloseVsBasePercent?: number;
-  referenceClose: number;
-  invalidationPrice?: number;
-  volumeContractionScore: number;
-  riskRewardRatio?: number;
-  filters: SmartMoneyPatternFilters;
-}) {
-  if (params.pullback.setupType !== "tight_price_pullback" && params.pullback.setupType !== "time_correction") {
-    return false;
-  }
-
-  if (
-    params.referenceCloseVsBasePercent == null ||
-    params.referenceCloseVsBasePercent >= params.filters.minReferenceCloseVsBasePercent ||
-    params.referenceCloseVsBasePercent < params.filters.minReferenceCloseVsBaseWatchPercent
-  ) {
-    return false;
-  }
-
-  if ((params.pullback.pullbackVolumeRatioToLeadIn ?? Infinity) > params.filters.maxPullbackAvgVolumeRatio) {
-    return false;
-  }
-
-  if (params.pullback.pullbackDownSessions < params.filters.minSetupDownSessions) {
-    return false;
-  }
-
-  if (params.pullback.pullbackLow == null || params.invalidationPrice == null) {
-    return false;
-  }
-
-  if (params.pullback.pullbackLow >= params.referenceClose) {
-    return false;
-  }
-
-  if ((params.pullback.pullbackVolumeRatioToLeadIn ?? Infinity) > 0.18) {
-    return false;
-  }
-
-  if (params.pullbackSessions < params.filters.baseReclaimWatchMinPullbackSessions) {
-    return false;
-  }
-
-  if (params.volumeContractionScore < params.filters.baseReclaimWatchMinVolumeContractionScore) {
-    return false;
-  }
-
-  if ((params.riskRewardRatio ?? 0) < params.filters.baseReclaimWatchMinRiskRewardRatio) {
-    return false;
-  }
-
-  if (params.referenceClose <= params.invalidationPrice * params.filters.baseReclaimWatchMinStopDistanceRatio) {
-    return false;
-  }
-
-  return true;
 }
 
 function scoreCandleQuality(
@@ -1509,7 +1437,7 @@ export function evaluateSmartMoneyPattern(
 
         const referenceCloseVsBasePercent = percentChange(referencePoint.close, preLeadBaseClose);
         const referenceCloseVsPeakPercent = percentChange(referencePoint.close, surgePeakPoint.close);
-        if (referenceCloseVsBasePercent == null || referenceCloseVsPeakPercent == null || referenceCloseVsPeakPercent > filters.maxSetupCloseVsPeakPercent) {
+        if (referenceCloseVsBasePercent == null || referenceCloseVsBasePercent < filters.minReferenceCloseVsBasePercent || referenceCloseVsPeakPercent == null || referenceCloseVsPeakPercent > filters.maxSetupCloseVsPeakPercent) {
           continue;
         }
 
@@ -1582,8 +1510,7 @@ export function evaluateSmartMoneyPattern(
           pullback: setupPullback,
           referenceClose: referencePoint.close,
           referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
-          invalidationPrice: stopLossReference.price,
-          setupType: setupPullback.setupType
+          invalidationPrice: stopLossReference.price
         });
         const sma20SlopePercent = getSma20SlopePercent(points, referenceIndex);
         const sma20SlopeScore =
@@ -1604,20 +1531,6 @@ export function evaluateSmartMoneyPattern(
               : riskRewardRatio >= filters.executionProbeRiskRewardMin
                 ? 66
                 : 28;
-        const baseFilterPassed = referenceCloseVsBasePercent >= filters.minReferenceCloseVsBasePercent;
-        const baseReclaimWatchEligible = isBaseReclaimWatchEligible({
-          pullback: setupPullback,
-          pullbackSessions: setupPullbackPoints.length,
-          referenceCloseVsBasePercent,
-          referenceClose: referencePoint.close,
-          invalidationPrice: stopLossReference.price,
-          volumeContractionScore,
-          riskRewardRatio,
-          filters
-        });
-        if (!baseFilterPassed && !baseReclaimWatchEligible) {
-          continue;
-        }
         const baseValidityScore =
           pullbackBuyEligible && pullbackBuyPlan
             ? !pullbackBuyStillValid
@@ -1708,17 +1621,16 @@ export function evaluateSmartMoneyPattern(
                   `Support stability score dropped to ${supportStabilityScore}.`
                 )
               ]
-            : []),
-          ...(baseReclaimWatchEligible
-            ? [
-                createPenaltyFactor(
-                  "base_reclaim_pending",
-                  "Base reclaim pending",
-                  12,
-                  `Current close is ${Math.abs(referenceCloseVsBasePercent).toFixed(1)}% below the pre-lead base at ${preLeadBaseClose.toFixed(0)}.`
-                )
-              ]
             : [])
+        ];
+        const setupClassificationReasons = [
+          "matched_setup",
+          pullbackBuyStarted ? "entry_sma20_hit" : withinSetupEntryZone ? "entry_zone_hit" : "entry_zone_pending",
+          volumeContractionScore < 55 ? "weak_volume_contraction" : "volume_contraction_ok",
+          leadInCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
+          sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
+          supportStabilityScore < 55 ? "unstable_support" : "support_holding",
+          riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok"
         ];
         const rangePenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.6 : 5;
         const drawdownPenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.2 : 2.5;
@@ -1746,17 +1658,7 @@ export function evaluateSmartMoneyPattern(
           0,
           100
         );
-        const matched = !baseReclaimWatchEligible && setupScore >= setupThresholdScore;
-        const setupClassificationReasons = [
-          matched ? "matched_setup" : "setup_watch_only",
-          pullbackBuyStarted ? "entry_sma20_hit" : withinSetupEntryZone ? "entry_zone_hit" : "entry_zone_pending",
-          volumeContractionScore < 55 ? "weak_volume_contraction" : "volume_contraction_ok",
-          leadInCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
-          sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
-          supportStabilityScore < 55 ? "unstable_support" : "support_holding",
-          riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok",
-          ...(baseReclaimWatchEligible ? (["base_reclaim_watch"] as const) : [])
-        ];
+        const matched = setupScore >= setupThresholdScore;
         // A setup is not executable just because it "matched".
         // It only becomes actionable after the staged-buy logic says the first SMA20 buy area is live.
         const actionable =
@@ -1824,11 +1726,6 @@ export function evaluateSmartMoneyPattern(
           reasons: [
             `Lead-in on ${leadInPoint.date} printed ${leadInPriceChangePercent.toFixed(1)}% with solid turnover support.`,
             `The stock formed a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile power digestion" : setupPullback.setupType === "support_holding_pullback" ? "support-holding pullback" : setupPullback.pullbackType === "time_correction" ? "time correction" : "tight price pullback"} with volume cooling to ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor and close compression of ${setupPullback.closeRangePercent.toFixed(1)}%.`,
-            ...(baseReclaimWatchEligible
-              ? [
-                  `Current close is ${Math.abs(referenceCloseVsBasePercent).toFixed(1)}% below the pre-lead base at ${preLeadBaseClose.toFixed(0)}, so the setup stays on watch until that box is reclaimed.`
-                ]
-              : []),
             !pullbackBuyEligible
               ? `Current structure is a ${setupPullback.setupType === "time_correction" ? "re-breakout watch" : setupPullback.setupType === "support_holding_pullback" ? "support-holding watch" : "setup watch"} rather than a pullback-buy zone because the drawdown, distance, or funded-peak damage do not fit the staged-buy archetype.`
               : pullbackBuyActionable
@@ -1887,8 +1784,7 @@ export function evaluateSmartMoneyPattern(
             pullback: setupPullback,
             referenceClose: referencePoint.close,
             referenceCloseVsBreakoutLevelPercent: extensionPercent,
-            invalidationPrice: stopLossReference.price,
-            setupType: setupPullback.setupType
+            invalidationPrice: stopLossReference.price
           });
           const sma20SlopePercent = getSma20SlopePercent(points, referenceIndex);
           const sma20SlopeScore =

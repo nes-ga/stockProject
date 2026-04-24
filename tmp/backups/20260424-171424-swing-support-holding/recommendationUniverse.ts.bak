@@ -219,8 +219,10 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     key: `${item.name}-${item.code}`,
     name: item.name,
     symbol: item.code,
-    anchorDate: analysis.tradingReferenceDate,
-    latestMentionDate: analysis.tradingReferenceDate,
+    anchorDate:
+      analysis.pattern.stage === "breakout"
+        ? analysis.pattern.breakoutDate ?? analysis.tradingReferenceDate
+        : analysis.tradingReferenceDate,
     note: buildSwingNote(analysis.pattern),
     bucket: classification.bucket,
     tags: classification.tags,
@@ -230,17 +232,6 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     haltAction: analysis.haltAction,
     category: "swing" as const,
     source: "server-universe" as const
-  };
-}
-
-function preserveSwingPickDates(
-  nextPick: ReturnType<typeof toServerSwingPick>,
-  existingPick: Awaited<ReturnType<typeof readServerSwingPickPayload>>["items"][number] | undefined
-) {
-  return {
-    ...nextPick,
-    anchorDate: existingPick?.anchorDate ?? nextPick.anchorDate,
-    latestMentionDate: nextPick.latestMentionDate
   };
 }
 
@@ -284,46 +275,6 @@ export function isWithinSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
   return typeof pattern.invalidationPrice !== "number" || pattern.referenceClose > pattern.invalidationPrice;
 }
 
-function isBelowSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
-  if (
-    !pattern.matched ||
-    pattern.stage !== "setup" ||
-    typeof pattern.referenceClose !== "number" ||
-    typeof pattern.entryZoneLow !== "number" ||
-    typeof pattern.entryZoneHigh !== "number"
-  ) {
-    return false;
-  }
-
-  const low = Math.min(pattern.entryZoneLow, pattern.entryZoneHigh);
-  return pattern.referenceClose < low;
-}
-
-function isSupportHoldingProbeEligible(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
-  if (
-    pattern.setupType !== "support_holding_pullback" ||
-    !pattern.matched ||
-    pattern.stage !== "setup" ||
-    pattern.status !== "pullback_deep" ||
-    pattern.debugInfo.supportStatus !== "holding" ||
-    typeof pattern.referenceClose !== "number" ||
-    typeof pattern.invalidationPrice !== "number"
-  ) {
-    return false;
-  }
-
-  // Only mature deep pullbacks should bypass the normal entry-zone timing gate.
-  if ((pattern.pullbackSessions ?? 0) < 5) {
-    return false;
-  }
-
-  if (pattern.referenceClose <= pattern.invalidationPrice * 1.08) {
-    return false;
-  }
-
-  return riskRewardRatio >= 1.2 && (isWithinSwingEntryZone(pattern) || isBelowSwingEntryZone(pattern));
-}
-
 function dedupeStrings<T extends string>(values: T[]) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -341,7 +292,6 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const riskRewardRatio = pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio ?? 0;
   const withinEntryZone = isWithinSwingEntryZone(pattern);
   const setupPullbackReady = pattern.stage !== "setup" || pattern.status === "buy_ready";
-  const supportHoldingProbeEligible = isSupportHoldingProbeEligible(pattern, riskRewardRatio);
   const weakVolumeContraction = pattern.stage === "setup" && (pattern.volumeContractionScore ?? 0) < 60;
   const poorCandleStructure = (pattern.candleQualityScore ?? 100) < 60;
   const negativeSma20Slope = (pattern.sma20SlopePercent ?? 0) < 0;
@@ -352,10 +302,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const lowQuality = weakVolumeContraction || poorCandleStructure || negativeSma20Slope || unstableSupport || weakRiskReward;
   const readyByEngine = pattern.actionable && !haltWatchOnly && !haltPenalty;
   // Setup names should stay on watch until the pullback has progressed to the engine's buy-ready state.
-  const probeByLocation =
-    pattern.matched &&
-    !haltWatchOnly &&
-    ((withinEntryZone && setupPullbackReady) || supportHoldingProbeEligible);
+  const probeByLocation = pattern.matched && withinEntryZone && setupPullbackReady && !haltWatchOnly;
 
   if (readyByEngine && !lowQuality) {
     return {
@@ -419,17 +366,8 @@ export function isSwingExecutionEligible(pattern: SmartMoneyAnalysis["pattern"],
   return classifySwingCandidate(analysis).bucket !== "watch";
 }
 
-function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: SwingCandidateClassification) {
-  const resolvedClassification = classification ?? classifySwingCandidate(analysis);
-  if (resolvedClassification.bucket !== "watch") {
-    return false;
-  }
-
-  if (analysis.pattern.classificationReasons?.includes("base_reclaim_watch")) {
-    return true;
-  }
-
-  return analysis.pattern.matched && analysis.pattern.status !== "pullback_early";
+function isSwingWatchEligible(analysis: SmartMoneyAnalysis) {
+  return analysis.pattern.matched && analysis.pattern.status !== "pullback_early" && classifySwingCandidate(analysis).bucket === "watch";
 }
 
 async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile) {
@@ -456,7 +394,7 @@ async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile
       const classification = classifySwingCandidate(result.value.analysis);
       if (classification.bucket !== "watch") {
         actionable.push(result.value);
-      } else if (isSwingWatchEligible(result.value.analysis, classification)) {
+      } else if (isSwingWatchEligible(result.value.analysis)) {
         watch.push(result.value);
       }
       continue;
@@ -559,23 +497,15 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const filteredActionable =
     defaultSwingSymbols == null ? actionable : actionable.filter(({ item }) => !defaultSwingSymbols.has(item.code));
   const filteredWatch = defaultSwingSymbols == null ? watch : watch.filter(({ item }) => !defaultSwingSymbols.has(item.code));
-  const existingPayload = await readServerSwingPickPayload(profile);
-  const existingPickBySymbol = new Map(existingPayload.items.map((item) => [item.symbol, item] as const));
 
   const payload = await writeServerSwingPicks(
     {
       executionItems: filteredActionable.map(({ item, analysis }) => ({
-        ...preserveSwingPickDates(
-          toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
-          existingPickBySymbol.get(item.code)
-        ),
+        ...toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
         swingProfile: profile
       })),
       watchItems: filteredWatch.map(({ item, analysis }) => ({
-        ...preserveSwingPickDates(
-          toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
-          existingPickBySymbol.get(item.code)
-        ),
+        ...toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
         swingProfile: profile
       }))
     },

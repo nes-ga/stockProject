@@ -136,6 +136,7 @@ export type SmartMoneyPatternFilters = {
   minSetupSurgeAdvancePercent: number;
   minSetupContinuationSessions: number;
   minReferenceCloseVsBasePercent: number;
+  minReferenceCloseVsBaseWatchPercent: number;
   maxSetupCloseVsPeakPercent: number;
   minReferenceCloseVsLeadInPercent: number;
   closeNearHighRatio: number;
@@ -157,6 +158,10 @@ export type SmartMoneyPatternFilters = {
   timeCorrectionBuyZoneHighRetracementRatio: number;
   volatileDigestionBuyZoneLowRetracementRatio: number;
   volatileDigestionBuyZoneHighRetracementRatio: number;
+  baseReclaimWatchMinVolumeContractionScore: number;
+  baseReclaimWatchMinRiskRewardRatio: number;
+  baseReclaimWatchMinStopDistanceRatio: number;
+  baseReclaimWatchMinPullbackSessions: number;
   minActionableValidityScore: number;
   minExecutionReadinessScore: number;
   setupValidityMin: number;
