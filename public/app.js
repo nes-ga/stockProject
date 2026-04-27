@@ -633,6 +633,12 @@ indexWatchList?.addEventListener("click", (event) => {
 });
 
 marketEventCalendarBoard?.addEventListener("click", (event) => {
+  const searchButton = event.target.closest("[data-calendar-search]");
+  if (searchButton) {
+    void searchMarketEventCalendar();
+    return;
+  }
+
   const navigationButton = event.target.closest("[data-calendar-nav]");
   if (navigationButton) {
     const direction = navigationButton.dataset.calendarNav;
@@ -1560,12 +1566,7 @@ async function loadMarketEventCalendar(options = {}) {
       throw new Error(payload.error ?? "시장 이벤트 캘린더를 불러오지 못했습니다.");
     }
 
-    marketEventCalendarPayload = {
-      generatedAt: payload.generatedAt,
-      timezone: payload.timezone,
-      events: Array.isArray(payload.events) ? payload.events : [],
-      summaries: Array.isArray(payload.summaries) ? payload.summaries : []
-    };
+    setMarketEventCalendarPayload(payload);
     marketEventCalendarLoaded = true;
     marketEventCalendarError = "";
     syncMarketEventCalendarSelection();
@@ -1580,6 +1581,59 @@ async function loadMarketEventCalendar(options = {}) {
     marketEventCalendarLoading = false;
     renderMarketEventCalendarBoard();
   }
+}
+
+async function searchMarketEventCalendar() {
+  if (marketEventCalendarLoading) {
+    return;
+  }
+
+  marketEventCalendarLoading = true;
+  marketEventCalendarError = "";
+  renderMarketEventCalendarBoard();
+
+  try {
+    const response = await fetch("/analysis/market-event-calendar/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "시장 이벤트 일정을 검색하지 못했습니다.");
+    }
+
+    setMarketEventCalendarPayload(payload);
+    marketEventCalendarLoaded = true;
+    syncMarketEventCalendarSelection();
+    showAppToast({
+      title: "일정 검색 완료",
+      message: `시장 이벤트 ${payload.events?.length ?? 0}건을 캘린더에 반영했습니다.`,
+      tone: "positive"
+    });
+  } catch (error) {
+    console.error(error);
+    marketEventCalendarError = error instanceof Error ? error.message : "시장 이벤트 일정을 검색하지 못했습니다.";
+    showAppToast({
+      title: "일정 검색 실패",
+      message: marketEventCalendarError,
+      tone: "negative"
+    });
+  } finally {
+    marketEventCalendarLoading = false;
+    renderMarketEventCalendarBoard();
+  }
+}
+
+function setMarketEventCalendarPayload(payload) {
+  marketEventCalendarPayload = {
+    generatedAt: payload.generatedAt,
+    timezone: payload.timezone,
+    events: Array.isArray(payload.events) ? payload.events : [],
+    summaries: Array.isArray(payload.summaries) ? payload.summaries : []
+  };
 }
 
 function syncMarketEventCalendarSelection() {
@@ -1649,6 +1703,9 @@ function renderMarketEventCalendarBoard() {
         <strong>${escapeHtml(formatMarketEventMonthLabel(visibleMonth))}</strong>
         <span class="market-event-today-chip">오늘 ${escapeHtml(formatMarketEventTodayLabel(today))}</span>
         <button class="ghost-button small-button" type="button" data-calendar-nav="next">다음</button>
+        <button class="primary-button small-button market-event-search-button" type="button" data-calendar-search ${
+          marketEventCalendarLoading ? "disabled" : ""
+        }>${marketEventCalendarLoading ? "검색 중..." : "일정 검색"}</button>
       </div>
     </div>
     <div class="market-event-legend">

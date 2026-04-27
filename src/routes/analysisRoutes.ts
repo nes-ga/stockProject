@@ -10,7 +10,7 @@ import {
   sendDiscordMessages
 } from "../services/discord.js";
 import { analyzeKoreanMovers } from "../services/koreanMovers.js";
-import { getMarketEventCalendarPayload } from "../services/marketEventCalendar.js";
+import { getMarketEventCalendarPayload, searchMarketEventCalendar } from "../services/marketEventCalendar.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
 import { classifySwingCandidate, scanRecommendationUniverse } from "../services/recommendationUniverse.js";
@@ -751,6 +751,21 @@ analysisRoutes.get("/market-event-calendar", async (_request, response, next) =>
     response.json(payload);
   } catch (error) {
     logger.error("market-event-calendar:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/market-event-calendar/search", async (_request, response, next) => {
+  try {
+    const payload = await searchMarketEventCalendar();
+    logger.info("market-event-calendar:search:success", {
+      eventCount: payload.events.length,
+      summaryCount: payload.summaries.length,
+      addedCount: payload.addedCount
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("market-event-calendar:search:failed", toErrorContext(error));
     next(error);
   }
 });

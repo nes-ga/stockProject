@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { formatDateInTimeZone } from "../lib/dates.js";
 import type {
   MarketEventCalendarEvent,
   MarketEventCalendarPayload,
@@ -29,6 +30,11 @@ type RawMarketEventPayload = {
   events?: unknown[];
 };
 
+export type MarketEventCalendarSearchResult = MarketEventCalendarPayload & {
+  searchedAt: string;
+  addedCount: number;
+};
+
 function createEmptyPayload(): MarketEventCalendarPayload {
   return {
     generatedAt: new Date().toISOString(),
@@ -36,6 +42,10 @@ function createEmptyPayload(): MarketEventCalendarPayload {
     events: [],
     summaries: []
   };
+}
+
+async function ensureCalendarDir() {
+  await mkdir(path.dirname(marketEventCalendarPath), { recursive: true });
 }
 
 function isCategory(value: unknown): value is MarketEventCategory {
@@ -167,6 +177,130 @@ function buildDailySummaries(events: MarketEventCalendarEvent[]): MarketEventDai
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
+function addDays(dateText: string, days: number): string {
+  const value = new Date(`${dateText}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function getNthWeekdayOfMonth(year: number, monthIndex: number, weekday: number, nth: number): string {
+  const firstDay = new Date(Date.UTC(year, monthIndex, 1));
+  const offset = (weekday - firstDay.getUTCDay() + 7) % 7;
+  const day = 1 + offset + (nth - 1) * 7;
+  return new Date(Date.UTC(year, monthIndex, day)).toISOString().slice(0, 10);
+}
+
+function getLastWeekdayOfMonth(year: number, monthIndex: number, weekday: number): string {
+  const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0));
+  const offset = (lastDay.getUTCDay() - weekday + 7) % 7;
+  lastDay.setUTCDate(lastDay.getUTCDate() - offset);
+  return lastDay.toISOString().slice(0, 10);
+}
+
+function createSeedEvents(today: string): MarketEventCalendarEvent[] {
+  const anchor = new Date(`${today}T00:00:00.000Z`);
+  const year = anchor.getUTCFullYear();
+  const monthIndex = anchor.getUTCMonth();
+  const nextMonthIndex = monthIndex + 1;
+  const nextMonthYear = year + Math.floor(nextMonthIndex / 12);
+  const normalizedNextMonthIndex = nextMonthIndex % 12;
+
+  const events: MarketEventCalendarEvent[] = [
+    {
+      id: `macro-us-gdp-${today}`,
+      date: addDays(today, 2),
+      time: "21:30",
+      title: "미국 GDP 속보치 일정 확인",
+      category: "macro",
+      importance: "high",
+      location: "US",
+      description: "분기 성장률 발표 전후로 금리, 달러, 성장주 변동성이 커질 수 있어 확인이 필요한 일정입니다."
+    },
+    {
+      id: `macro-us-nfp-${nextMonthYear}-${normalizedNextMonthIndex + 1}`,
+      date: getNthWeekdayOfMonth(nextMonthYear, normalizedNextMonthIndex, 5, 1),
+      time: "21:30",
+      title: "미국 고용보고서 발표 예정",
+      category: "macro",
+      importance: "high",
+      location: "US",
+      description: "비농업고용, 실업률, 임금 지표가 함께 나오는 핵심 매크로 일정입니다."
+    },
+    {
+      id: `macro-us-cpi-${nextMonthYear}-${normalizedNextMonthIndex + 1}`,
+      date: getNthWeekdayOfMonth(nextMonthYear, normalizedNextMonthIndex, 2, 2),
+      time: "21:30",
+      title: "미국 CPI 발표 예정",
+      category: "macro",
+      importance: "high",
+      location: "US",
+      description: "물가 추세와 금리 기대를 확인하는 주요 일정입니다."
+    },
+    {
+      id: `macro-kr-bok-${nextMonthYear}-${normalizedNextMonthIndex + 1}`,
+      date: getLastWeekdayOfMonth(nextMonthYear, normalizedNextMonthIndex, 4),
+      time: "10:00",
+      title: "한국은행 금융통화위원회 일정 점검",
+      category: "policy",
+      importance: "high",
+      location: "KR",
+      description: "국내 금리, 환율, 은행·보험·건설 업종 민감도가 높아지는 정책 이벤트입니다."
+    },
+    {
+      id: `earnings-kr-season-${year}-${monthIndex + 1}`,
+      date: addDays(today, 4),
+      title: "국내 주요 기업 실적 시즌 점검",
+      category: "earnings",
+      importance: "medium",
+      location: "KR",
+      description: "시가총액 상위주와 보유 관심종목의 잠정실적, 컨퍼런스콜 일정을 확인하는 구간입니다."
+    },
+    {
+      id: `market-options-${year}-${monthIndex + 1}`,
+      date: getNthWeekdayOfMonth(year, monthIndex, 4, 2),
+      title: "국내 옵션 만기일",
+      category: "market",
+      importance: "medium",
+      location: "KR",
+      description: "프로그램 매매와 지수 변동성이 확대될 수 있는 정기 시장 이벤트입니다."
+    },
+    {
+      id: `earnings-us-megacap-${today}`,
+      date: addDays(today, 3),
+      title: "미국 대형 기술주 실적 발표 구간",
+      category: "earnings",
+      importance: "high",
+      location: "US",
+      description: "반도체, AI, 클라우드 관련 국내 종목의 동조화 가능성을 함께 확인합니다."
+    }
+  ];
+
+  return events.filter((event) => event.date >= today);
+}
+
+async function writeMarketEventCalendarPayload(payload: MarketEventCalendarPayload) {
+  await ensureCalendarDir();
+  await writeFile(marketEventCalendarPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function mergeEvents(existingEvents: MarketEventCalendarEvent[], nextEvents: MarketEventCalendarEvent[]) {
+  const byId = new Map<string, MarketEventCalendarEvent>();
+  for (const event of existingEvents) {
+    byId.set(event.id, event);
+  }
+  let addedCount = 0;
+  for (const event of nextEvents) {
+    if (!byId.has(event.id)) {
+      addedCount += 1;
+    }
+    byId.set(event.id, event);
+  }
+  return {
+    addedCount,
+    events: sortEvents([...byId.values()])
+  };
+}
+
 export async function getMarketEventCalendarPayload(): Promise<MarketEventCalendarPayload> {
   try {
     const raw = await readFile(marketEventCalendarPath, "utf8");
@@ -191,6 +325,28 @@ export async function getMarketEventCalendarPayload(): Promise<MarketEventCalend
 
     throw error;
   }
+}
+
+export async function searchMarketEventCalendar(): Promise<MarketEventCalendarSearchResult> {
+  const searchedAt = new Date().toISOString();
+  const today = formatDateInTimeZone(new Date(), MARKET_EVENT_TIMEZONE);
+  const current = await getMarketEventCalendarPayload();
+  const seededEvents = createSeedEvents(today);
+  const { addedCount, events } = mergeEvents(current.events, seededEvents);
+  const payload: MarketEventCalendarPayload = {
+    generatedAt: searchedAt,
+    timezone: MARKET_EVENT_TIMEZONE,
+    events,
+    summaries: buildDailySummaries(events)
+  };
+
+  await writeMarketEventCalendarPayload(payload);
+
+  return {
+    ...payload,
+    searchedAt,
+    addedCount
+  };
 }
 
 export { marketEventCalendarPath };

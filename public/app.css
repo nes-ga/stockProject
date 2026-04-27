@@ -987,6 +987,10 @@ body {
   flex-wrap: wrap;
 }
 
+.market-event-search-button {
+  min-width: 86px;
+}
+
 .market-event-month-nav strong {
   min-width: 118px;
   text-align: center;
