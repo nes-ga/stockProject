@@ -681,6 +681,183 @@ export type MarketWatchSnapshot = {
   error?: string;
 };
 
+export type ThemeCategory = "Growth" | "Cyclical" | "Defensive" | "Macro";
+
+export type ThemeBenchmark = "KOSPI" | "KOSDAQ";
+
+export type ThemeName =
+  | "AI"
+  | "Semiconductor"
+  | "Battery"
+  | "AutoIndustrial"
+  | "Materials"
+  | "Construction"
+  | "Consumer"
+  | "Healthcare"
+  | "Staples"
+  | "Financial"
+  | "Energy";
+
+export type ThemeGroup = {
+  name: ThemeName;
+  label: string;
+  category: ThemeCategory;
+  tickers: string[];
+  benchmark?: ThemeBenchmark;
+  sentimentScore?: number;
+};
+
+export type ThemeCycle = "ACCUMULATION" | "MARKUP" | "OVERHEAT" | "DISTRIBUTION" | "DECLINE";
+
+export type ThemeSnapshot = {
+  date: string;
+  theme: ThemeName;
+  label: string;
+  category: ThemeCategory;
+  benchmark: ThemeBenchmark;
+  score: number;
+  relativeStrength: number;
+  volumeScore: number;
+  momentumScore: number;
+  cycle: ThemeCycle;
+  memberCount: number;
+  volumeRatio?: number;
+  relativeReturn20d?: number;
+  benchmarkReturn20d?: number;
+  change1d?: number;
+  change5d?: number;
+  change20d?: number;
+  sentimentScore?: number;
+  note?: string;
+};
+
+export type MarketFlowGlobalState = "RISK_ON" | "NEUTRAL" | "RISK_OFF";
+
+export type MarketFlowLocalState = "STRONG" | "SELECTIVE" | "WEAK" | "DEFENSIVE";
+
+export type MarketFlowMode = "AGGRESSIVE" | "SELECTIVE" | "DEFENSIVE" | "NEUTRAL";
+
+export type GlobalState = MarketFlowGlobalState;
+
+export type LocalState = MarketFlowLocalState;
+
+export type MarketMode = MarketFlowMode;
+
+export type MarketFlowChartRange = "3M" | "6M" | "1Y" | "2Y";
+
+export type MarketFlowLatest = {
+  date: string;
+  global: {
+    score: number;
+    state: GlobalState;
+  };
+  local: {
+    score: number;
+    state: LocalState;
+  };
+  themeRotationScore: number;
+  marketMode: MarketMode;
+  topThemes: string[];
+  bottomThemes: string[];
+  updatedAt: string;
+};
+
+export type MarketFlowSnapshot = {
+  date: string;
+  globalScore: number;
+  globalState: GlobalState;
+  localScore: number;
+  localState: LocalState;
+  themeRotationScore: number;
+  marketMode: MarketMode;
+};
+
+export type ThemeRotationSnapshot = {
+  date: string;
+  theme: ThemeName;
+  label: string;
+  category: ThemeCategory;
+  score: number;
+  relativeStrength: number;
+  volumeScore: number;
+  momentumScore: number;
+  cycle: ThemeCycle;
+  change1d?: number;
+  change5d?: number;
+  change20d?: number;
+};
+
+export type MarketFlowSignal = {
+  key: string;
+  label: string;
+  passed: boolean;
+  score: number;
+  maxScore: number;
+  value?: number | string;
+  reference?: number | string;
+  note?: string;
+  isProxy?: boolean;
+};
+
+export type MarketFlowGlobalSnapshot = {
+  date: string;
+  score: number;
+  maxScore: number;
+  normalizedScore: number;
+  state: MarketFlowGlobalState;
+  signals: MarketFlowSignal[];
+  notes: string[];
+};
+
+export type MarketFlowLocalSnapshot = {
+  date: string;
+  score: number;
+  maxScore: number;
+  normalizedScore: number;
+  state: MarketFlowLocalState;
+  signals: MarketFlowSignal[];
+  breadth?: {
+    source: string;
+    advancingCount?: number;
+    decliningCount?: number;
+    advancingPercent?: number;
+  };
+  turnover?: {
+    source: string;
+    current?: number;
+    average20?: number;
+    ratio?: number;
+  };
+  investorFlows?: {
+    source: string;
+    foreigner5d?: number;
+    institution5d?: number;
+  };
+  notes: string[];
+};
+
+export type ThemeRotationPayload = {
+  generatedAt: string;
+  score: number;
+  maxScore: number;
+  themeCount: number;
+  snapshots: ThemeSnapshot[];
+  history: ThemeSnapshot[];
+  topThemes: ThemeSnapshot[];
+  bottomThemes: ThemeSnapshot[];
+  notes: string[];
+};
+
+export type MarketFlowDashboardPayload = {
+  generatedAt: string;
+  marketMode: MarketFlowMode;
+  global: MarketFlowGlobalSnapshot;
+  local: MarketFlowLocalSnapshot;
+  themeRotation: ThemeRotationPayload;
+  interpretation: string;
+  notes: string[];
+};
+
 export type FundamentalsPeriod = {
   label: string;
   isEstimated?: boolean;

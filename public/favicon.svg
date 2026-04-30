@@ -1,33 +1,36 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8BFFB0" />
-      <stop offset="1" stop-color="#2E9BFF" />
+    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E9FFF7" />
+      <stop offset="1" stop-color="#C5ECFF" />
     </linearGradient>
-    <linearGradient id="face" x1="20" y1="20" x2="46" y2="50" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#E9FFF3" />
-      <stop offset="1" stop-color="#B9F7D0" />
+    <linearGradient id="skin" x1="21" y1="18" x2="43" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE6D1" />
+      <stop offset="1" stop-color="#F6BE9A" />
     </linearGradient>
   </defs>
 
   <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#bg)" />
-  <path d="M20 18L16 10L25 14L20 18Z" fill="#0F6D7A" />
-  <path d="M44 18L39 14L48 10L44 18Z" fill="#0F6D7A" />
+  <circle cx="15" cy="16" r="2.5" fill="#8EDCFF" fill-opacity="0.9" />
+  <circle cx="49" cy="14" r="3.5" fill="#72E5D4" fill-opacity="0.88" />
+
   <path
-    d="M16 33C16 24.716 22.716 18 31 18H33C41.284 18 48 24.716 48 33V35C48 45.493 39.493 54 29 54H27C20.925 54 16 49.075 16 43V33Z"
-    fill="url(#face)"
+    d="M18.5 31C18.5 20.8 24.6 13.5 32 13.5C39.4 13.5 45.5 20.8 45.5 31C45.5 39.3 39.5 45.5 32 45.5C24.5 45.5 18.5 39.3 18.5 31Z"
+    fill="url(#skin)"
   />
-  <circle cx="25" cy="31" r="3.2" fill="#11323E" />
-  <circle cx="39" cy="31" r="3.2" fill="#11323E" />
-  <circle cx="21.5" cy="38.5" r="2.4" fill="#FF9AAF" fill-opacity="0.7" />
-  <circle cx="42.5" cy="38.5" r="2.4" fill="#FF9AAF" fill-opacity="0.7" />
-  <path d="M27 41C28.7 42.4 30.3 43 32 43C33.7 43 35.3 42.4 37 41" stroke="#11323E" stroke-width="2.3" stroke-linecap="round" />
   <path
-    d="M19 44L27.5 35.5L33 39L42.5 27.5"
-    stroke="#0F6D7A"
-    stroke-width="4"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    d="M18.9 30.2C17.2 19.3 24.2 10.8 34 10.8C42.2 10.8 47.6 16.5 47.8 24.2C45.9 21.5 43.8 19.8 41.1 19C39.2 15.1 34.8 13.4 30.9 14C28.2 12.8 24.3 13.7 21.8 17.1C19.7 19 18.6 22 18.9 30.2Z"
+    fill="#201A1A"
   />
-  <path d="M39.5 27.5H46V34" stroke="#0F6D7A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M22.8 21.9C24.5 20.5 26.7 19.8 28.8 20.2" stroke="#2D2424" stroke-width="1.5" stroke-linecap="round" />
+  <path d="M35.2 20.2C37.3 19.8 39.5 20.5 41.2 21.9" stroke="#2D2424" stroke-width="1.5" stroke-linecap="round" />
+
+  <ellipse cx="26.7" cy="29.7" rx="3.4" ry="4.4" fill="#231D1D" />
+  <ellipse cx="37.3" cy="29.7" rx="3.4" ry="4.4" fill="#231D1D" />
+  <circle cx="27.7" cy="28.4" r="1.1" fill="#FFFFFF" />
+  <circle cx="38.3" cy="28.4" r="1.1" fill="#FFFFFF" />
+
+  <ellipse cx="22.8" cy="35.4" rx="2.4" ry="1.7" fill="#FFB2BA" fill-opacity="0.6" />
+  <ellipse cx="41.2" cy="35.4" rx="2.4" ry="1.7" fill="#FFB2BA" fill-opacity="0.6" />
+  <path d="M28.7 37.6C29.9 38.8 31 39.2 32 39.2C33 39.2 34.1 38.8 35.3 37.6" stroke="#A85B57" stroke-width="1.8" stroke-linecap="round" />
 </svg>

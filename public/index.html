@@ -3,54 +3,134 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>stockMon</title>
+    <title>Myeong._.key's Stock Notes</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
+    <div id="onlinePresenceBadge" class="online-presence loading" aria-live="polite">
+      <span class="online-presence-dot" aria-hidden="true"></span>
+      <span class="online-presence-label">online</span>
+      <strong id="onlinePresenceCount" class="online-presence-count">-</strong>
+    </div>
+    <div class="mascot-parade" aria-hidden="true">
+      <figure
+        class="parade-mascot parade-mascot-wave"
+        style="--top: 6vh; --left: -10vw; --size: 144px; --drift-x: 116vw; --drift-y: 3vh; --arc: -2vh; --duration: 44s; --delay: -9s; --bob-duration: 6.6s; --rotate-start: -5deg; --rotate-mid: 1deg; --rotate-end: 4deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-wave.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-read"
+        style="--top: 18vh; --left: 82vw; --size: 124px; --drift-x: -110vw; --drift-y: 5vh; --arc: 3vh; --duration: 52s; --delay: -31s; --bob-duration: 7.2s; --rotate-start: 3deg; --rotate-mid: -1deg; --rotate-end: -4deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-read.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-sleep"
+        style="--top: 72vh; --left: -12vw; --size: 182px; --drift-x: 118vw; --drift-y: -4vh; --arc: 2vh; --duration: 58s; --delay: -22s; --bob-duration: 8.4s; --rotate-start: -2deg; --rotate-mid: 1deg; --rotate-end: 3deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-sleep.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-camera"
+        style="--top: 38vh; --left: 94vw; --size: 116px; --drift-x: -118vw; --drift-y: 2vh; --arc: -3vh; --duration: 47s; --delay: -12s; --bob-duration: 5.8s; --rotate-start: 4deg; --rotate-mid: -2deg; --rotate-end: -5deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-camera.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-pointer"
+        style="--top: 48vh; --left: 8vw; --size: 112px; --drift-x: 92vw; --drift-y: -8vh; --arc: -4vh; --duration: 42s; --delay: -26s; --bob-duration: 6.1s; --rotate-start: -4deg; --rotate-mid: 2deg; --rotate-end: 5deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-pointer.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-laptop"
+        style="--top: 84vh; --left: 70vw; --size: 132px; --drift-x: -86vw; --drift-y: -9vh; --arc: -2vh; --duration: 49s; --delay: -37s; --bob-duration: 7.4s; --rotate-start: 2deg; --rotate-mid: -1deg; --rotate-end: -3deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-laptop.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+      <figure
+        class="parade-mascot parade-mascot-books"
+        style="--top: 8vh; --left: 56vw; --size: 138px; --drift-x: -76vw; --drift-y: 8vh; --arc: 4vh; --duration: 55s; --delay: -17s; --bob-duration: 8s; --rotate-start: 3deg; --rotate-mid: -2deg; --rotate-end: -4deg;"
+      >
+        <span class="parade-mascot-body">
+          <img src="/assets/stockmon-books.webp" alt="" loading="lazy" decoding="async" />
+        </span>
+      </figure>
+    </div>
     <div class="page-shell">
       <header class="hero">
-        <p class="eyebrow">market buddy dashboard</p>
         <div class="hero-brand-row">
-          <h1 class="hero-brand" aria-label="stockMon">
-            <span class="hero-brand-stock">stock</span>
-            <span class="hero-brand-mon">Mon</span>
-            <span class="hero-brand-spark" aria-hidden="true"></span>
-          </h1>
-          <div class="hero-mascot" aria-hidden="true">
-            <span class="hero-mascot-antenna hero-mascot-antenna-left"></span>
-            <span class="hero-mascot-antenna hero-mascot-antenna-right"></span>
-            <span class="hero-mascot-face">
-              <span class="hero-mascot-eye hero-mascot-eye-left"></span>
-              <span class="hero-mascot-eye hero-mascot-eye-right"></span>
-              <span class="hero-mascot-blush hero-mascot-blush-left"></span>
-              <span class="hero-mascot-blush hero-mascot-blush-right"></span>
-              <span class="hero-mascot-smile"></span>
-            </span>
-            <span class="hero-mascot-tail"></span>
+          <div class="hero-brand-copygroup">
+            <span class="hero-brand-signature">@myeong._.key</span>
+            <h1 class="hero-brand" aria-label="Myeong._.key's Stock Notes">
+              <span class="hero-brand-stock">Myeong._.key's</span>
+              <span class="hero-brand-mon">Stock Notes</span>
+            </h1>
+            <p class="hero-brand-copy">하루의 흐름과 마음을 같이 적어두는, 조금 더 다정한 시장 노트.</p>
+            <div class="hero-brand-tags" aria-hidden="true">
+              <span class="hero-brand-tag">watch the mood</span>
+              <span class="hero-brand-tag">save the clue</span>
+              <span class="hero-brand-tag">ride the wave</span>
+            </div>
           </div>
-        </div>
-        <p class="hero-copy">
-          관심 종목 분석, 이벤트 기반 뉴스 시그널, 지수 및 관심 자산, 급등·급락 순위를 한 화면에서 빠르게 확인합니다.
-        </p>
-
-        <div class="app-tabs" id="appTabs">
-          <button class="app-tab" type="button" data-view="news">
-            <span class="app-tab-title">뉴스 기사</span>
-            <span class="app-tab-copy">시장 뉴스와 관심 종목 관련 기사를 모아보는 공간</span>
-          </button>
-          <button class="app-tab" type="button" data-view="index">
-            <span class="app-tab-title">지수 및 관심 자산</span>
-            <span class="app-tab-copy">지수, 환율, 원자재, 가상자산 흐름을 함께 확인</span>
-          </button>
-          <button class="app-tab active" type="button" data-view="analysis">
-            <span class="app-tab-title">추천 종목 및 분석</span>
-            <span class="app-tab-copy">중장기·배당·스윙 종목과 차트 분석을 확인</span>
-          </button>
-          <button class="app-tab" type="button" data-view="movers">
-            <span class="app-tab-title">급등 및 급락 순위</span>
-            <span class="app-tab-copy">시장 강약과 거래 신호를 빠르게 확인</span>
-          </button>
+          <div class="app-tabs" id="appTabs">
+            <button class="app-tab app-tab-news" type="button" data-view="news">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">뉴스 기사</span>
+                <span class="app-tab-copy">시장 뉴스와 관심 종목 관련 기사를 모아보는 공간</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-read.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+            <button class="app-tab app-tab-index" type="button" data-view="index">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">지수 및 관심 자산</span>
+                <span class="app-tab-copy">지수, 환율, 원자재, 가상자산 흐름을 함께 확인</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-laptop.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+            <button class="app-tab app-tab-analysis active" type="button" data-view="analysis">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">추천 종목 및 분석</span>
+                <span class="app-tab-copy">중장기·배당·스윙 종목과 차트 분석을 확인</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-books.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+            <button class="app-tab app-tab-movers" type="button" data-view="movers">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">급등 및 급락 순위</span>
+                <span class="app-tab-copy">시장 강약과 거래 신호를 빠르게 확인</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-pointer.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+          </div>
+          <div class="hero-mascot-wrap">
+            <span class="hero-brand-note">watch, wait, write</span>
+            <div class="hero-mascot" aria-hidden="true">
+              <img class="hero-mascot-img" src="/assets/stockmon-wave.webp" alt="" />
+            </div>
+          </div>
         </div>
       </header>
 
@@ -97,6 +177,23 @@
             </div>
           </section>
         </div>
+        <section id="marketFlowBoard" class="panel index-panel market-flow-board">
+          <div class="panel-head">
+            <div>
+              <h2>Market Flow Dashboard</h2>
+              <p class="field-help">글로벌 방향, 국내 타이밍, 테마 로테이션을 한 화면에서 보고 기존 추천 엔진 해석 레이어로 연결합니다.</p>
+            </div>
+            <div class="panel-actions">
+              <button id="refreshMarketFlowBtn" class="ghost-button small-button" type="button">새로고침</button>
+              <span id="marketFlowStatusBadge" class="status-badge loading">로딩 중</span>
+            </div>
+          </div>
+          <div id="marketFlowBoardBody" class="market-flow-body">
+            <div class="empty-state">
+              <p>시장 흐름 데이터를 준비 중입니다.</p>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section id="analysisView" class="app-view">

@@ -6,6 +6,7 @@ import { createLogger, toErrorContext } from "./lib/logger.js";
 import { initializeNewsSignalCollector } from "./services/newsSignals.js";
 import { alertRoutes } from "./routes/alertRoutes.js";
 import { analysisRoutes } from "./routes/analysisRoutes.js";
+import { marketFlowRoutes } from "./routes/marketFlowRoutes.js";
 
 export const app = express();
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -83,6 +84,8 @@ app.get("/", (_request, response) => {
 });
 
 app.use("/analysis", analysisRoutes);
+app.use("/analysis", marketFlowRoutes);
+app.use("/api", marketFlowRoutes);
 app.use("/alerts", alertRoutes);
 
 app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {

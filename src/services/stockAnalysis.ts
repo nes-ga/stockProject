@@ -294,7 +294,7 @@ async function fetchNaverChart(symbol: string, count = DEFAULT_NAVER_CHART_SESSI
   return result;
 }
 
-async function fetchQuoteAndChart(
+export async function fetchQuoteAndChart(
   symbol: string,
   chartOptions?: { period1?: string; range?: string; naverCount?: number }
 ): Promise<QuoteAndChartResult> {

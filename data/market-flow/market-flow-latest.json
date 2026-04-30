@@ -1,0 +1,24 @@
+{
+  "date": "2026-04-30",
+  "global": {
+    "score": 3,
+    "state": "RISK_ON"
+  },
+  "local": {
+    "score": 3,
+    "state": "SELECTIVE"
+  },
+  "themeRotationScore": 50.36,
+  "marketMode": "SELECTIVE",
+  "topThemes": [
+    "에너지 / 전력",
+    "반도체",
+    "철강 / 화학"
+  ],
+  "bottomThemes": [
+    "헬스케어 / 바이오",
+    "자동차 / 산업재",
+    "필수소비재"
+  ],
+  "updatedAt": "2026-04-30T15:50:11.296+09:00"
+}

@@ -19,7 +19,7 @@ const DEFAULT_DIVIDEND_ETF_FILTERS: DividendEtfFilters = {
 const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   {
     symbol: "161510",
-    name: "PLUS High Dividend ETF",
+    name: "PLUS 고배당",
     category: "high dividend",
     dividendYield: 3.52,
     expenseRatio: 0.23,
@@ -34,7 +34,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "279530",
-    name: "KODEX High Dividend ETF",
+    name: "KODEX 고배당",
     category: "high dividend",
     dividendYield: 3.72,
     expenseRatio: 0.3,
@@ -49,7 +49,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "210780",
-    name: "TIGER High Dividend ETF",
+    name: "TIGER 고배당",
     category: "high dividend",
     dividendYield: 2.5,
     expenseRatio: 0.29,
@@ -64,7 +64,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "211900",
-    name: "KODEX Korea Dividend Growth ETF",
+    name: "KODEX 코리아배당성장",
     category: "dividend growth",
     dividendYield: 2.83,
     expenseRatio: 0.15,
@@ -79,7 +79,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "458730",
-    name: "TIGER U.S. Dividend Equity ETF",
+    name: "TIGER 미국배당주",
     category: "high dividend",
     dividendYield: 2.86,
     expenseRatio: 0.01,
@@ -88,7 +88,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "472150",
-    name: "TIGER Dividend Premium Active ETF",
+    name: "TIGER 배당프리미엄액티브",
     category: "high dividend",
     dividendYield: 15.41,
     expenseRatio: 0.5,
@@ -98,7 +98,7 @@ const DIVIDEND_ETF_UNIVERSE: DividendEtfUniverseItem[] = [
   },
   {
     symbol: "321410",
-    name: "KODEX Multi-Asset High Income(H)",
+    name: "KODEX 멀티에셋하이인컴(H)",
     category: "dividend growth",
     dividendYield: 10,
     expenseRatio: 0.25,

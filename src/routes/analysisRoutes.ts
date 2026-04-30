@@ -30,6 +30,7 @@ import {
   analyzeSmartMoneyPatterns
 } from "../services/stockAnalysis.js";
 import { getNewsSignalDashboard } from "../services/newsSignals.js";
+import { getOnlinePresenceSnapshot, heartbeatOnlineViewer } from "../services/onlinePresence.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile } from "../services/swingProfiles.js";
 
@@ -59,6 +60,11 @@ const realtimeStockSchema = z.object({
 
 const realtimeStockBatchSchema = z.object({
   items: z.array(realtimeStockSchema).min(1).max(100)
+});
+
+const onlinePresenceHeartbeatSchema = z.object({
+  viewerId: z.string().min(8).max(128),
+  page: z.string().min(1).max(120).optional()
 });
 
 const smartMoneyItemSchema = z.object({
@@ -737,6 +743,30 @@ analysisRoutes.get("/news-signals", (_request, response, next) => {
     response.json(payload);
   } catch (error) {
     logger.error("news-signals:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/online-presence", (_request, response, next) => {
+  try {
+    response.json(getOnlinePresenceSnapshot());
+  } catch (error) {
+    logger.error("online-presence:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/online-presence/heartbeat", (request, response, next) => {
+  try {
+    const parsed = onlinePresenceHeartbeatSchema.parse(request.body);
+    const payload = heartbeatOnlineViewer({
+      viewerId: parsed.viewerId,
+      page: parsed.page,
+      userAgent: request.get("user-agent")
+    });
+    response.json(payload);
+  } catch (error) {
+    logger.error("online-presence-heartbeat:failed", toErrorContext(error));
     next(error);
   }
 });
