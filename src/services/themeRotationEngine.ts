@@ -214,6 +214,7 @@ export async function getThemeRotationPayload(params: { benchmarkSnapshots: Map<
   const themeProxyUniverse = [...summaryByTicker.values()];
 
   for (const group of themeGroups) {
+    const memberNameBySymbol = new Map((group.members ?? []).map((item) => [item.symbol, item.name] as const));
     const summaries = group.tickers
       .map((ticker) => summaryByTicker.get(ticker))
       .filter((item): item is ThemeTickerSummary => Boolean(item));
@@ -261,7 +262,18 @@ export async function getThemeRotationPayload(params: { benchmarkSnapshots: Map<
       change5d: averageChange5d != null ? roundNumber(averageChange5d) : undefined,
       change20d: averageChange20d != null ? roundNumber(averageChange20d) : undefined,
       sentimentScore: typeof group.sentimentScore === "number" ? group.sentimentScore : undefined,
-      note
+      note,
+      members: summaries.map((item) => ({
+        symbol: item.symbol,
+        name: memberNameBySymbol.get(item.symbol),
+        latestDate: item.latestDate,
+        latestClose: item.latestClose != null ? roundNumber(item.latestClose, 0) : undefined,
+        change1d: item.change1d != null ? roundNumber(item.change1d) : undefined,
+        change5d: item.change5d != null ? roundNumber(item.change5d) : undefined,
+        change20d: item.change20d != null ? roundNumber(item.change20d) : undefined,
+        currentTurnover: item.currentTurnover != null ? Math.round(item.currentTurnover) : undefined,
+        averageTurnover20: item.averageTurnover20 != null ? Math.round(item.averageTurnover20) : undefined
+      }))
     });
   }
 

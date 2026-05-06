@@ -162,13 +162,44 @@ function buildServerSwingPickPayload(raw: unknown, profile: SwingEngineProfile):
   };
 }
 
+async function readDefaultSwingSymbolsForSmallcapFilter() {
+  try {
+    const raw = await readFile(getServerSwingPicksPath("default"), "utf8");
+    const parsed = JSON.parse(raw);
+    const payload = buildServerSwingPickPayload(parsed, "default");
+    return new Set(payload.items.map((item) => item.symbol));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("ENOENT")) {
+      return new Set<string>();
+    }
+    throw error;
+  }
+}
+
+async function filterSmallcapPayloadAgainstDefault(payload: ServerSwingPickPayload) {
+  const defaultSymbols = await readDefaultSwingSymbolsForSmallcapFilter();
+  if (defaultSymbols.size === 0) {
+    return payload;
+  }
+
+  return buildServerSwingPickPayload(
+    {
+      executionItems: payload.executionItems.filter((item) => !defaultSymbols.has(item.symbol)),
+      watchItems: payload.watchItems.filter((item) => !defaultSymbols.has(item.symbol))
+    },
+    "smallcap"
+  );
+}
+
 export async function readServerSwingPickPayload(profileInput?: SwingEngineProfile): Promise<ServerSwingPickPayload> {
   const profile = resolveSwingEngineProfile(profileInput);
   const serverSwingPicksPath = getServerSwingPicksPath(profile);
   try {
     const raw = await readFile(serverSwingPicksPath, "utf8");
     const parsed = JSON.parse(raw);
-    return buildServerSwingPickPayload(parsed, profile);
+    const payload = buildServerSwingPickPayload(parsed, profile);
+    return profile === "smallcap" ? filterSmallcapPayloadAgainstDefault(payload) : payload;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("ENOENT")) {
@@ -198,7 +229,8 @@ export async function writeServerSwingPicks(
   options?: { profile?: SwingEngineProfile }
 ) {
   const profile = resolveSwingEngineProfile(options?.profile);
-  const payload = buildServerSwingPickPayload(input, profile);
+  const parsedPayload = buildServerSwingPickPayload(input, profile);
+  const payload = profile === "smallcap" ? await filterSmallcapPayloadAgainstDefault(parsedPayload) : parsedPayload;
   const serverSwingPicksPath = getServerSwingPicksPath(profile);
   await ensureDir(profile);
   await writeFile(

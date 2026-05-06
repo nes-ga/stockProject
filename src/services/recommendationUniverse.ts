@@ -179,9 +179,18 @@ function buildSwingNote(pattern: SmartMoneyAnalysis["pattern"]) {
         : pattern.status === "buy_ready"
           ? "스윙 1차매수 구간 감지"
           : "스윙 소화형 감지";
+  const resolvedStopPrice = pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice;
+  const derivedFirstBuyPrice =
+    pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? Math.max(pattern.entryZoneLow, pattern.entryZoneHigh) : undefined;
+  const derivedRiskBand =
+    derivedFirstBuyPrice != null && resolvedStopPrice != null && resolvedStopPrice > 0 && derivedFirstBuyPrice > resolvedStopPrice
+      ? derivedFirstBuyPrice - resolvedStopPrice
+      : undefined;
   const buyPlanText = pattern.buyPlan
     ? `매수 ${Math.round(pattern.buyPlan.firstBuyPrice)}/${Math.round(pattern.buyPlan.secondBuyPrice)}/${Math.round(pattern.buyPlan.thirdBuyPrice)}`
-    : `매수 ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
+    : derivedFirstBuyPrice != null && resolvedStopPrice != null && derivedRiskBand != null
+      ? `매수 ${Math.round(derivedFirstBuyPrice)}/${Math.round(resolvedStopPrice + derivedRiskBand * 0.67)}/${Math.round(resolvedStopPrice + derivedRiskBand * 0.33)}`
+      : `매수 ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
   const displayEntryZoneText =
     pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneHigh)}~${Math.round(pattern.entryZoneLow)}` : "-";
   const displayBuyPlanText = pattern.buyPlan
@@ -190,7 +199,6 @@ function buildSwingNote(pattern: SmartMoneyAnalysis["pattern"]) {
   const resolvedDisplayBuyPlanText = pattern.buyPlan
     ? buyPlanText
     : `${pattern.stage === "breakout" ? "관찰" : "구간"} ${displayEntryZoneText}`;
-  const resolvedStopPrice = pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice;
   const stopText = `손절 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
   const stopRefText = `손절기준 ${pattern.stopLossReferenceDate ?? "-"} ${pattern.stopLossReferenceType === "close_fallback" ? "close" : "low"}`;
 
@@ -299,6 +307,20 @@ function isBelowSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
   return pattern.referenceClose < low;
 }
 
+function isInOrBelowRawSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
+  if (
+    pattern.stage !== "setup" ||
+    typeof pattern.referenceClose !== "number" ||
+    typeof pattern.entryZoneLow !== "number" ||
+    typeof pattern.entryZoneHigh !== "number"
+  ) {
+    return false;
+  }
+
+  const high = Math.max(pattern.entryZoneLow, pattern.entryZoneHigh);
+  return pattern.referenceClose <= high;
+}
+
 function isSupportHoldingProbeEligible(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
   if (
     pattern.setupType !== "support_holding_pullback" ||
@@ -324,6 +346,36 @@ function isSupportHoldingProbeEligible(pattern: SmartMoneyAnalysis["pattern"], r
   return riskRewardRatio >= 1.2 && (isWithinSwingEntryZone(pattern) || isBelowSwingEntryZone(pattern));
 }
 
+function isDeepPullbackProbeEligible(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
+  if (
+    pattern.stage !== "setup" ||
+    pattern.debugInfo.supportStatus !== "holding" ||
+    typeof pattern.referenceClose !== "number" ||
+    typeof pattern.invalidationPrice !== "number"
+  ) {
+    return false;
+  }
+
+  if (pattern.referenceClose <= pattern.invalidationPrice) {
+    return false;
+  }
+
+  const pullbackDepth = pattern.pullbackMaxDrawdownPercent ?? pattern.debugInfo.pullbackDepthPct ?? 0;
+  if (pullbackDepth < 20 || (pattern.pullbackSessions ?? 0) < 5) {
+    return false;
+  }
+
+  if (!isInOrBelowRawSwingEntryZone(pattern)) {
+    return false;
+  }
+
+  if ((pattern.volumeContractionScore ?? 0) < 55 || (pattern.candleQualityScore ?? 100) < 55) {
+    return false;
+  }
+
+  return riskRewardRatio >= 1.2;
+}
+
 function dedupeStrings<T extends string>(values: T[]) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -342,6 +394,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const withinEntryZone = isWithinSwingEntryZone(pattern);
   const setupPullbackReady = pattern.stage !== "setup" || pattern.status === "buy_ready";
   const supportHoldingProbeEligible = isSupportHoldingProbeEligible(pattern, riskRewardRatio);
+  const deepPullbackProbeEligible = isDeepPullbackProbeEligible(pattern, riskRewardRatio);
   const weakVolumeContraction = pattern.stage === "setup" && (pattern.volumeContractionScore ?? 0) < 60;
   const poorCandleStructure = (pattern.candleQualityScore ?? 100) < 60;
   const negativeSma20Slope = (pattern.sma20SlopePercent ?? 0) < 0;
@@ -356,6 +409,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     pattern.matched &&
     !haltWatchOnly &&
     ((withinEntryZone && setupPullbackReady) || supportHoldingProbeEligible);
+  const probeByDeepPullback = !haltWatchOnly && deepPullbackProbeEligible;
 
   if (readyByEngine && !lowQuality) {
     return {
@@ -366,10 +420,12 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     };
   }
 
-  if (probeByLocation) {
+  if (probeByLocation || probeByDeepPullback) {
     const probeReasons = dedupeStrings([
       ...(pattern.classificationReasons ?? []),
-      "entryZone_hit",
+      probeByDeepPullback ? "deep_pullback_probe" : "",
+      probeByDeepPullback ? "above_stop" : "",
+      isInOrBelowRawSwingEntryZone(pattern) ? "entry_zone_hit" : "",
       readyByEngine ? "execution_ready_blocked_by_quality" : "execution_gate_not_cleared",
       weakVolumeContraction ? "weak_volume_contraction" : "",
       poorCandleStructure ? "weak_candle_structure" : "",
@@ -382,7 +438,7 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     return {
       bucket: "execution_probe",
       reasons: probeReasons,
-      tags: dedupeStrings([...(pattern.tags ?? [])]),
+      tags: dedupeStrings([...(pattern.tags ?? []), ...(unstableSupport ? (["tag_support_unstable"] as const) : [])]),
       penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
     };
   }

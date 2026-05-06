@@ -48,6 +48,16 @@ type CandidateEvaluation = {
   rejectReasons: SmartMoneyRejectReason[];
 };
 
+type VolumeQuality = ReturnType<typeof scoreVolumeQuality>;
+
+type QualifiedLeadIn = {
+  accepted: boolean;
+  seedAnchor: boolean;
+  volume: VolumeQuality;
+  confirmationPoint?: ChartPoint;
+  confirmationVolume?: VolumeQuality;
+};
+
 type MarketEvaluation = {
   regimeScore: number;
   marketContextScore: number;
@@ -212,27 +222,29 @@ function resolveSetupEntryZone(params: {
     return resolveBreakoutRetestZone(params.breakoutLevel, normalizedPullbackLow, params.filters.maxSetupDistanceBelowBreakoutLevelPercent);
   }
 
-  if (params.setupType === "support_holding_pullback") {
-    return {
-      entryZoneLow: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.05),
-      entryZoneHigh: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.35)
-    };
-  }
-
-  const normalizedSma20 =
+  const sma20PullbackReference =
     typeof params.referenceSma20 === "number" && Number.isFinite(params.referenceSma20) && params.referenceSma20 > 0
-      ? clamp(params.referenceSma20, normalizedPullbackLow, params.breakoutLevel)
+      ? Math.min(params.referenceSma20, params.breakoutLevel)
       : undefined;
-  if (normalizedSma20 != null && normalizedSma20 > normalizedPullbackLow) {
+  if (sma20PullbackReference != null && sma20PullbackReference > 0) {
+    // Pullback entries should be staged after price comes into the 20-day line, not above it.
+    // Bias the whole buy zone below SMA20 so the displayed first area does not chase the bounce.
     const proximityRatio = clamp(params.filters.firstBuySma20ProximityPercent / 100, 0.005, 0.08);
-    const entryZoneHigh = normalizedSma20;
-    const entryZoneLow = Math.max(normalizedPullbackLow, normalizedSma20 * (1 - proximityRatio));
+    const entryZoneHigh = sma20PullbackReference * (1 - proximityRatio);
+    const entryZoneLow = sma20PullbackReference * (1 - proximityRatio * 2);
     if (entryZoneLow < entryZoneHigh) {
       return {
         entryZoneLow,
         entryZoneHigh
       };
     }
+  }
+
+  if (params.setupType === "support_holding_pullback") {
+    return {
+      entryZoneLow: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.05),
+      entryZoneHigh: scaleBetween(normalizedPullbackLow, params.breakoutLevel, 0.35)
+    };
   }
 
   let lowRatio = params.filters.tightPullbackBuyZoneLowRetracementRatio;
@@ -674,15 +686,19 @@ function buildBuyPlan(
 function resolvePullbackBuyPlan(params: {
   referenceSma20?: number;
   invalidationPrice: number;
+  firstBuySma20ProximityPercent: number;
   secondEntryRiskRatio: number;
   thirdEntryRiskRatio: number;
   pricingContext?: SmartMoneyPricingContext;
 }): SmartMoneyBuyPlan | undefined {
-  const firstBuyPrice = params.referenceSma20;
-  if (firstBuyPrice == null || firstBuyPrice <= 0) {
+  const referenceSma20 = params.referenceSma20;
+  if (referenceSma20 == null || referenceSma20 <= 0) {
     return undefined;
   }
 
+  // Pullback buys should wait for price to come into the 20-day line from above.
+  // Keep the first staged bid below SMA20 instead of placing it directly on the moving average.
+  const firstBuyPrice = referenceSma20 * (1 - clamp(params.firstBuySma20ProximityPercent / 100, 0.005, 0.08));
   const stopLossPrice =
     params.invalidationPrice > 0 && params.invalidationPrice < firstBuyPrice
       ? params.invalidationPrice
@@ -694,8 +710,11 @@ function resolvePullbackBuyPlan(params: {
   const riskBand = firstBuyPrice - stopLossPrice;
   const minimumRiskTick = resolveSmartMoneyTickSize(firstBuyPrice, params.pricingContext);
   const roundedFirstBuyPrice = roundPriceLevel(firstBuyPrice, params.pricingContext, "down");
+  const secondBuyByRiskBand = stopLossPrice + riskBand * params.secondEntryRiskRatio;
+  // Show the full 3-step plan by spacing 2nd and 3rd bids inside the 1st-buy/stop band.
+  // The ratios keep scale consistent whether the stop is shallow or deep.
   const roundedSecondBuyPrice = roundPriceLevel(
-    stopLossPrice + riskBand * params.secondEntryRiskRatio,
+    Math.min(secondBuyByRiskBand, firstBuyPrice - minimumRiskTick),
     params.pricingContext,
     "down"
   );
@@ -859,6 +878,75 @@ function scoreVolumeQuality(
       absoluteVolume >= minVolumeShares &&
       turnoverValue != null &&
       turnoverValue >= minTurnoverValue
+  };
+}
+
+function resolveQualifiedLeadIn(params: {
+  points: ChartPoint[];
+  leadInIndex: number;
+  surgePeakIndex?: number;
+  filters: SmartMoneyPatternFilters;
+}): QualifiedLeadIn {
+  const { points, leadInIndex, surgePeakIndex, filters } = params;
+  const leadInPoint = points[leadInIndex];
+  const leadInPrevious = points[leadInIndex - 1];
+  const leadInPriceChangePercent = leadInPoint && leadInPrevious ? percentChange(leadInPoint.close, leadInPrevious.close) : undefined;
+  const leadInVolume = scoreVolumeQuality(
+    leadInPoint,
+    getAverageVolumeBefore(points, leadInIndex, 20),
+    getAverageTurnoverBefore(points, leadInIndex, 20),
+    filters.minLeadInVolumeRatio,
+    filters.minLeadInVolumeShares,
+    filters.minTurnoverValue
+  );
+  const leadInReferenceOpen = leadInPoint.open ?? leadInPrevious?.close;
+  const leadInBullishBody = leadInReferenceOpen != null && leadInPoint.close > leadInReferenceOpen;
+  const leadInClosedStrong = leadInPoint.close >= getPointHigh(leadInPoint) * 0.94;
+  const priceAndCandleAccepted =
+    leadInPriceChangePercent != null &&
+    leadInPriceChangePercent >= filters.minLeadInPriceChangePercent &&
+    leadInBullishBody &&
+    leadInClosedStrong;
+
+  if (priceAndCandleAccepted && leadInVolume.passed) {
+    return {
+      accepted: true,
+      seedAnchor: false,
+      volume: leadInVolume
+    };
+  }
+
+  const seedAnchor =
+    priceAndCandleAccepted &&
+    (leadInVolume.volumeRatio20d ?? 0) >= filters.minLeadInVolumeRatio &&
+    (leadInVolume.turnoverValue ?? 0) >= filters.minTurnoverValue &&
+    (leadInVolume.absoluteVolume ?? 0) >= filters.minLeadInVolumeShares * 0.1;
+
+  if (!seedAnchor || surgePeakIndex == null) {
+    return {
+      accepted: false,
+      seedAnchor,
+      volume: leadInVolume
+    };
+  }
+
+  const confirmationPoint = points[surgePeakIndex];
+  const confirmationVolume = scoreVolumeQuality(
+    confirmationPoint,
+    getAverageVolumeBefore(points, surgePeakIndex, 20),
+    getAverageTurnoverBefore(points, surgePeakIndex, 20),
+    filters.minLeadInVolumeRatio,
+    filters.minLeadInVolumeShares,
+    filters.minTurnoverValue
+  );
+  const confirmationWithinWindow = surgePeakIndex > leadInIndex && surgePeakIndex <= leadInIndex + 5;
+
+  return {
+    accepted: confirmationWithinWindow && confirmationVolume.passed,
+    seedAnchor: true,
+    volume: confirmationWithinWindow && confirmationVolume.passed ? confirmationVolume : leadInVolume,
+    confirmationPoint: confirmationWithinWindow ? confirmationPoint : undefined,
+    confirmationVolume: confirmationWithinWindow ? confirmationVolume : undefined
   };
 }
 
@@ -1258,6 +1346,7 @@ function buildCandidateMatch(params: {
   leadInPriceChangePercent: number;
   surgeAdvancePercent?: number;
   surgeDurationDays?: number;
+  displayLeadInVolume?: number;
   leadInVolumeRatio20d?: number;
   leadInTurnoverValue?: number;
   breakoutVolumeRatio20d?: number;
@@ -1384,7 +1473,7 @@ function buildCandidateMatch(params: {
     sessionsSinceBreakout: params.breakoutPoint ? params.windowPoints.at(-1) ? params.windowPoints.findIndex((point) => point.date === params.windowPoints.at(-1)?.date) - params.windowPoints.findIndex((point) => point.date === params.breakoutPoint?.date) : undefined : undefined,
     leadInClose: params.leadInPoint.close,
     leadInHigh: params.leadInPoint.high,
-    leadInVolume: params.leadInPoint.volume,
+    leadInVolume: params.displayLeadInVolume ?? params.leadInPoint.volume,
     leadInTurnoverValue: params.leadInTurnoverValue,
     leadInVolumeRatio20d: params.leadInVolumeRatio20d,
     surgePeakClose: params.surgePeakPoint?.close,
@@ -1468,16 +1557,12 @@ export function evaluateSmartMoneyPattern(
         filters.minTurnoverValue
       );
       const leadInCandleQuality = scoreCandleQuality(leadInPoint, leadInPrevious.close, "setup");
-      const leadInReferenceOpen = leadInPoint.open ?? leadInPrevious.close;
-      const leadInBullishBody = leadInPoint.close > leadInReferenceOpen;
-      const leadInClosedStrong = leadInPoint.close >= getPointHigh(leadInPoint) * 0.94;
-      if (
-        leadInPriceChangePercent == null ||
-        leadInPriceChangePercent < filters.minLeadInPriceChangePercent ||
-        !leadInVolume.passed ||
-        !leadInBullishBody ||
-        !leadInClosedStrong
-      ) {
+      const baseLeadInQualification = resolveQualifiedLeadIn({
+        points,
+        leadInIndex,
+        filters
+      });
+      if (!baseLeadInQualification.accepted && !baseLeadInQualification.seedAnchor) {
         rejected.push(
           createRejectReason("setup", lookbackWindowDays, "Lead-in impulse failed price, relative volume, absolute volume, or turnover filters.", leadInPoint.date)
         );
@@ -1496,6 +1581,28 @@ export function evaluateSmartMoneyPattern(
         if (surgeAdvancePercent == null || surgeAdvancePercent < filters.minSetupSurgeAdvancePercent) {
           continue;
         }
+        const qualifiedLeadIn = baseLeadInQualification.accepted
+          ? baseLeadInQualification
+          : resolveQualifiedLeadIn({
+              points,
+              leadInIndex,
+              surgePeakIndex,
+              filters
+            });
+        if (!qualifiedLeadIn.accepted) {
+          rejected.push(
+            createRejectReason(
+              "setup",
+              lookbackWindowDays,
+              "Seed lead-in price impulse did not get enough follow-through liquidity confirmation.",
+              leadInPoint.date,
+              surgePeakPoint.date
+            )
+          );
+          continue;
+        }
+        const effectiveLeadInVolume = qualifiedLeadIn.volume;
+        const qualifiedLeadInPriceChangePercent = leadInPriceChangePercent ?? 0;
 
         const setupPullbackPoints = points.slice(surgePeakIndex + 1, referenceIndex + 1);
         if (setupPullbackPoints.length < Math.max(filters.minPullbackSessions, filters.minSetupPullbackSessions) || setupPullbackPoints.length > filters.maxPullbackSessions) {
@@ -1523,7 +1630,7 @@ export function evaluateSmartMoneyPattern(
         });
         const pullbackBuyEligible = isPullbackBuySetup({
           setupType: setupPullback.setupType,
-          leadInPriceChangePercent,
+          leadInPriceChangePercent: qualifiedLeadInPriceChangePercent,
           pullbackMaxDrawdownPercent: setupPullback.pullbackMaxDrawdownPercent,
           referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
           filters
@@ -1541,6 +1648,7 @@ export function evaluateSmartMoneyPattern(
             ? resolvePullbackBuyPlan({
                 referenceSma20,
                 invalidationPrice: stopLossReference.price,
+                firstBuySma20ProximityPercent: filters.firstBuySma20ProximityPercent,
                 secondEntryRiskRatio: filters.pullbackBuySecondEntryRiskRatio,
                 thirdEntryRiskRatio: filters.pullbackBuyThirdEntryRiskRatio,
                 pricingContext: options?.pricingContext
@@ -1670,14 +1778,15 @@ export function evaluateSmartMoneyPattern(
           ...(Math.abs(setupDistancePercent) <= 2 ? (["tag_alt_anchor_pivot_retest"] as const) : []),
           ...(setupPullback.setupType === "support_holding_pullback" ? (["tag_alt_anchor_box_support"] as const) : []),
           ...(setupPullback.pullbackType === "time_correction" || setupPullback.pullbackMaxDrawdownPercent <= 4 ? (["tag_alt_anchor_shallow_pullback"] as const) : []),
-          ...leadInVolume.tags,
+          ...(qualifiedLeadIn.seedAnchor ? (["tag_seed_anchor_confirmed"] as const) : []),
+          ...effectiveLeadInVolume.tags,
           ...leadInCandleQuality.tags,
           ...(volumeContractionScore < 55 ? (["tag_volume_weak"] as const) : []),
           ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
           ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : [])
         ];
         const setupPenaltyFactors: SmartMoneyPenaltyFactor[] = [
-          ...leadInVolume.penaltyFactors,
+          ...effectiveLeadInVolume.penaltyFactors,
           ...leadInCandleQuality.penaltyFactors,
           ...(volumeContractionScore < 55
             ? [
@@ -1724,9 +1833,9 @@ export function evaluateSmartMoneyPattern(
         const drawdownPenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.2 : 2.5;
         const setupBaseScore = clamp(
           Math.round(
-            leadInVolume.volumeQualityScore * 0.12 +
+            effectiveLeadInVolume.volumeQualityScore * 0.12 +
               leadInCandleQuality.candleQualityScore * 0.08 +
-              Math.min(100, (leadInPriceChangePercent / filters.minLeadInPriceChangePercent) * 40) * 0.22 +
+              Math.min(100, (qualifiedLeadInPriceChangePercent / filters.minLeadInPriceChangePercent) * 40) * 0.22 +
               Math.min(100, (surgeAdvancePercent / filters.minSetupSurgeAdvancePercent) * 35) * 0.18 +
               clamp(100 - setupPullback.pullbackRangePercent * rangePenaltyMultiplier, 0, 100) * 0.2 +
               clamp(100 - setupPullback.pullbackMaxDrawdownPercent * drawdownPenaltyMultiplier, 0, 100) * 0.2
@@ -1749,6 +1858,7 @@ export function evaluateSmartMoneyPattern(
         const matched = !baseReclaimWatchEligible && setupScore >= setupThresholdScore;
         const setupClassificationReasons = [
           matched ? "matched_setup" : "setup_watch_only",
+          ...(qualifiedLeadIn.seedAnchor ? (["seed_anchor_confirmed"] as const) : []),
           pullbackBuyStarted ? "entry_sma20_hit" : withinSetupEntryZone ? "entry_zone_hit" : "entry_zone_pending",
           volumeContractionScore < 55 ? "weak_volume_contraction" : "volume_contraction_ok",
           leadInCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
@@ -1780,7 +1890,7 @@ export function evaluateSmartMoneyPattern(
           basePrice: preLeadBaseClose,
           setupScore,
           breakoutScore: 0,
-          volumeQualityScore: leadInVolume.volumeQualityScore,
+          volumeQualityScore: effectiveLeadInVolume.volumeQualityScore,
           candleQualityScore: leadInCandleQuality.candleQualityScore,
           breakoutStrengthScore: 0,
           breakoutFailureRiskScore: 0,
@@ -1792,11 +1902,12 @@ export function evaluateSmartMoneyPattern(
           sma20SlopePercent,
           riskRewardRatio,
           pullback: setupPullback,
-          leadInPriceChangePercent,
+          leadInPriceChangePercent: qualifiedLeadInPriceChangePercent,
           surgeAdvancePercent,
           surgeDurationDays: surgePeakIndex - leadInIndex,
-          leadInVolumeRatio20d: leadInVolume.volumeRatio20d,
-          leadInTurnoverValue: leadInVolume.turnoverValue,
+          displayLeadInVolume: effectiveLeadInVolume.absoluteVolume ?? 0,
+          leadInVolumeRatio20d: effectiveLeadInVolume.volumeRatio20d,
+          leadInTurnoverValue: effectiveLeadInVolume.turnoverValue,
           breakout20d: false,
           closedNearHigh: false,
           referenceCloseVsBasePercent,
@@ -1822,7 +1933,9 @@ export function evaluateSmartMoneyPattern(
           regimeScoreWeight: filters.regimeScoreWeight,
           pricingContext: options?.pricingContext,
           reasons: [
-            `Lead-in on ${leadInPoint.date} printed ${leadInPriceChangePercent.toFixed(1)}% with solid turnover support.`,
+            qualifiedLeadIn.seedAnchor && qualifiedLeadIn.confirmationPoint
+              ? `Seed lead-in on ${leadInPoint.date} printed ${qualifiedLeadInPriceChangePercent.toFixed(1)}%, then liquidity confirmed on ${qualifiedLeadIn.confirmationPoint.date}.`
+              : `Lead-in on ${leadInPoint.date} printed ${qualifiedLeadInPriceChangePercent.toFixed(1)}% with solid turnover support.`,
             `The stock formed a ${setupPullback.setupType === "volatile_power_digestion" ? "volatile power digestion" : setupPullback.setupType === "support_holding_pullback" ? "support-holding pullback" : setupPullback.pullbackType === "time_correction" ? "time correction" : "tight price pullback"} with volume cooling to ${((setupPullback.pullbackVolumeRatioToLeadIn ?? 0) * 100).toFixed(0)}% of the surge anchor and close compression of ${setupPullback.closeRangePercent.toFixed(1)}%.`,
             ...(baseReclaimWatchEligible
               ? [
@@ -1951,6 +2064,7 @@ export function evaluateSmartMoneyPattern(
           const breakoutTags: SmartMoneyClassificationTag[] = [
             "tag_sma20_primary",
             "tag_alt_anchor_pivot_retest",
+            ...(qualifiedLeadIn.seedAnchor ? (["tag_seed_anchor_confirmed"] as const) : []),
             ...breakoutVolume.tags,
             ...breakoutCandleQuality.tags,
             ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
@@ -1982,6 +2096,7 @@ export function evaluateSmartMoneyPattern(
           ];
           const breakoutClassificationReasons = [
             "matched_breakout",
+            ...(qualifiedLeadIn.seedAnchor ? (["seed_anchor_confirmed"] as const) : []),
             sessionsSinceBreakout <= filters.recentSignalSessions + 2 ? "breakout_recent" : "breakout_stale",
             breakoutCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
             sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
@@ -2020,11 +2135,12 @@ export function evaluateSmartMoneyPattern(
             sma20SlopePercent,
             riskRewardRatio,
             pullback: setupPullback,
-            leadInPriceChangePercent,
+            leadInPriceChangePercent: qualifiedLeadInPriceChangePercent,
             surgeAdvancePercent,
             surgeDurationDays: surgePeakIndex - leadInIndex,
-            leadInVolumeRatio20d: leadInVolume.volumeRatio20d,
-            leadInTurnoverValue: leadInVolume.turnoverValue,
+            displayLeadInVolume: effectiveLeadInVolume.absoluteVolume ?? 0,
+            leadInVolumeRatio20d: effectiveLeadInVolume.volumeRatio20d,
+            leadInTurnoverValue: effectiveLeadInVolume.turnoverValue,
             breakoutVolumeRatio20d: breakoutVolume.volumeRatio20d,
             breakoutTurnoverValue: breakoutVolume.turnoverValue,
             breakoutPriceChangePercent,

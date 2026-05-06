@@ -6,6 +6,7 @@ import { createLogger, toErrorContext } from "./lib/logger.js";
 import { initializeNewsSignalCollector } from "./services/newsSignals.js";
 import { alertRoutes } from "./routes/alertRoutes.js";
 import { analysisRoutes } from "./routes/analysisRoutes.js";
+import { config } from "./config.js";
 import { marketFlowRoutes } from "./routes/marketFlowRoutes.js";
 
 export const app = express();
@@ -74,7 +75,8 @@ app.use(
 
 app.get("/health", (_request, response) => {
   response.json({
-    ok: true
+    ok: true,
+    discordConfigured: Boolean(config.discordWebhookUrl)
   });
 });
 

@@ -149,6 +149,7 @@ export type SmartMoneyPatternFilters = {
   minTightPullbackBuyLeadInPriceChangePercent: number;
   pullbackBuyStartPercentFromPeak: number;
   firstBuySma20ProximityPercent: number;
+  pullbackBuySecondEntryDropPercent: number;
   pullbackBuySecondEntryRiskRatio: number;
   pullbackBuyThirdEntryRiskRatio: number;
   stopLossLookbackSessions: number;
@@ -330,6 +331,7 @@ export type SmartMoneyClassificationTag =
   | "tag_alt_anchor_shallow_pullback"
   | "tag_volume_weak"
   | "tag_volume_turnover_strong"
+  | "tag_seed_anchor_confirmed"
   | "tag_candle_weak"
   | "tag_candle_rejection"
   | "tag_sma20_slope_negative"
@@ -704,6 +706,10 @@ export type ThemeGroup = {
   category: ThemeCategory;
   tickers: string[];
   benchmark?: ThemeBenchmark;
+  members?: Array<{
+    symbol: string;
+    name: string;
+  }>;
   sentimentScore?: number;
 };
 
@@ -729,6 +735,17 @@ export type ThemeSnapshot = {
   change20d?: number;
   sentimentScore?: number;
   note?: string;
+  members?: Array<{
+    symbol: string;
+    name?: string;
+    latestDate?: string;
+    latestClose?: number;
+    change1d?: number;
+    change5d?: number;
+    change20d?: number;
+    currentTurnover?: number;
+    averageTurnover20?: number;
+  }>;
 };
 
 export type MarketFlowGlobalState = "RISK_ON" | "NEUTRAL" | "RISK_OFF";

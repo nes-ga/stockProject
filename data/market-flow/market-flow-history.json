@@ -4219,5 +4219,23 @@
     "localState": "SELECTIVE",
     "themeRotationScore": 50.36,
     "marketMode": "SELECTIVE"
+  },
+  {
+    "date": "2026-05-05",
+    "globalScore": 3,
+    "globalState": "RISK_ON",
+    "localScore": 6,
+    "localState": "STRONG",
+    "themeRotationScore": 54.55,
+    "marketMode": "AGGRESSIVE"
+  },
+  {
+    "date": "2026-05-06",
+    "globalScore": 3,
+    "globalState": "RISK_ON",
+    "localScore": 6,
+    "localState": "STRONG",
+    "themeRotationScore": 54.55,
+    "marketMode": "AGGRESSIVE"
   }
 ]

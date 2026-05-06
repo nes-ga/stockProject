@@ -45,7 +45,7 @@ async function main() {
   );
 
   const filtered = analyses
-    .filter((analysis) => analysis.pattern.matched)
+    .filter((analysis) => classifySwingCandidate(analysis).bucket !== "watch")
     .sort((left, right) => {
       const leftRank = left.pattern.stage === "breakout" ? 2 : left.pattern.stage === "setup" ? 1 : 0;
       const rightRank = right.pattern.stage === "breakout" ? 2 : right.pattern.stage === "setup" ? 1 : 0;

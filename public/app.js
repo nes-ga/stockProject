@@ -11,6 +11,7 @@
 const STORAGE_KEY = "stock-project-recommendations-v2";
 const LEGACY_STORAGE_KEY = "band-stock-recommendations-v2";
 const UI_STATE_STORAGE_KEY = "stock-project-ui-state-v1";
+const SCAN_STATE_STORAGE_KEY = "stock-project-recommendation-scan-state-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
 const DIVIDEND_CATEGORY = "dividend";
@@ -19,6 +20,7 @@ const DEFAULT_SWING_BUCKET = "execution";
 const DEFAULT_SWING_PROFILE = "default";
 const SWING_LOOKBACK_DAYS = 45;
 const SERVER_RECOMMENDATION_REFRESH_INTERVAL_MS = 60 * 1000;
+const RECOMMENDATION_SCAN_POLL_INTERVAL_MS = 3000;
 const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
 const DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS = {
   daily: 45,
@@ -472,6 +474,7 @@ let marketFlowSelectedRange = DEFAULT_MARKET_FLOW_RANGE;
 let marketFlowSelectedThemes = new Set();
 let stockModalPointerDownOnBackdrop = false;
 let marketEventModalPointerDownOnBackdrop = false;
+let themeDetailModalPointerDownOnBackdrop = false;
 let serverDividendPicksLoaded = false;
 let serverLongTermPicksLoaded = false;
 let dividendEtfRecommendations = [];
@@ -486,6 +489,7 @@ const recommendationUniverseScanLoadingByCategory = {
   swing: false,
   "swing:smallcap": false
 };
+hydrateRecommendationUniverseScanLoadingFromSessions();
 let swingPatternByKey = new Map();
 let realtimeStockSnapshots = new Map();
 let stockSnapshotRefreshTimer = null;
@@ -496,6 +500,8 @@ let activeAnalysisRealtimeLoading = false;
 let onlinePresenceHeartbeatTimer = null;
 let serverRecommendationRefreshTimer = null;
 let serverRecommendationSyncInFlight = false;
+let recommendationUniverseScanPollTimer = null;
+const activeRecommendationScanRequestKeys = new Set();
 let latestRiseMovers = [];
 let latestFallMovers = [];
 let toastSequence = 0;
@@ -543,6 +549,11 @@ const marketEventModal = document.querySelector("#marketEventModal");
 const closeMarketEventModalBtn = document.querySelector("#closeMarketEventModalBtn");
 const marketEventModalMeta = document.querySelector("#marketEventModalMeta");
 const marketEventModalBody = document.querySelector("#marketEventModalBody");
+const themeDetailModal = document.querySelector("#themeDetailModal");
+const closeThemeDetailModalBtn = document.querySelector("#closeThemeDetailModalBtn");
+const themeDetailModalTitle = document.querySelector("#themeDetailModalTitle");
+const themeDetailModalMeta = document.querySelector("#themeDetailModalMeta");
+const themeDetailModalBody = document.querySelector("#themeDetailModalBody");
 const stockForm = document.querySelector("#stockForm");
 const stockSearchInput = document.querySelector("#stockSearchInput");
 const stockSearchResults = document.querySelector("#stockSearchResults");
@@ -896,6 +907,7 @@ cancelStockModalBtn.addEventListener("click", closeStockModal);
 closeIndexChartModalBtn?.addEventListener("click", closeIndexChartModal);
 closeSwingScoreModalBtn?.addEventListener("click", closeSwingScoreModal);
 closeMarketEventModalBtn?.addEventListener("click", closeMarketEventModal);
+closeThemeDetailModalBtn?.addEventListener("click", closeThemeDetailModal);
 
 stockModal.addEventListener("pointerdown", (event) => {
   stockModalPointerDownOnBackdrop = event.target === stockModal;
@@ -920,6 +932,12 @@ refreshMarketFlowBtn?.addEventListener("click", () => {
 });
 
 marketFlowBoardBody?.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-market-flow-theme-detail]");
+  if (detailButton) {
+    openThemeDetailModal(detailButton.dataset.marketFlowThemeDetail);
+    return;
+  }
+
   const rangeButton = event.target.closest("[data-market-flow-range]");
   if (rangeButton) {
     const range = rangeButton.dataset.marketFlowRange;
@@ -970,6 +988,18 @@ marketEventModal?.addEventListener("click", (event) => {
   marketEventModalPointerDownOnBackdrop = false;
 });
 
+themeDetailModal?.addEventListener("pointerdown", (event) => {
+  themeDetailModalPointerDownOnBackdrop = event.target === themeDetailModal;
+});
+
+themeDetailModal?.addEventListener("click", (event) => {
+  if (event.target === themeDetailModal && themeDetailModalPointerDownOnBackdrop) {
+    closeThemeDetailModal();
+  }
+
+  themeDetailModalPointerDownOnBackdrop = false;
+});
+
 marketEventModalBody?.addEventListener("click", (event) => {
   const expandButton = event.target.closest("[data-event-group-expand]");
   if (!expandButton) {
@@ -1008,6 +1038,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && marketEventModal && !marketEventModal.classList.contains("hidden")) {
     closeMarketEventModal();
+    return;
+  }
+
+  if (event.key === "Escape" && themeDetailModal && !themeDetailModal.classList.contains("hidden")) {
+    closeThemeDetailModal();
   }
 });
 
@@ -1121,6 +1156,7 @@ results.addEventListener("click", (event) => {
 
 async function initializeApp() {
   initOnlinePresence();
+  updateUniverseRecommendationButton();
   stockSearchUniverse = buildStockSearchUniverse();
   await loadServerDividendPicks();
   await loadServerLongTermPicks();
@@ -1128,6 +1164,7 @@ async function initializeApp() {
   await loadServerSwingPicks("smallcap");
   await refreshSwingPatternSnapshots();
   restoreUiState();
+  hydrateRecommendationUniverseScanLoadingFromSessions();
   applyScoreGuideTooltips();
   renderAppTabs();
   renderCategoryTabs();
@@ -1146,6 +1183,7 @@ async function initializeApp() {
     void runAnalysisByKey(selectedKey);
   }
 
+  void restoreRecommendationUniverseScanSessions();
   void loadStockUniverse();
   void loadMarketWatch();
   void loadMarketEventCalendar();
@@ -1688,37 +1726,92 @@ function renderIndexWatchList() {
 function getMarketFlowStateLabel(type, value) {
   if (type === "global") {
     if (value === "RISK_ON") {
-      return "Risk On";
+      return "위험 선호";
     }
     if (value === "RISK_OFF") {
-      return "Risk Off";
+      return "위험 회피";
     }
-    return "Neutral";
+    return "중립";
   }
 
   if (type === "local") {
     if (value === "STRONG") {
-      return "Strong";
+      return "국내 강세";
     }
     if (value === "SELECTIVE") {
-      return "Selective";
+      return "선별 장세";
     }
     if (value === "DEFENSIVE") {
-      return "Defensive";
+      return "방어 장세";
     }
-    return "Weak";
+    return "국내 약세";
   }
 
   if (value === "AGGRESSIVE") {
-    return "Aggressive";
+    return "공격 모드";
   }
   if (value === "SELECTIVE") {
-    return "Selective";
+    return "선별 모드";
   }
   if (value === "DEFENSIVE") {
-    return "Defensive";
+    return "방어 모드";
   }
-  return "Neutral";
+  return "중립 모드";
+}
+
+function formatMarketFlowDateTime(value) {
+  if (!value) {
+    return "기준 시각 없음";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date);
+}
+
+function formatMarketFlowDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(`${value}T00:00:00+09:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+function formatMarketFlowAxisDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const dateValue = typeof value === "object" && value !== null
+    ? `${value.year}-${String(value.month).padStart(2, "0")}-${String(value.day).padStart(2, "0")}`
+    : String(value);
+  const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return dateValue;
+  }
+
+  return `${match[1]}.${match[2]}.${match[3]}`;
 }
 
 function getMarketFlowCycleLabel(cycle) {
@@ -1834,6 +1927,27 @@ function buildThemeRotationSummary(table) {
   const top = table.slice(0, 2).map((item) => item.label).join(", ");
   const bottom = table.slice(-2).map((item) => item.label).join(", ");
   return `현재 시장은 ${top} 중심으로 자금이 유입되고 있으며, ${bottom} 테마는 상대적으로 약세입니다.`;
+}
+
+function renderThemeScoreBubbles(themes, toneClass) {
+  if (!themes.length) {
+    return `<div class="market-flow-theme-bubble-empty">표시할 테마 없음</div>`;
+  }
+
+  return `
+    <div class="market-flow-theme-bubble-list">
+      ${themes
+        .map(
+          (item) => `
+            <span class="market-flow-theme-bubble ${escapeHtml(toneClass)}">
+              <span class="market-flow-theme-bubble-name">${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(formatDecimal(item.score, 0))}</strong>
+            </span>
+          `
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function getMarketFlowThemeColor(theme) {
@@ -1980,7 +2094,8 @@ function syncMarketFlowMarketChart() {
       borderColor: "rgba(47, 143, 217, 0.16)"
     },
     timeScale: {
-      borderColor: "rgba(47, 143, 217, 0.16)"
+      borderColor: "rgba(47, 143, 217, 0.16)",
+      tickMarkFormatter: (time) => formatMarketFlowAxisDate(time)
     },
     crosshair: {
       mode: CrosshairMode.Normal
@@ -2108,7 +2223,8 @@ function syncMarketFlowThemeChart() {
       borderColor: "rgba(47, 143, 217, 0.16)"
     },
     timeScale: {
-      borderColor: "rgba(47, 143, 217, 0.16)"
+      borderColor: "rgba(47, 143, 217, 0.16)",
+      tickMarkFormatter: (time) => formatMarketFlowAxisDate(time)
     },
     crosshair: {
       mode: CrosshairMode.Normal
@@ -2203,6 +2319,101 @@ function renderMarketFlowMeter(label, score, maxScore, toneClass) {
   `;
 }
 
+function formatMarketFlowTurnover(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+
+  if (value >= 100_000_000) {
+    return `${formatDecimal(value / 100_000_000, 0)}억`;
+  }
+
+  return formatDecimal(value, 0);
+}
+
+function findMarketFlowTheme(theme) {
+  return (marketFlowPayload?.themeRotation?.snapshots ?? []).find((item) => item.theme === theme);
+}
+
+function openThemeDetailModal(theme) {
+  if (!themeDetailModal || !theme) {
+    return;
+  }
+
+  renderThemeDetailModal(theme);
+  themeDetailModal.classList.remove("hidden");
+}
+
+function closeThemeDetailModal() {
+  themeDetailModalPointerDownOnBackdrop = false;
+  themeDetailModal?.classList.add("hidden");
+}
+
+function renderThemeDetailModal(theme) {
+  const snapshot = findMarketFlowTheme(theme);
+  if (!snapshot || !themeDetailModalTitle || !themeDetailModalMeta || !themeDetailModalBody) {
+    return;
+  }
+
+  const members = Array.isArray(snapshot.members) ? snapshot.members : [];
+  const latestDate = members.find((item) => item.latestDate)?.latestDate ?? snapshot.date;
+  themeDetailModalTitle.textContent = `${snapshot.label} 대표 종목`;
+  themeDetailModalMeta.textContent = `${snapshot.category} / ${snapshot.memberCount}개 반영 / 점수 ${formatDecimal(snapshot.score, 0)} / ${formatMarketFlowDate(latestDate)} 기준`;
+
+  if (!members.length) {
+    themeDetailModalBody.innerHTML = `<div class="empty-state"><p>구성 종목 상세 데이터가 아직 없습니다.</p></div>`;
+    return;
+  }
+
+  const rows = members
+    .map((item) => {
+      const changeClass = (item.change1d ?? 0) > 0 ? "positive" : (item.change1d ?? 0) < 0 ? "negative" : "neutral";
+      const volumeRatio =
+        typeof item.currentTurnover === "number" && typeof item.averageTurnover20 === "number" && item.averageTurnover20 > 0
+          ? item.currentTurnover / item.averageTurnover20
+          : undefined;
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.name ?? item.symbol)}</strong>
+            <span class="theme-detail-symbol">${escapeHtml(item.symbol)}</span>
+          </td>
+          <td>${escapeHtml(formatDecimal(item.latestClose, 0))}</td>
+          <td><span class="market-flow-change ${changeClass}">${escapeHtml(formatPercent(item.change1d))}</span></td>
+          <td>${escapeHtml(formatPercent(item.change5d))}</td>
+          <td>${escapeHtml(formatPercent(item.change20d))}</td>
+          <td>${escapeHtml(formatMarketFlowTurnover(item.currentTurnover))}</td>
+          <td>${escapeHtml(volumeRatio != null ? `${formatDecimal(volumeRatio, 2)}배` : "-")}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  themeDetailModalBody.innerHTML = `
+    <div class="theme-detail-summary">
+      <span>사이클 <strong>${escapeHtml(getMarketFlowCycleLabel(snapshot.cycle))}</strong></span>
+      <span>20일 상대수익 <strong>${escapeHtml(formatPercent(snapshot.relativeReturn20d))}</strong></span>
+      <span>거래대금 <strong>${escapeHtml(snapshot.volumeRatio != null ? `${formatDecimal(snapshot.volumeRatio, 2)}배` : "-")}</strong></span>
+    </div>
+    <div class="theme-detail-table-shell">
+      <table class="theme-detail-table">
+        <thead>
+          <tr>
+            <th>종목명</th>
+            <th>현재가</th>
+            <th>1일</th>
+            <th>5일</th>
+            <th>20일</th>
+            <th>거래대금</th>
+            <th>20일 대비</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderMarketFlowBoard() {
   if (!marketFlowBoardBody || !marketFlowStatusBadge) {
     return;
@@ -2250,20 +2461,21 @@ function renderMarketFlowBoard() {
   const marketHistoryDates = [...new Set(marketFlowHistory.map((item) => item.date))].sort((left, right) => left.localeCompare(right));
   const themeHistoryDates = [...new Set(marketFlowThemeHistory.map((item) => item.date))].sort((left, right) => left.localeCompare(right));
   const marketHistoryLabel = marketHistoryDates.length >= 2
-    ? `${marketHistoryDates[0]} ~ ${marketHistoryDates.at(-1)}`
+    ? `${formatMarketFlowDate(marketHistoryDates[0])} ~ ${formatMarketFlowDate(marketHistoryDates.at(-1))}`
     : marketHistoryDates[0]
-      ? `${marketHistoryDates[0]}부터 축적 중`
+      ? `${formatMarketFlowDate(marketHistoryDates[0])}부터 축적 중`
       : "히스토리 없음";
   const themeHistoryLabel = themeHistoryDates.length >= 2
-    ? `${themeHistoryDates[0]} ~ ${themeHistoryDates.at(-1)}`
+    ? `${formatMarketFlowDate(themeHistoryDates[0])} ~ ${formatMarketFlowDate(themeHistoryDates.at(-1))}`
     : themeHistoryDates[0]
-      ? `${themeHistoryDates[0]}부터 축적 중`
+      ? `${formatMarketFlowDate(themeHistoryDates[0])}부터 축적 중`
       : "히스토리 없음";
+  const generatedAtLabel = formatMarketFlowDateTime(payload.generatedAt);
   const rankingRows = themeTable
     .map((item) => {
       const rowClass = item.isTop ? "top" : item.isBottom ? "bottom" : "";
       return `
-        <tr class="market-flow-table-row ${rowClass}" data-market-flow-theme="${escapeHtml(item.theme)}">
+        <tr class="market-flow-table-row ${rowClass}" data-market-flow-theme-detail="${escapeHtml(item.theme)}">
           <td>
             <span class="market-flow-rank-pill ${item.isTop ? "top" : item.isBottom ? "bottom" : ""}">${escapeHtml(String(item.rank))}</span>
           </td>
@@ -2292,36 +2504,34 @@ function renderMarketFlowBoard() {
     ${marketFlowError ? `<div class="error-box market-flow-error-box">${escapeHtml(marketFlowError)}</div>` : ""}
     <div class="market-flow-summary-grid">
       <article class="market-flow-summary-card ${escapeHtml(getMarketFlowToneClass(payload.global.state))}">
-        <span class="market-flow-summary-label">Global State</span>
+        <span class="market-flow-summary-label">글로벌 상태</span>
         <strong>${escapeHtml(getMarketFlowStateLabel("global", payload.global.state))}</strong>
         <span class="market-flow-summary-meta">${escapeHtml(formatDecimal(payload.global.normalizedScore, 1))} / 4.0</span>
       </article>
       <article class="market-flow-summary-card ${escapeHtml(getMarketFlowToneClass(payload.local.state))}">
-        <span class="market-flow-summary-label">Local State</span>
+        <span class="market-flow-summary-label">국내 상태</span>
         <strong>${escapeHtml(getMarketFlowStateLabel("local", payload.local.state))}</strong>
         <span class="market-flow-summary-meta">${escapeHtml(formatDecimal(payload.local.normalizedScore, 1))} / 6.0</span>
       </article>
       <article class="market-flow-summary-card ${escapeHtml(toneClass)}">
-        <span class="market-flow-summary-label">Market Mode</span>
+        <span class="market-flow-summary-label">시장 모드</span>
         <strong>${escapeHtml(getMarketFlowStateLabel("mode", payload.marketMode))}</strong>
-        <span class="market-flow-summary-meta">${escapeHtml(payload.generatedAt)} 기준</span>
+        <span class="market-flow-summary-meta">${escapeHtml(generatedAtLabel)} 기준</span>
       </article>
-      <article class="market-flow-summary-card positive">
+      <article class="market-flow-summary-card market-flow-theme-summary positive">
         <span class="market-flow-summary-label">주도 테마 Top 3</span>
-        <strong>${escapeHtml(topThemes.map((item) => item.label).join(", ") || "-")}</strong>
-        <span class="market-flow-summary-meta">점수 ${escapeHtml(topThemes.map((item) => formatDecimal(item.score, 0)).join(" / "))}</span>
+        ${renderThemeScoreBubbles(topThemes, "positive")}
       </article>
-      <article class="market-flow-summary-card negative">
+      <article class="market-flow-summary-card market-flow-theme-summary negative">
         <span class="market-flow-summary-label">약세 테마 Bottom 3</span>
-        <strong>${escapeHtml(bottomThemes.map((item) => item.label).join(", ") || "-")}</strong>
-        <span class="market-flow-summary-meta">점수 ${escapeHtml(bottomThemes.map((item) => formatDecimal(item.score, 0)).join(" / "))}</span>
+        ${renderThemeScoreBubbles(bottomThemes, "negative")}
       </article>
     </div>
 
     <div class="market-flow-meter-grid">
-      ${renderMarketFlowMeter("Global Score", payload.global.normalizedScore, 4, getMarketFlowToneClass(payload.global.state))}
-      ${renderMarketFlowMeter("Local Score", payload.local.normalizedScore, 6, getMarketFlowToneClass(payload.local.state))}
-      ${renderMarketFlowMeter("Theme Rotation Score", payload.themeRotation.score, 100, "positive")}
+      ${renderMarketFlowMeter("글로벌 점수", payload.global.normalizedScore, 4, getMarketFlowToneClass(payload.global.state))}
+      ${renderMarketFlowMeter("국내 점수", payload.local.normalizedScore, 6, getMarketFlowToneClass(payload.local.state))}
+      ${renderMarketFlowMeter("테마 순환 점수", payload.themeRotation.score, 100, "positive")}
     </div>
 
     <div class="market-flow-content-grid">
@@ -2356,7 +2566,7 @@ function renderMarketFlowBoard() {
           <div class="market-flow-panel-head">
             <div>
               <h3>시장 흐름 차트</h3>
-              <span class="market-flow-panel-meta">Global / Local / Theme Score · ${escapeHtml(marketHistoryLabel)}</span>
+              <span class="market-flow-panel-meta">글로벌 / 국내 / 테마 점수 · ${escapeHtml(marketHistoryLabel)}</span>
             </div>
             <div class="market-flow-range-list">
               ${renderMarketFlowRangeButtons()}
@@ -2370,7 +2580,7 @@ function renderMarketFlowBoard() {
           <div class="market-flow-panel-head">
             <div>
               <h3>테마 사이클 차트</h3>
-              <span class="market-flow-panel-meta">ThemeRotationSnapshot.score · ${escapeHtml(themeHistoryLabel)}</span>
+              <span class="market-flow-panel-meta">테마별 순환 점수 · ${escapeHtml(themeHistoryLabel)}</span>
             </div>
             <div class="market-flow-range-list">
               ${renderMarketFlowRangeButtons()}
@@ -2397,7 +2607,7 @@ function renderMarketFlowBoard() {
           </div>
           <div id="marketFlowThemeChartContainer" class="market-flow-chart"></div>
           <div class="market-flow-chart-caption">
-            ${selectedThemes.length ? escapeHtml(selectedThemes.map((item) => item.label).join(", ")) : "표시할 테마를 선택해 주세요."}
+            ${selectedThemes.length ? escapeHtml(selectedThemes.map((item) => item.label).join(" · ")) : "표시할 테마를 선택해 주세요."}
           </div>
         </section>
       </div>
@@ -4489,6 +4699,209 @@ function getRecommendationScanLoadingKey(category = currentCategory, swingProfil
   return isSwingCategory(category) && swingProfile === "smallcap" ? "swing:smallcap" : category;
 }
 
+function getRecommendationScanLabel(category, swingProfile = DEFAULT_SWING_PROFILE) {
+  if (category === "swing") {
+    return getSwingProfileLabel(resolveSwingProfile(swingProfile));
+  }
+
+  return category === DIVIDEND_CATEGORY ? "배당" : "중장기";
+}
+
+function readRecommendationScanSessions() {
+  try {
+    const raw = localStorage.getItem(SCAN_STATE_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRecommendationScanSessions(sessions) {
+  try {
+    localStorage.setItem(SCAN_STATE_STORAGE_KEY, JSON.stringify(sessions));
+  } catch {
+    return;
+  }
+}
+
+function rememberRecommendationScanSession(category, swingProfile = DEFAULT_SWING_PROFILE) {
+  const resolvedProfile = resolveSwingProfile(swingProfile);
+  const scopeKey = getRecommendationScanLoadingKey(category, resolvedProfile);
+  const sessions = readRecommendationScanSessions();
+  sessions[scopeKey] = {
+    category,
+    swingProfile: resolvedProfile,
+    label: getRecommendationScanLabel(category, resolvedProfile),
+    startedAt: new Date().toISOString()
+  };
+  writeRecommendationScanSessions(sessions);
+  return scopeKey;
+}
+
+function forgetRecommendationScanSession(scopeKey) {
+  const sessions = readRecommendationScanSessions();
+  if (!sessions[scopeKey]) {
+    return;
+  }
+
+  delete sessions[scopeKey];
+  writeRecommendationScanSessions(sessions);
+}
+
+function getRecommendationScanSessionEntries() {
+  return Object.entries(readRecommendationScanSessions()).filter(([, session]) => {
+    if (!session || typeof session !== "object") {
+      return false;
+    }
+
+    return session.category === DEFAULT_CATEGORY || session.category === DIVIDEND_CATEGORY || session.category === "swing";
+  });
+}
+
+function hydrateRecommendationUniverseScanLoadingFromSessions() {
+  for (const [scopeKey] of getRecommendationScanSessionEntries()) {
+    if (scopeKey in recommendationUniverseScanLoadingByCategory) {
+      recommendationUniverseScanLoadingByCategory[scopeKey] = true;
+    }
+  }
+}
+
+async function fetchRecommendationScanStatus(category, swingProfile = DEFAULT_SWING_PROFILE) {
+  const params = new URLSearchParams({
+    category,
+    swingProfile: resolveSwingProfile(swingProfile)
+  });
+  const response = await fetch(`/analysis/recommendation-universe-scan/status?${params.toString()}`);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error ?? "추천 검색 상태를 확인하지 못했습니다.");
+  }
+
+  return payload;
+}
+
+async function handleRestoredRecommendationScanCompletion(scopeKey, session, statusPayload) {
+  const label = session.label || getRecommendationScanLabel(session.category, session.swingProfile);
+  recommendationUniverseScanLoadingByCategory[scopeKey] = false;
+  forgetRecommendationScanSession(scopeKey);
+  await syncServerRecommendations({ silent: true });
+  updateUniverseRecommendationButton();
+
+  const result = statusPayload?.job?.result;
+  const diffCount = Array.isArray(result?.universeDiff?.changes) ? result.universeDiff.changes.length : 0;
+  const countText =
+    result?.category === "swing"
+      ? `매수후보 ${result.executionCount ?? 0}개, 관심후보 ${result.watchCount ?? 0}개`
+      : result?.category === DIVIDEND_CATEGORY
+        ? `후보 ${result.buyCount ?? 0}개, 관찰군 ${result.watchCount ?? 0}개`
+        : `매수후보 ${result?.buyCount ?? 0}개, 관찰군 ${result?.watchCount ?? 0}개`;
+
+  showSummary(`${label} 추천 검색이 완료되어 결과를 다시 불러왔습니다.${result ? ` ${countText}를 반영했습니다.` : ""}`);
+  showAppToast({
+    title: `${label} 추천 검색 완료`,
+    message: result ? `${countText}를 반영했습니다.` : "새로고침 전 진행 중이던 검색 결과를 다시 불러왔습니다.",
+    tone: diffCount ? "positive" : "neutral"
+  });
+}
+
+async function reconcileRecommendationScanSession(scopeKey, session) {
+  const statusPayload = await fetchRecommendationScanStatus(session.category, session.swingProfile);
+  const label = session.label || getRecommendationScanLabel(session.category, session.swingProfile);
+
+  if (statusPayload.running || statusPayload.status === "running") {
+    recommendationUniverseScanLoadingByCategory[scopeKey] = true;
+    updateUniverseRecommendationButton();
+    showSummary(`${label} 추천 검색이 계속 진행 중입니다. 완료되면 결과를 자동으로 갱신합니다.`);
+    return true;
+  }
+
+  if (statusPayload.status === "completed") {
+    await handleRestoredRecommendationScanCompletion(scopeKey, session, statusPayload);
+    return false;
+  }
+
+  if (statusPayload.status === "failed") {
+    recommendationUniverseScanLoadingByCategory[scopeKey] = false;
+    forgetRecommendationScanSession(scopeKey);
+    updateUniverseRecommendationButton();
+    showAppToast({
+      title: `${label} 추천 검색 실패`,
+      message: statusPayload.job?.error || "새로고침 전 진행 중이던 검색이 실패했습니다.",
+      tone: "negative",
+      duration: 5200
+    });
+    return false;
+  }
+
+  recommendationUniverseScanLoadingByCategory[scopeKey] = false;
+  forgetRecommendationScanSession(scopeKey);
+  updateUniverseRecommendationButton();
+  return false;
+}
+
+async function pollRecommendationUniverseScanSessions() {
+  const entries = getRecommendationScanSessionEntries();
+  if (!entries.length) {
+    if (recommendationUniverseScanPollTimer) {
+      window.clearInterval(recommendationUniverseScanPollTimer);
+      recommendationUniverseScanPollTimer = null;
+    }
+    return;
+  }
+
+  let hasRunning = false;
+  for (const [scopeKey, session] of entries) {
+    if (activeRecommendationScanRequestKeys.has(scopeKey)) {
+      hasRunning = true;
+      continue;
+    }
+
+    try {
+      const running = await reconcileRecommendationScanSession(scopeKey, session);
+      hasRunning = hasRunning || running;
+    } catch (error) {
+      console.error(error);
+      hasRunning = true;
+    }
+  }
+
+  if (!hasRunning && recommendationUniverseScanPollTimer) {
+    window.clearInterval(recommendationUniverseScanPollTimer);
+    recommendationUniverseScanPollTimer = null;
+  }
+}
+
+function startRecommendationUniverseScanPolling() {
+  if (recommendationUniverseScanPollTimer) {
+    return;
+  }
+
+  recommendationUniverseScanPollTimer = window.setInterval(() => {
+    void pollRecommendationUniverseScanSessions();
+  }, RECOMMENDATION_SCAN_POLL_INTERVAL_MS);
+}
+
+async function restoreRecommendationUniverseScanSessions() {
+  const entries = getRecommendationScanSessionEntries();
+  if (!entries.length) {
+    return;
+  }
+
+  for (const [scopeKey, session] of entries) {
+    recommendationUniverseScanLoadingByCategory[scopeKey] = true;
+  }
+  updateUniverseRecommendationButton();
+  await pollRecommendationUniverseScanSessions();
+  if (getRecommendationScanSessionEntries().length) {
+    startRecommendationUniverseScanPolling();
+  }
+}
+
 function updateUniverseRecommendationButton() {
   if (!runUniverseRecommendationBtn) {
     return;
@@ -4640,6 +5053,9 @@ async function runRecommendationUniverseScan() {
         : "중장기";
 
   recommendationUniverseScanLoadingByCategory[requestedLoadingKey] = true;
+  rememberRecommendationScanSession(requestedCategory, requestedSwingProfile);
+  activeRecommendationScanRequestKeys.add(requestedLoadingKey);
+  startRecommendationUniverseScanPolling();
   updateUniverseRecommendationButton();
   showError("");
   showSummary(`${requestedLabel} universe 검색을 시작했습니다. 종목 수가 많아 시간이 걸릴 수 있습니다.`);
@@ -4650,8 +5066,9 @@ async function runRecommendationUniverseScan() {
     duration: 2600
   });
 
+  let scanStarted = false;
   try {
-    const response = await fetch("/analysis/recommendation-universe-scan", {
+    const response = await fetch("/analysis/recommendation-universe-scan?async=true", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -4664,6 +5081,15 @@ async function runRecommendationUniverseScan() {
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error ?? `${requestedLabel} universe 검색을 실행하지 못했습니다.`);
+    }
+
+    if (payload.accepted) {
+      scanStarted = true;
+      activeRecommendationScanRequestKeys.delete(requestedLoadingKey);
+      showSummary(`${requestedLabel} universe 검색이 서버에서 진행 중입니다. 완료되면 결과를 자동으로 갱신합니다.`);
+      await pollRecommendationUniverseScanSessions();
+      startRecommendationUniverseScanPolling();
+      return;
     }
 
     if (payload.category === "swing") {
@@ -4800,7 +5226,11 @@ async function runRecommendationUniverseScan() {
       duration: 5200
     });
   } finally {
-    recommendationUniverseScanLoadingByCategory[requestedLoadingKey] = false;
+    activeRecommendationScanRequestKeys.delete(requestedLoadingKey);
+    if (!scanStarted) {
+      recommendationUniverseScanLoadingByCategory[requestedLoadingKey] = false;
+      forgetRecommendationScanSession(requestedLoadingKey);
+    }
     updateUniverseRecommendationButton();
   }
 }
@@ -6158,12 +6588,7 @@ function showAppToast(input = {}) {
   toast.setAttribute("role", "status");
   toast.innerHTML = `
     <div class="app-toast-avatar" aria-hidden="true">
-      <div class="app-toast-avatar-antenna"></div>
-      <div class="app-toast-avatar-face">
-        <span class="app-toast-eye left"></span>
-        <span class="app-toast-eye right"></span>
-        <span class="app-toast-mouth"></span>
-      </div>
+      <img src="/assets/stockmon-wave.webp" alt="" loading="lazy" decoding="async" />
     </div>
     <div class="app-toast-bubble">
       <div class="app-toast-head">
@@ -7445,7 +7870,8 @@ function findPricesNearLabels(note, labels, options = {}) {
 function parseSwingPlanNumbersFromNote(note) {
   const buySegment =
     parseSwingPlanSegment(note, "매수가") ??
-    parseSwingPlanSegment(note, "매수");
+    parseSwingPlanSegment(note, "매수") ??
+    parseSwingPlanSegment(note, "구간");
   const stopSegment =
     parseSwingPlanSegment(note, "손절가") ??
     parseSwingPlanSegment(note, "손절");
@@ -7478,13 +7904,39 @@ function parseSwingPlanNumbersFromNote(note) {
   };
 }
 
+function deriveThreeStepSwingBuyPrices(buyPrices, stopPrice) {
+  const normalizedStopPrice = Number.isFinite(stopPrice) && stopPrice > 0 ? Math.round(stopPrice * 100) / 100 : undefined;
+  const normalizedBuyPrices = [...new Set(
+    (Array.isArray(buyPrices) ? buyPrices : [])
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .map((value) => Math.round(value * 100) / 100)
+  )].sort((left, right) => right - left);
+
+  if (normalizedBuyPrices.length >= 3 || normalizedStopPrice == null) {
+    return normalizedBuyPrices;
+  }
+
+  const firstBuyPrice = normalizedBuyPrices[0];
+  if (!Number.isFinite(firstBuyPrice) || firstBuyPrice <= normalizedStopPrice) {
+    return normalizedBuyPrices;
+  }
+
+  const riskBand = firstBuyPrice - normalizedStopPrice;
+  return [
+    firstBuyPrice,
+    normalizedStopPrice + riskBand * 0.67,
+    normalizedStopPrice + riskBand * 0.33
+  ].map((value) => Math.round(value * 100) / 100);
+}
+
 function sanitizeSwingTradeLevels(buyPrices, stopPrice) {
   const normalizedStopPrice =
     Number.isFinite(stopPrice) && stopPrice > 0
       ? Math.round(stopPrice * 100) / 100
       : undefined;
+  const stagedBuyPrices = deriveThreeStepSwingBuyPrices(buyPrices, normalizedStopPrice);
   const normalizedBuyPrices = [...new Set(
-    (Array.isArray(buyPrices) ? buyPrices : [])
+    stagedBuyPrices
       .filter((value) => Number.isFinite(value) && value > 0)
       .map((value) => Math.round(value * 100) / 100)
   )]

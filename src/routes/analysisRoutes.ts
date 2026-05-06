@@ -257,6 +257,25 @@ const recommendationUniverseScanSchema = z.object({
     })
     .optional()
 });
+const recommendationUniverseScanStatusSchema = z.object({
+  category: z.enum(["longTerm", "dividend", "swing"]),
+  swingProfile: z.enum(["default", "smallcap"]).optional().default("default")
+});
+type RecommendationUniverseScanInput = z.infer<typeof recommendationUniverseScanSchema>;
+type RecommendationUniverseScanResponse = Awaited<ReturnType<typeof executeRecommendationUniverseScan>>;
+type RecommendationUniverseScanJob = {
+  scopeKey: string;
+  category: RecommendationUniverseScanInput["category"];
+  swingProfile: ReturnType<typeof resolveSwingEngineProfile>;
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  promise: Promise<RecommendationUniverseScanResponse>;
+  result?: RecommendationUniverseScanResponse;
+  errorMessage?: string;
+};
+const recommendationUniverseScanJobs = new Map<string, RecommendationUniverseScanJob>();
+const recommendationUniverseScanJobTtlMs = 30 * 60 * 1000;
 
 const serverSwingPickSchema = z.object({
   key: z.string().min(1),
@@ -497,61 +516,173 @@ analysisRoutes.get("/stock-universe", async (request, response, next) => {
   }
 });
 
+function getRecommendationUniverseScanScopeKey(
+  category: RecommendationUniverseScanInput["category"],
+  swingProfile: ReturnType<typeof resolveSwingEngineProfile>
+) {
+  return category === "swing" && swingProfile === "smallcap" ? "swing:smallcap" : category;
+}
+
+function pruneRecommendationUniverseScanJobs() {
+  const now = Date.now();
+  for (const [scopeKey, job] of recommendationUniverseScanJobs) {
+    if (job.status === "running" || !job.finishedAt) {
+      continue;
+    }
+
+    if (now - Date.parse(job.finishedAt) > recommendationUniverseScanJobTtlMs) {
+      recommendationUniverseScanJobs.delete(scopeKey);
+    }
+  }
+}
+
+function serializeRecommendationUniverseScanJob(job: RecommendationUniverseScanJob) {
+  return {
+    scopeKey: job.scopeKey,
+    category: job.category,
+    swingProfile: job.swingProfile,
+    status: job.status,
+    running: job.status === "running",
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    error: job.errorMessage,
+    result: job.status === "completed" ? job.result : undefined
+  };
+}
+
+async function executeRecommendationUniverseScan(input: RecommendationUniverseScanInput) {
+  const swingProfile = resolveSwingEngineProfile(input.swingProfile);
+  const payload = await scanRecommendationUniverse(input.category, {
+    swingProfile
+  });
+  const universeDiff =
+    payload.category === "swing"
+      ? await diffAndRememberSwingUniverseAlerts({
+          profile: swingProfile,
+          executionItems: payload.executionItems,
+          watchItems: payload.watchItems
+        })
+      : payload.category === "dividend"
+        ? await diffAndRememberDividendUniverseAlerts(payload.items)
+        : await diffAndRememberLongTermUniverseAlerts(payload.items);
+  const discordEnabled = input.discord?.enabled !== false;
+  const webhookUrl = input.discord?.webhookUrl ?? config.discordWebhookUrl;
+  let discordSent = false;
+  let discordMessageCount = 0;
+  let discordSkippedReason: string | undefined;
+
+  if (discordEnabled && webhookUrl) {
+    const messages = buildRecommendationUniverseDiscordMessages({
+      diff: universeDiff,
+      mention: input.discord?.mention
+    });
+
+    if (messages.length) {
+      await sendDiscordMessages({
+        messages,
+        webhookUrl,
+        username: input.discord?.username ?? "Recommendation Universe Bot"
+      });
+      discordSent = true;
+      discordMessageCount = messages.length;
+    }
+  } else if (discordEnabled) {
+    discordSkippedReason = "missing-webhook-url";
+    logger.warn("recommendation-universe-scan:discord-skipped", {
+      category: input.category,
+      swingProfile,
+      reason: discordSkippedReason
+    });
+  }
+
+  logger.info("recommendation-universe-scan:success", {
+    category: input.category,
+    swingProfile,
+    count: payload.count,
+    discordSent,
+    discordMessageCount,
+    discordSkippedReason,
+    diffCount: universeDiff.changes.length
+  });
+
+  return {
+    ok: true,
+    ...payload,
+    discordSent,
+    discordMessageCount,
+    discordSkippedReason,
+    universeDiff
+  };
+}
+
+function startRecommendationUniverseScanJob(input: RecommendationUniverseScanInput) {
+  pruneRecommendationUniverseScanJobs();
+  const swingProfile = resolveSwingEngineProfile(input.swingProfile);
+  const scopeKey = getRecommendationUniverseScanScopeKey(input.category, swingProfile);
+  const existing = recommendationUniverseScanJobs.get(scopeKey);
+  if (existing?.status === "running") {
+    return existing;
+  }
+
+  const startedAt = new Date().toISOString();
+  const job: RecommendationUniverseScanJob = {
+    scopeKey,
+    category: input.category,
+    swingProfile,
+    status: "running" as const,
+    startedAt,
+    promise: Promise.resolve(undefined as unknown as RecommendationUniverseScanResponse)
+  };
+  const promise = executeRecommendationUniverseScan(input)
+    .then((result) => {
+      job.status = "completed";
+      job.finishedAt = new Date().toISOString();
+      job.result = result;
+      return result;
+    })
+    .catch((error: unknown) => {
+      job.status = "failed";
+      job.finishedAt = new Date().toISOString();
+      job.errorMessage = error instanceof Error ? error.message : String(error);
+      throw error;
+    });
+
+  job.promise = promise;
+  recommendationUniverseScanJobs.set(scopeKey, job);
+  return job;
+}
+
+analysisRoutes.get("/recommendation-universe-scan/status", (request, response) => {
+  pruneRecommendationUniverseScanJobs();
+  const input = recommendationUniverseScanStatusSchema.parse(request.query);
+  const swingProfile = resolveSwingEngineProfile(input.swingProfile);
+  const scopeKey = getRecommendationUniverseScanScopeKey(input.category, swingProfile);
+  const job = recommendationUniverseScanJobs.get(scopeKey);
+
+  response.json({
+    scopeKey,
+    category: input.category,
+    swingProfile,
+    status: job ? job.status : "idle",
+    running: job?.status === "running",
+    job: job ? serializeRecommendationUniverseScanJob(job) : undefined
+  });
+});
+
 analysisRoutes.post("/recommendation-universe-scan", async (request, response, next) => {
   try {
     const input = recommendationUniverseScanSchema.parse(request.body);
-    const swingProfile = resolveSwingEngineProfile(input.swingProfile);
-    const payload = await scanRecommendationUniverse(input.category, {
-      swingProfile
-    });
-    const universeDiff =
-      payload.category === "swing"
-        ? await diffAndRememberSwingUniverseAlerts({
-            profile: swingProfile,
-            executionItems: payload.executionItems,
-            watchItems: payload.watchItems
-          })
-        : payload.category === "dividend"
-          ? await diffAndRememberDividendUniverseAlerts(payload.items)
-          : await diffAndRememberLongTermUniverseAlerts(payload.items);
-    const discordEnabled = input.discord?.enabled !== false;
-    const webhookUrl = input.discord?.webhookUrl ?? config.discordWebhookUrl;
-    let discordSent = false;
-    let discordMessageCount = 0;
-
-    if (discordEnabled && webhookUrl) {
-      const messages = buildRecommendationUniverseDiscordMessages({
-        diff: universeDiff,
-        mention: input.discord?.mention
+    const job = startRecommendationUniverseScanJob(input);
+    if (request.query.async === "true") {
+      response.status(202).json({
+        accepted: true,
+        ...serializeRecommendationUniverseScanJob(job)
       });
-
-      if (messages.length) {
-        await sendDiscordMessages({
-          messages,
-          webhookUrl,
-          username: input.discord?.username ?? "Recommendation Universe Bot"
-        });
-        discordSent = true;
-        discordMessageCount = messages.length;
-      }
+      return;
     }
 
-    logger.info("recommendation-universe-scan:success", {
-      category: input.category,
-      swingProfile,
-      count: payload.count,
-      discordSent,
-      discordMessageCount,
-      diffCount: universeDiff.changes.length
-    });
-
-    response.json({
-      ok: true,
-      ...payload,
-      discordSent,
-      discordMessageCount,
-      universeDiff
-    });
+    const payload = await job.promise;
+    response.json(payload);
   } catch (error) {
     logger.error("recommendation-universe-scan:failed", toErrorContext(error));
     next(error);
