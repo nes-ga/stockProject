@@ -1,81 +1,99 @@
-# Work Summary 2026-04-14
+# 작업 요약 2026-04-14
 
-## Scope
+## 범위
 
-This update captures the latest smart-money and swing-engine refinement work.
-The architecture was preserved and the changes were limited to scoring, classification, explainability, and halt handling.
+스마트머니/스윙 엔진의 threshold, bucket, 거래정지 처리, 설명 가능성 필드를 정리한 작업입니다.
 
-## Smart-Money Engine
+## 스마트머니 엔진
 
-- Added separate threshold controls for setup and breakout execution:
-  - `setupValidityMin`
-  - `setupExecutionMin`
-  - `breakoutValidityMin`
-  - `breakoutExecutionMin`
-- Added regime-aware threshold adjustment:
-  - bull market can loosen breakout gates
-  - bear market can tighten setup gates
-- Kept SMA20 as the primary setup entry anchor.
-- Added informational alternative-anchor tags without changing the execution rule:
-  - `tag_alt_anchor_pivot_retest`
-  - `tag_alt_anchor_box_support`
-  - `tag_alt_anchor_shallow_pullback`
+추가/정리한 threshold:
 
-## Quality Refinements
+- `setupValidityMin`
+- `setupExecutionMin`
+- `breakoutValidityMin`
+- `breakoutExecutionMin`
 
-- Volume quality still keeps absolute volume and turnover minimums.
-- Added more weight to trading value and turnover quality.
-- Added low-price liquidity penalties so raw share-count spikes do not overrate weak names.
-- Added candle-quality scoring for:
-  - upper wick rejection
-  - close position in range
-  - body size ratio
-  - gap rejection
+시장 국면 반영:
 
-## Bucket Classification
+- bull market에서는 breakout gate를 일부 완화할 수 있습니다.
+- bear market에서는 setup gate를 보수화할 수 있습니다.
 
-- Swing names are now classified as:
-  - `execution_ready`
-  - `execution_probe`
-  - `watch`
-- `execution_ready` requires the engine to already treat the setup as actionable and still pass quality checks.
-- `execution_probe` is used when price has entered the SMA20-based zone but quality is still incomplete.
-- `watch` now carries more explicit internal tags:
-  - `watch_extended_leader`
-  - `watch_pullback_pending`
-  - `watch_low_quality`
-  - `watch_halt_event`
-  - `watch_halt_structural`
+진입 anchor:
 
-## Trading Halt Handling
+- SMA20을 setup entry의 primary anchor로 유지합니다.
+- alternative anchor는 정보 tag로만 사용합니다.
 
-- Replaced blanket halt exclusion with reason-based handling.
-- Added:
-  - `haltCategory`
-  - `haltAction`
-- Current mapping:
-  - `critical` -> `exclude`
-  - `structural` -> `exclude`
-  - `event` -> `allow_with_penalty`
-  - `technical` -> `watch_only`
+대표 tag:
 
-## Explainability
+- `tag_alt_anchor_pivot_retest`
+- `tag_alt_anchor_box_support`
+- `tag_alt_anchor_shallow_pullback`
 
-- Saved swing candidates now include:
-  - `reasons`
-  - `tags`
-  - `penaltyFactors`
-- This data is now part of the expected UI and debug output and should be preserved in future changes.
+## 품질 보정
 
-## Verification
+거래량:
 
-- `npm run build`
-- Full live rescan completed through `node dist/scripts/scanUniverseSwingPicks.js`
+- 절대 거래량과 거래대금 threshold 유지
+- 최근 평균 대비 turnover 품질 반영
+- 저가주 raw share count 과대평가 방지
 
-## Current Live Result
+캔들:
 
-- `execution_ready`: `0`
-- `execution_probe`: `1`
-- `watch`: `19`
+- 윗꼬리 rejection
+- 종가 위치
+- 몸통 비율
+- gap rejection
 
-The current probe reference case is `HLB이노베이션 (024850)`, which remains visible because its halt is classified as an `event`, but it is still held back by the halt penalty and other quality gates.
+## Bucket 분류
+
+스윙 후보 bucket:
+
+- `execution_ready`
+- `execution_probe`
+- `watch`
+
+해석:
+
+- `execution_ready`: 실제 실행 후보에 가까운 상태
+- `execution_probe`: 진입권 근처지만 품질 gate가 부족한 상태
+- `watch`: 관찰 대상
+
+## 거래정지 처리
+
+거래정지 사유를 단일 제외가 아니라 category/action으로 분리했습니다.
+
+- `critical` -> `exclude`
+- `structural` -> `exclude`
+- `event` -> `allow_with_penalty`
+- `technical` -> `watch_only`
+
+## 설명 가능성
+
+저장 후보에 다음 필드를 유지합니다.
+
+- `reasons`
+- `tags`
+- `penaltyFactors`
+- `haltCategory`
+- `haltAction`
+
+이 필드는 UI/debug 표면의 일부이므로 제거하면 안 됩니다.
+
+## 검증
+
+실행:
+
+```bash
+npm run build
+node dist/scripts/scanUniverseSwingPicks.js
+```
+
+당시 live 결과:
+
+- `execution_ready`: 0
+- `execution_probe`: 1
+- `watch`: 19
+
+## 후속 영향
+
+이 작업에서 정리한 bucket/설명 가능성 구조는 2026-05-08 매물대 분석 통합에서도 그대로 유지했습니다.

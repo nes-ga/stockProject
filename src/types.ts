@@ -507,6 +507,7 @@ export type SmartMoneyPatternMatch = {
   topCandidates?: SmartMoneyCandidateSummary[];
   rejectReasons?: SmartMoneyRejectReason[];
   debugMeta?: SmartMoneyDebugMeta;
+  swingVolumeProfile?: SwingVolumeProfileAnalysis;
 };
 
 export type SmartMoneyPatternAnalysis = {
@@ -522,6 +523,7 @@ export type SmartMoneyPatternAnalysis = {
   haltAction?: TradingHaltAction;
   note?: string;
   pattern: SmartMoneyPatternMatch;
+  volumeProfileAnalysis?: VolumeProfileAnalysis;
 };
 
 export type TradingHaltReasonCategory = "corporate_action" | "regulatory_risk" | "market_warning" | "other";
@@ -546,6 +548,134 @@ export type ChartPoint = {
   low?: number;
   close: number;
   volume?: number;
+};
+
+export type VolumeProfileCandle = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type VolumeProfileVacuumZone = {
+  start: number;
+  end: number;
+};
+
+export type AdvancedVolumeProfile = {
+  dynamicBinSize: number;
+  atr14?: number;
+  timeWeighted: boolean;
+  decayFactor: number;
+  weightedBodyDistribution: boolean;
+  distanceWeighted: boolean;
+  nearestResistanceDistance?: number;
+  nearestSupportDistance?: number;
+  retestSuccessScore: number;
+  retestFailureRisk: number;
+  retestDetected: boolean;
+  nextResistance?: number;
+  nextSupport?: number;
+  upsideToResistance?: number;
+  downsideToSupport?: number;
+  rewardRiskRatio?: number;
+  gapAwareProfile: boolean;
+  vacuumZones: VolumeProfileVacuumZone[];
+  pocPrice?: number;
+  valueAreaHigh?: number;
+  valueAreaLow?: number;
+  profileReliability: number;
+  reliabilityWarnings: string[];
+  summary: string;
+};
+
+export type VolumeProfileResult = {
+  lookbackDays: number;
+  overheadVolume: number;
+  supportVolume: number;
+  supplyRatio: number;
+  supplyScore: number;
+  breakoutScore: number;
+  totalScore: number;
+  nearestMajorVolumePrice?: number;
+  resistanceZones: number[];
+  supportZones: number[];
+  dynamicBinSize?: number;
+  atr14?: number;
+  timeWeighted?: boolean;
+  decayFactor?: number;
+  weightedBodyDistribution?: boolean;
+  distanceWeighted?: boolean;
+  nearestResistanceDistance?: number;
+  nearestSupportDistance?: number;
+  retestSuccessScore?: number;
+  retestFailureRisk?: number;
+  retestDetected?: boolean;
+  nextResistance?: number;
+  nextSupport?: number;
+  upsideToResistance?: number;
+  downsideToSupport?: number;
+  rewardRiskRatio?: number;
+  gapAwareProfile?: boolean;
+  vacuumZones?: VolumeProfileVacuumZone[];
+  pocPrice?: number;
+  valueAreaHigh?: number;
+  valueAreaLow?: number;
+  profileReliability?: number;
+  reliabilityWarnings?: string[];
+  advancedVolumeProfile?: AdvancedVolumeProfile;
+  comment: string;
+};
+
+export type SwingVolumeProfileAnalysis = {
+  shortTerm: VolumeProfileResult;
+  baseTerm: VolumeProfileResult;
+  score: number;
+  chaseRiskBySupply: number;
+  breakoutReliabilityBySupply: number;
+  pullbackSupportQuality: number;
+  advancedVolumeProfile?: AdvancedVolumeProfile;
+  summary: string;
+};
+
+export type LongTermVolumeProfileAnalysis = {
+  oneYear: VolumeProfileResult;
+  twoYear: VolumeProfileResult;
+  threeYear: VolumeProfileResult;
+  score: number;
+  accumulationBaseScore: number;
+  longBoxBreakoutScore: number;
+  longOverheadSupplyRisk: number;
+  highVolumeStallRisk: number;
+  holdingQualityBySupply: number;
+  structuralBreakoutReliability?: number;
+  advancedVolumeProfile?: AdvancedVolumeProfile;
+  summary: string;
+};
+
+export type VolumeProfileAnalysis = {
+  swing?: {
+    score: number;
+    chaseRiskBySupply: number;
+    breakoutReliabilityBySupply: number;
+    pullbackSupportQuality: number;
+    advancedVolumeProfile?: AdvancedVolumeProfile;
+    summary: string;
+  };
+  longTerm?: {
+    score: number;
+    accumulationBaseScore: number;
+    longBoxBreakoutScore: number;
+    longOverheadSupplyRisk: number;
+    highVolumeStallRisk: number;
+    holdingQualityBySupply: number;
+    structuralBreakoutReliability?: number;
+    advancedVolumeProfile?: AdvancedVolumeProfile;
+    summary: string;
+  };
+  crossCheckSummary: string;
 };
 
 export type RecommendationAnalysis = {
@@ -588,6 +718,7 @@ export type RecommendationAnalysis = {
   };
   fundamentals?: FundamentalsSummary;
   longTermReview?: LongTermReviewAnalysis | DividendReviewAnalysis;
+  volumeProfileAnalysis?: VolumeProfileAnalysis;
 };
 
 export type KoreanMoverMarket = "KOSPI" | "KOSDAQ";
@@ -949,6 +1080,7 @@ export type LongTermScoreBreakdown = {
   liquidityScore: number;
   stabilizationScore: number;
   financialScore: number;
+  volumeProfileScore?: number;
   durabilityScore?: number;
 };
 
@@ -1044,6 +1176,7 @@ export type LongTermScanCandidate = {
   liquidity: LongTermLiquiditySnapshot;
   financials?: LongTermFinancialSnapshot;
   fundamentals?: LongTermFinancialSnapshot;
+  longTermVolumeProfile?: LongTermVolumeProfileAnalysis;
   candidateGroup: LongTermCandidateGroup;
   label: LongTermScanLabel;
   reasonSummary: string;

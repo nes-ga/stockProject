@@ -37,6 +37,7 @@ import {
   toSignal
 } from "./smartMoney/utils.js";
 import { type SmartMoneyPricingContext, normalizePriceByTick, resolveSmartMoneyTickSize } from "./smartMoney/pricing.js";
+import { analyzeSwingVolumeProfile } from "./volumeProfile.js";
 
 export { resolveSmartMoneyPatternFilters } from "./smartMoney/config.js";
 
@@ -448,8 +449,7 @@ function isBaseReclaimWatchEligible(params: {
 
   if (
     params.referenceCloseVsBasePercent == null ||
-    params.referenceCloseVsBasePercent >= params.filters.minReferenceCloseVsBasePercent ||
-    params.referenceCloseVsBasePercent < params.filters.minReferenceCloseVsBaseWatchPercent
+    params.referenceCloseVsBasePercent >= params.filters.minReferenceCloseVsBasePercent
   ) {
     return false;
   }
@@ -1310,6 +1310,33 @@ function toSummary(match: SmartMoneyPatternMatch, rejectReasons: string[]): Smar
     penaltyFactors: match.penaltyFactors,
     reasons: match.reasons,
     rejectReasons
+  };
+}
+
+function applySwingVolumeProfileScore(match: SmartMoneyPatternMatch, points: ChartPoint[]): SmartMoneyPatternMatch {
+  const swingVolumeProfile = analyzeSwingVolumeProfile(points, {
+    trendScore: match.regimeScore,
+    volumeScore: Math.max(match.volumeQualityScore ?? 0, match.breakoutStrengthScore ?? 0),
+    themeScore: match.marketContextScore,
+    pullbackScore: Math.max(match.supportStabilityScore ?? 0, match.executionReadinessScore ?? 0),
+    riskScore: match.dangerScore
+  });
+  const riskAdjustment = Math.min(0, swingVolumeProfile.score);
+  const rankingSupportAdjustment = Math.min(8, Math.max(0, swingVolumeProfile.score));
+
+  return {
+    ...match,
+    swingVolumeProfile,
+    patternScore: clamp(Math.round(match.patternScore + riskAdjustment), 0, 100),
+    regimeAdjustedScore:
+      match.regimeAdjustedScore == null ? undefined : clamp(Math.round(match.regimeAdjustedScore + riskAdjustment), 0, 100),
+    finalRankScore:
+      match.finalRankScore == null ? undefined : clamp(Math.round(match.finalRankScore + riskAdjustment + rankingSupportAdjustment), 0, 100),
+    reasons: [
+      ...match.reasons,
+      `${swingVolumeProfile.summary} 매물대 점수는 보조 지표이며 단독 매수 신호로 사용하지 않습니다.`
+    ],
+    summary: `${match.summary} ${swingVolumeProfile.summary}`
   };
 }
 
@@ -2218,8 +2245,9 @@ export function evaluateSmartMoneyPattern(
           ? rejected.slice(0, 5).map((item) => item.reason)
           : fallbackMatch.rejectionReasons
     });
+  const scoredBestMatch = applySwingVolumeProfileScore(bestMatch, points.slice(0, referenceIndex + 1));
   if (!options?.debug) {
-    return bestMatch;
+    return scoredBestMatch;
   }
 
   const topCandidates = [...allCandidates].sort((left, right) => compareMatches(left.match, right.match)).slice(0, filters.debugTopCandidateLimit).map((candidate, index) => ({ ...candidate.summary, selected: index === 0 }));
@@ -2232,7 +2260,7 @@ export function evaluateSmartMoneyPattern(
   };
 
   return {
-    ...bestMatch,
+    ...scoredBestMatch,
     topCandidates,
     rejectReasons: rejected.slice(0, filters.debugTopCandidateLimit * 5),
     debugMeta

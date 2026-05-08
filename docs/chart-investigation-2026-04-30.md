@@ -1,28 +1,16 @@
-# Chart Investigation 2026-04-30
+# 차트 이슈 조사 기록
 
-## Scope
+기준일: 2026-05-08
 
-This note captures the current investigation result for the recent chart-shape issue and the related question about `open = 0`.
+## 조사 배경
 
-## Current Conclusion
+일부 차트에서 공휴일/비거래일이 포함되면서 캔들 사이가 비어 보이는 문제가 있었습니다. 별도로 `open = 0` 데이터가 차트 문제의 원인인지도 확인했습니다.
 
-The current chart issue is **not explained by `open = 0` alone**.
+## 결론
 
-In the codebase, a point is treated as a non-trading or halted point only when all of the following are effectively zero:
+`open = 0` 하나만으로는 비거래/거래정지 candle로 보지 않습니다.
 
-- `open`
-- `high`
-- `low`
-- `volume`
-
-Relevant checks exist in:
-
-- [src/services/stockAnalysis.ts](/abs/path/C:/Users/user/Desktop/stockProject/src/services/stockAnalysis.ts:174)
-- [public/app.js](/abs/path/C:/Users/user/Desktop/stockProject/public/app.js:6071)
-
-## Actual Logic
-
-The current non-trading detection condition is:
+비거래 또는 거래정지 형태로 보는 조건은 다음 값이 모두 0에 가까운 경우입니다.
 
 ```ts
 return (
@@ -33,41 +21,45 @@ return (
 );
 ```
 
-This means:
+즉:
 
-- `open = 0` by itself does not classify the candle as halted or empty.
-- A market-close state does not automatically break chart rendering.
-- If the chart still looks wrong, the more likely causes are:
-  - upstream source data quality
-  - a zero-filled OHLCV row
-  - chart rendering or layout side effects
-  - tooltip or CSS overlay interaction
+- `open = 0` 단독으로는 차트 공백 원인이 아닙니다.
+- OHLCV 전체가 비정상적인 행이면 별도 처리 대상입니다.
+- 데이터 source가 공휴일을 zero row로 내려주는 경우는 제거/whitespace 처리가 필요합니다.
 
-## Recent UI Changes Around Charts
+## 실제 보정
 
-Recent changes near chart rendering included:
+프론트 차트 변환에서 누락된 평일을 임의 whitespace point로 채우던 흐름을 제거했습니다.
 
-- Market Flow chart hover tooltips
-- moving-average values in chart tooltips
-- character-style toast UI
+변경 방향:
 
-These changes did not intentionally alter the candle data model, but they do increase the chance that a layout or overlay issue may be mistaken for a data issue.
+- 실제 거래 데이터만 `toChartPoints`에서 반환
+- 공휴일/휴장일을 강제로 채우지 않음
+- index chart와 종목 chart 모두 빈 candle로 기간을 늘리지 않도록 정리
 
-## Practical Interpretation
+관련 파일:
 
-At the current stage:
+- `public/app.js`
+- `src/services/stockAnalysis.ts`
 
-- `open = 0` alone should not be treated as the root cause
-- a malformed full OHLCV row is a stronger candidate
-- if the problem persists, the next step should be chart-specific inspection:
-  - Market Flow chart
-  - index popup chart
-  - stock detail chart
+## 현재 차트 해석 원칙
 
-## Next Debug Step
+- 거래일 데이터가 없으면 차트에 억지 candle을 넣지 않습니다.
+- source가 zero-filled OHLCV를 주면 비거래/거래정지 point로 판단합니다.
+- 시장별 거래일 차이는 source session 차이로 볼 수 있습니다.
+- BTC처럼 24/7에 가까운 자산은 최신 live bar가 유지되어야 합니다.
 
-For the next pass, verify one affected chart by:
+## 추가 확인 포인트
 
-1. checking the raw point for the visible broken date
-2. checking whether the point is being converted to whitespace or halted state
-3. checking whether tooltip or overlay styling is visually distorting the chart container
+차트가 다시 비정상적으로 보이면 다음 순서로 확인합니다.
+
+1. 해당 날짜 raw point의 `open`, `high`, `low`, `close`, `volume`
+2. `toChartPoints` 변환 결과
+3. `isNonTradingPoint` 판정 여부
+4. Lightweight Charts에 전달된 series data
+5. tooltip, overlay, CSS가 chart container를 덮는지 여부
+
+## 관련 연혁
+
+- 2026-04-30: `open = 0` 단독 원인 가능성 조사
+- 2026-05-08: 공휴일/비거래일 강제 whitespace 채움 제거

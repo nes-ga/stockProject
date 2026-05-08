@@ -1647,11 +1647,11 @@ function renderIndexWatchList() {
     return;
   }
 
-  const marketWatchDisplayDate = getMarketWatchDisplayDate();
   indexWatchList.innerHTML = indexWatchSeed
     .map((item) => {
       const snapshot = marketWatchItems.get(item.key);
       const displayMetrics = snapshot ? getMarketWatchDisplayMetrics(snapshot, "daily") : null;
+      const marketWatchDisplayDate = displayMetrics?.latestDate ?? getMarketWatchDisplayDate();
       const trendClass =
         displayMetrics?.changePercent > 0 ? "positive" : displayMetrics?.changePercent < 0 ? "negative" : "neutral";
       const priceDirectionClass =
@@ -3145,6 +3145,12 @@ function getTodayInSeoulDateText() {
   return formatter.format(new Date());
 }
 
+function addUtcDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function getMonthKeyFromDate(dateText) {
   return typeof dateText === "string" ? dateText.slice(0, 7) : "";
 }
@@ -3652,16 +3658,6 @@ function createMarketWatchChartState(container, tooltip) {
   return state;
 }
 
-function getMarketWatchChartBoundaryDate(points) {
-  const latestDate = Array.isArray(points) && points.length ? points.at(-1)?.date : "";
-  const displayDate = getMarketWatchDisplayDate();
-  if (!latestDate || !displayDate) {
-    return latestDate || displayDate || "";
-  }
-
-  return latestDate < displayDate ? displayDate : latestDate;
-}
-
 function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   if (!container) {
     return;
@@ -3700,8 +3696,6 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchChartState.tooltip = tooltip;
   marketWatchChartState.points = points;
   marketWatchChartState.viewportKey = viewportKey;
-  const chartBoundaryDate = getMarketWatchChartBoundaryDate(points);
-  const shouldExtendToDisplayDate = Boolean(chartBoundaryDate && chartBoundaryDate > (points.at(-1)?.date ?? ""));
 
   const candleSeriesData = points.map((point) => ({
     time: point.date,
@@ -3710,9 +3704,6 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
     low: point.low ?? point.close,
     close: point.close
   }));
-  if (shouldExtendToDisplayDate) {
-    candleSeriesData.push({ time: chartBoundaryDate });
-  }
   marketWatchChartState.candleSeries.setData(candleSeriesData);
 
   const volumeSeriesData = points.map((point) => ({
@@ -3721,9 +3712,6 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
     color:
       (point.close ?? 0) >= (point.open ?? point.close ?? 0) ? "rgba(216,76,63,0.34)" : "rgba(47,110,229,0.3)"
   }));
-  if (shouldExtendToDisplayDate) {
-    volumeSeriesData.push({ time: chartBoundaryDate });
-  }
   marketWatchChartState.volumeSeries.setData(volumeSeriesData);
 
   for (const [index, series] of marketWatchChartState.movingAverageSeries.entries()) {
@@ -3735,9 +3723,6 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
 
     series.applyOptions({ color: config.color });
     const movingAverageData = buildIndexMovingAverage(points, config.period);
-    if (shouldExtendToDisplayDate && movingAverageData.length) {
-      movingAverageData.push({ time: chartBoundaryDate });
-    }
     series.setData(movingAverageData);
   }
 
@@ -3745,7 +3730,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
     tooltip.classList.add("hidden");
   }
 
-  const chartPointCount = points.length + (shouldExtendToDisplayDate ? 1 : 0);
+  const chartPointCount = points.length;
   if (
     currentVisibleRange &&
     previousViewportKey === viewportKey &&
@@ -3895,7 +3880,7 @@ function renderIndexChartModal() {
     indexChartModalStartDate.textContent = chartWindow?.startDate ?? "-";
   }
   if (indexChartModalEndDate) {
-    indexChartModalEndDate.textContent = getMarketWatchDisplayDate();
+    indexChartModalEndDate.textContent = chartWindow?.endDate ?? "-";
   }
 
   indexChartModalTooltip.classList.add("hidden");
@@ -4363,12 +4348,17 @@ function renderSelector() {
       const selected = item.key === selectedKey;
       const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
       const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPattern) : null;
-      const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern) : null;
+      const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern, item.swingBucket) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
       const dividendInfoLine = buildDividendInfoLine(item);
       const longTermBucketLabel = item.category === "swing" ? "" : getNonSwingBucketLabel(item.category, item.longTermBucket);
       const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(item.swingBucket) : "";
+      const groupPillHtml = longTermBucketLabel
+        ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>`
+        : swingBucketLabel
+          ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>`
+          : "";
       const longTermInsightNote = item.category === "swing" ? "" : item.longTermInsightNote ?? item.note;
       const longTermInsightKeywords = Array.isArray(item.longTermInsightKeywords) ? item.longTermInsightKeywords : null;
       const longTermKeywords =
@@ -4384,6 +4374,42 @@ function renderSelector() {
             ? longTermInsightKeywords.slice(0, 4).join(" / ")
             : formatLongTermSummary(longTermInsightNote, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
       const realtimeLine = renderStockRealtimeLine(item);
+      const swingExecutionTradeHtml =
+        item.category === "swing" && swingTradePlan && item.swingBucket !== "watch"
+          ? `
+            <span class="stock-card-trade-grid">
+              <span class="stock-card-trade-item stock-card-trade-item-buy">
+                <span class="stock-card-trade-label">매수가</span>
+                <span class="stock-card-trade-value stock-card-trade-value-group">
+                  ${
+                    swingTradePlan.buyLevels.length
+                      ? `
+                        <span class="stock-card-trade-badges">
+                          ${swingTradePlan.buyLevels
+                            .map((level) => `<span class="stock-card-trade-badge">${escapeHtml(level)}</span>`)
+                            .join("")}
+                        </span>
+                      `
+                      : `<span class="stock-card-trade-summary">${escapeHtml(swingTradePlan.buySummary)}</span>`
+                  }
+                </span>
+              </span>
+              <span class="stock-card-trade-item">
+                <span class="stock-card-trade-label">손절가</span>
+                <span class="stock-card-trade-value">${escapeHtml(swingTradePlan.stop)}</span>
+              </span>
+            </span>
+          `
+          : "";
+      const swingStatusHtml =
+        item.category === "swing" && swingAssessment
+          ? `
+            <span class="stock-card-badges">
+              <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
+              <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
+            </span>
+          `
+          : "";
       return `
         <article class="stock-card ${selected ? "selected" : ""}">
           <span class="stock-card-head">
@@ -4392,45 +4418,7 @@ function renderSelector() {
               ${metaText ? `<span class="stock-card-meta">${escapeHtml(metaText)}</span>` : ""}
               ${dividendInfoLine ? `<span class="stock-card-meta">${escapeHtml(dividendInfoLine)}</span>` : ""}
               ${realtimeLine}
-              ${longTermBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>` : ""}
-              ${swingBucketLabel ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>` : ""}
-              ${
-                item.category === "swing" && swingTradePlan && item.swingBucket !== "watch"
-                  ? `
-                    <span class="stock-card-trade-grid">
-                      <span class="stock-card-trade-item">
-                        <span class="stock-card-trade-label">매수가</span>
-                        <span class="stock-card-trade-value stock-card-trade-value-group">
-                          ${
-                            swingTradePlan.buyLevels.length
-                              ? `
-                                <span class="stock-card-trade-badges">
-                                  ${swingTradePlan.buyLevels
-                                    .map(
-                                      (level) => `<span class="stock-card-trade-badge">${escapeHtml(level)}</span>`
-                                    )
-                                    .join("")}
-                                </span>
-                              `
-                              : `<span class="stock-card-trade-summary">${escapeHtml(swingTradePlan.buySummary)}</span>`
-                          }
-                        </span>
-                      </span>
-                      <span class="stock-card-trade-item">
-                        <span class="stock-card-trade-label">손절가</span>
-                        <span class="stock-card-trade-value">${escapeHtml(swingTradePlan.stop)}</span>
-                      </span>
-                    </span>
-                  `
-                  : swingAssessment
-                    ? `
-                      <span class="stock-card-badges">
-                        <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
-                        <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
-                      </span>
-                    `
-                    : ""
-              }
+              ${swingStatusHtml}
               ${
                 item.category === "swing"
                   ? ""
@@ -4448,8 +4436,14 @@ function renderSelector() {
                     : `<span class="stock-card-note">${escapeHtml(longTermNoteSummary || longTermInsightNote || "")}</span>`
               }
             </button>
+            ${groupPillHtml}
             <button class="stock-card-delete" type="button" data-delete-key="${escapeHtml(item.key)}" aria-label="${escapeHtml(item.name)} 삭제">×</button>
           </span>
+          ${
+            swingExecutionTradeHtml
+              ? `<button class="stock-card-select stock-card-trade-select" type="button" data-stock-key="${escapeHtml(item.key)}">${swingExecutionTradeHtml}</button>`
+              : ""
+          }
         </article>
       `;
     })
@@ -6442,13 +6436,11 @@ function startActiveAnalysisAutoRefresh() {
 
 function toChartPoints(points) {
   let previousClose = null;
-  const normalized = points.map((point) => {
+  return points.map((point) => {
     const chartPoint = normalizeChartPoint(point, previousClose);
     previousClose = chartPoint.close ?? previousClose;
     return chartPoint;
   });
-
-  return fillMissingWeekdayPoints(normalized);
 }
 
 function aggregateCandles(points, timeframe) {
@@ -6492,12 +6484,6 @@ function getWeekKey(dateText) {
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-function addUtcDays(dateText, days) {
-  const date = new Date(`${dateText}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 function isNonTradingPoint(point) {
   return (
     (point.open ?? 0) === 0 &&
@@ -6525,39 +6511,6 @@ function normalizeChartPoint(point, previousClose) {
     isWhitespace: false,
     isHalted
   };
-}
-
-function isWeekday(dateText) {
-  const day = new Date(`${dateText}T00:00:00Z`).getUTCDay();
-  return day >= 1 && day <= 5;
-}
-
-function fillMissingWeekdayPoints(points) {
-  if (!points.length) {
-    return [];
-  }
-
-  const filled = [points[0]];
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    let cursor = addUtcDays(previous.time, 1);
-
-    while (cursor < current.time) {
-      if (isWeekday(cursor)) {
-        filled.push({
-          time: cursor,
-          isWhitespace: true,
-          isHalted: false
-        });
-      }
-      cursor = addUtcDays(cursor, 1);
-    }
-
-    filled.push(current);
-  }
-
-  return filled;
 }
 
 function showAppToast(input = {}) {
@@ -7229,6 +7182,155 @@ function getLongTermReviewAssessment(review, category = DEFAULT_CATEGORY) {
   };
 }
 
+function formatVolumeProfileRatio(value) {
+  return Number.isFinite(value) ? `${formatDecimal(value, 2)}x` : "-";
+}
+
+function formatVolumeProfilePrice(value) {
+  return Number.isFinite(value) ? formatNumber(value) : "-";
+}
+
+function formatVolumeProfilePercent(value) {
+  return Number.isFinite(value) ? `${formatDecimal(value * 100, 1)}%` : "-";
+}
+
+function renderSwingVolumeProfilePanel(profile) {
+  if (!profile?.baseTerm) {
+    return "";
+  }
+  const advanced = profile.advancedVolumeProfile ?? profile.baseTerm.advancedVolumeProfile ?? {};
+
+  return `
+    <section class="swing-pattern-panel">
+      <div class="swing-pattern-head">
+        <div>
+          <h4>스윙 매물대 분석</h4>
+          <div class="swing-pattern-copy">${escapeHtml(profile.summary ?? profile.baseTerm.comment ?? "")}</div>
+        </div>
+        <span class="stock-pattern-pill ${profile.score > 8 ? "complete" : profile.score < -8 ? "caution" : "watch"}">${formatSignedDecimal(profile.score)}점</span>
+      </div>
+      <div class="metric-grid swing-metric-grid">
+        <div class="metric">
+          <span class="metric-label">단기 위/아래 매물비</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfileRatio(profile.shortTerm?.supplyRatio))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">스윙 매물대 점수</span>
+          <span class="metric-value">${formatSignedDecimal(profile.score)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">주요 단기 매물대</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(profile.shortTerm?.nearestMajorVolumePrice))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">추격 위험</span>
+          <span class="metric-value">${formatNumber(profile.chaseRiskBySupply)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">돌파 신뢰도</span>
+          <span class="metric-value">${formatNumber(profile.breakoutReliabilityBySupply)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">눌림 지지 품질</span>
+          <span class="metric-value">${formatNumber(profile.pullbackSupportQuality)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">다음 저항 여력</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePercent(advanced.upsideToResistance))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">손익비</span>
+          <span class="metric-value">${escapeHtml(formatDecimal(advanced.rewardRiskRatio, 2))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">POC / VA</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(advanced.pocPrice))} / ${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaLow))}~${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaHigh))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">리테스트</span>
+          <span class="metric-value">${formatSignedDecimal(advanced.retestSuccessScore ?? 0, 0)} / ${formatSignedDecimal(advanced.retestFailureRisk ?? 0, 0)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Profile 신뢰도</span>
+          <span class="metric-value">${formatNumber(advanced.profileReliability)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">동적 bin / ATR</span>
+          <span class="metric-value">${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
+        </div>
+      </div>
+      <div class="swing-pattern-copy">매물대 점수는 보조 지표이며 단독 매수 신호가 아닙니다.</div>
+    </section>
+  `;
+}
+
+function renderLongTermVolumeProfilePanel(profile) {
+  if (!profile?.oneYear) {
+    return "";
+  }
+
+  const representative = profile.threeYear?.lookbackDays >= 480 ? profile.threeYear : profile.twoYear?.lookbackDays >= 240 ? profile.twoYear : profile.oneYear;
+  const advanced = profile.advancedVolumeProfile ?? representative?.advancedVolumeProfile ?? {};
+  return `
+    <section class="swing-pattern-panel">
+      <div class="swing-pattern-head">
+        <div>
+          <h4>중장기 매물대 분석</h4>
+          <div class="swing-pattern-copy">${escapeHtml(profile.summary ?? representative?.comment ?? "")}</div>
+        </div>
+        <span class="stock-pattern-pill ${profile.score > 12 ? "complete" : profile.score < -10 ? "caution" : "watch"}">${formatSignedDecimal(profile.score)}점</span>
+      </div>
+      <div class="metric-grid swing-metric-grid">
+        <div class="metric">
+          <span class="metric-label">장기 위/아래 매물비</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfileRatio(representative?.supplyRatio))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">중장기 매물대 점수</span>
+          <span class="metric-value">${formatSignedDecimal(profile.score)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">장기 주요 매물대</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(representative?.nearestMajorVolumePrice))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">장기 박스권 돌파</span>
+          <span class="metric-value">${formatSignedDecimal(profile.longBoxBreakoutScore)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">장기 위 매물 부담</span>
+          <span class="metric-value">${formatSignedDecimal(profile.longOverheadSupplyRisk)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">보유 품질</span>
+          <span class="metric-value">${formatSignedDecimal(profile.holdingQualityBySupply)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">구조 돌파 신뢰도</span>
+          <span class="metric-value">${formatSignedDecimal(profile.structuralBreakoutReliability ?? 0, 0)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">POC / VA</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(advanced.pocPrice))} / ${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaLow))}~${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaHigh))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">다음 저항 여력</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePercent(advanced.upsideToResistance))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Profile 신뢰도</span>
+          <span class="metric-value">${formatNumber(advanced.profileReliability)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">동적 bin / ATR</span>
+          <span class="metric-value">${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
+        </div>
+      </div>
+      <div class="swing-pattern-copy">중장기 매물대는 구조와 보유 품질 확인용이며 단독 매수 신호가 아닙니다.</div>
+    </section>
+  `;
+}
+
 function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = null) {
   if (!review) {
     return "";
@@ -7393,6 +7495,10 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
               <div class="metric">
                 <span class="metric-label">재무 점수</span>
                 <span class="metric-value">${candidate.scores?.financialScore ?? "-"}${candidate.scores?.financialScore != null ? "점" : ""}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">매물대 보조점수</span>
+                <span class="metric-value">${candidate.scores?.volumeProfileScore != null ? `${formatSignedDecimal(candidate.scores.volumeProfileScore)}점` : "-"}</span>
               </div>
               <div class="metric">
                 <span class="metric-label">매출 추세</span>
@@ -7591,7 +7697,9 @@ function renderCard(item) {
       </div>
 
       ${renderSwingPatternPanel(item.swingPatternAnalysis, item.swingAssessment)}
+      ${item.category === "swing" ? renderSwingVolumeProfilePanel(item.swingPatternAnalysis?.pattern?.swingVolumeProfile) : ""}
       ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview, item.category ?? DEFAULT_CATEGORY, item) : ""}
+      ${item.category !== "swing" ? renderLongTermVolumeProfilePanel(item.longTermReview?.candidate?.longTermVolumeProfile) : ""}
 
       <div class="fundamentals-wrap">
         ${renderFundamentals(item.fundamentals, {
@@ -7977,15 +8085,18 @@ function getSwingTradeOverlay(note, pattern) {
   };
 }
 
-function getSwingCardTradePlan(note, pattern) {
+function getSwingCardTradePlan(note, pattern, swingBucket = DEFAULT_SWING_BUCKET) {
   const overlay = getSwingTradeOverlay(note, pattern);
   const buyPlan = pattern?.buyPlan;
+  const isExecutionBucket = swingBucket !== "watch";
   const buyLevelsFromPlan = buyPlan
     ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
       .filter((price) => Number.isFinite(price) && price > 0)
-      .map((price, index) => `${index + 1}차 ${formatNumber(price)}원`)
+      .map(formatSwingCardBuyBadge)
     : [];
-  const buyLevelsFromOverlay = buyPlan ? overlay.buyPrices.map((price, index) => `${index + 1}차 ${formatNumber(price)}원`) : [];
+  const buyLevelsFromOverlay = buyPlan || isExecutionBucket
+    ? overlay.buyPrices.map(formatSwingCardBuyBadge)
+    : [];
   const buyFromNote = parseSwingPlanSegment(note, "매수가") ?? parseSwingPlanSegment(note, "매수");
   const buyLevelsFromNote =
     !buyLevelsFromOverlay.length && !buyLevelsFromPlan.length && buyFromNote
@@ -8007,6 +8118,10 @@ function getSwingCardTradePlan(note, pattern) {
     buySummary: buySummaryFromPattern ?? (buyLevels.length ? "-" : buyFromNote ?? "-"),
     stop: stopFromPattern ?? stopFromNote ?? "-"
   };
+}
+
+function formatSwingCardBuyBadge(price, index) {
+  return `${index + 1}차 ${formatNumber(price)}`;
 }
 
 function splitSwingTradeSegments(text) {

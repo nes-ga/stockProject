@@ -4,6 +4,8 @@ import { readJson } from "../lib/http.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
 import type {
   ChartPoint,
+  LongTermReviewAnalysis,
+  LongTermVolumeProfileAnalysis,
   RealtimeStockDetail,
   RealtimeStockRequest,
   RecommendationAnalysis,
@@ -31,6 +33,7 @@ import { evaluateSmartMoneyPattern, resolveSmartMoneyPatternFilters } from "./sm
 import { getAutoSmartMoneyMarketContext } from "./smartMoney/marketContext.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
 import { getTradingHaltInfoBySymbol } from "./tradingHalts.js";
+import { analyzeSwingVolumeProfile } from "./volumeProfile.js";
 
 const logger = createLogger("stockAnalysis");
 const DEFAULT_NAVER_CHART_SESSIONS = 500;
@@ -493,6 +496,51 @@ function buildChartWindow(points: ChartPoint[]) {
     endDate: latestPoint?.date ?? points[0]?.date ?? "",
     points
   };
+}
+
+function summarizeSwingVolumeProfile(swingVolumeProfile?: SmartMoneyPatternMatch["swingVolumeProfile"]) {
+  return swingVolumeProfile
+    ? {
+        score: swingVolumeProfile.score,
+        chaseRiskBySupply: swingVolumeProfile.chaseRiskBySupply,
+        breakoutReliabilityBySupply: swingVolumeProfile.breakoutReliabilityBySupply,
+        pullbackSupportQuality: swingVolumeProfile.pullbackSupportQuality,
+        advancedVolumeProfile: swingVolumeProfile.advancedVolumeProfile,
+        summary: swingVolumeProfile.summary
+      }
+    : undefined;
+}
+
+function summarizeLongTermVolumeProfile(longTermVolumeProfile?: LongTermVolumeProfileAnalysis) {
+  return longTermVolumeProfile
+    ? {
+        score: longTermVolumeProfile.score,
+        accumulationBaseScore: longTermVolumeProfile.accumulationBaseScore,
+        longBoxBreakoutScore: longTermVolumeProfile.longBoxBreakoutScore,
+        longOverheadSupplyRisk: longTermVolumeProfile.longOverheadSupplyRisk,
+        highVolumeStallRisk: longTermVolumeProfile.highVolumeStallRisk,
+        holdingQualityBySupply: longTermVolumeProfile.holdingQualityBySupply,
+        structuralBreakoutReliability: longTermVolumeProfile.structuralBreakoutReliability,
+        advancedVolumeProfile: longTermVolumeProfile.advancedVolumeProfile,
+        summary: longTermVolumeProfile.summary
+      }
+    : undefined;
+}
+
+function buildCrossCheckSummary(params: {
+  swing?: ReturnType<typeof summarizeSwingVolumeProfile>;
+  longTerm?: ReturnType<typeof summarizeLongTermVolumeProfile>;
+}) {
+  if (params.swing && params.longTerm) {
+    return "스윙 매물대는 진입 타이밍과 추격 위험, 중장기 매물대는 구조적 보유 품질을 분리해 참고합니다. 매물대 점수는 단독 매수 신호가 아닙니다.";
+  }
+  if (params.swing) {
+    return "스윙 매물대는 추격 위험, 돌파 안착, 눌림 지지 품질을 보조 확인합니다. 매물대 점수는 단독 매수 신호가 아닙니다.";
+  }
+  if (params.longTerm) {
+    return "중장기 매물대는 장기 바닥권 손바뀜, 박스권 돌파, 보유 품질을 보조 확인합니다. 매물대 점수는 단독 매수 신호가 아닙니다.";
+  }
+  return "매물대 계산에 필요한 데이터가 부족해 점수 반영은 중립 처리했습니다.";
 }
 
 function syncLatestPointWithQuote(points: ChartPoint[], latestClose?: number) {
@@ -1360,6 +1408,15 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
   const avgVolume20Before = averageDefined(volumesBeforeAnchor);
   const avgVolume20After = averageDefined(volumesAfterAnchor);
   const avgVolume20Latest = averageDefined(volumesLatest);
+  const swingVolumeProfile =
+    input.category === "swing"
+      ? analyzeSwingVolumeProfile(points, {
+          volumeScore: ratio(latestPoint.volume, avgVolume20Latest) != null ? Math.min(100, (ratio(latestPoint.volume, avgVolume20Latest) ?? 0) * 35) : undefined
+        })
+      : undefined;
+  const swingVolumeProfileSummary = summarizeSwingVolumeProfile(swingVolumeProfile);
+  const longTermVolumeProfileSummary =
+    input.category === "longTerm" ? summarizeLongTermVolumeProfile((longTermReview as LongTermReviewAnalysis | undefined)?.candidate?.longTermVolumeProfile) : undefined;
 
   const analysis = {
     name: input.name,
@@ -1396,7 +1453,18 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
     latestVolumeVs20d: ratio(latestPoint.volume, avgVolume20Latest),
     chartWindow: buildChartWindow(points),
     fundamentals: enrichedFundamentals,
-    longTermReview
+    longTermReview,
+    volumeProfileAnalysis:
+      swingVolumeProfileSummary || longTermVolumeProfileSummary
+        ? {
+            swing: swingVolumeProfileSummary,
+            longTerm: longTermVolumeProfileSummary,
+            crossCheckSummary: buildCrossCheckSummary({
+              swing: swingVolumeProfileSummary,
+              longTerm: longTermVolumeProfileSummary
+            })
+          }
+        : undefined
   };
 
   logger.info("recommendation:analyze:success", {
@@ -1558,6 +1626,7 @@ async function analyzeSmartMoneyPatternWithContext(
     ]
   };
   const tradingHalted = Boolean(tradingHaltInfo) || isNonTradingPoint(referencePoint);
+  const swingVolumeProfileSummary = summarizeSwingVolumeProfile(enrichedPattern.swingVolumeProfile);
 
   const analysis = {
     name: input.name,
@@ -1571,7 +1640,15 @@ async function analyzeSmartMoneyPatternWithContext(
     haltCategory: tradingHaltInfo?.haltCategory,
     haltAction: tradingHaltInfo?.haltAction,
     note: input.note,
-    pattern: enrichedPattern
+    pattern: enrichedPattern,
+    volumeProfileAnalysis: swingVolumeProfileSummary
+      ? {
+          swing: swingVolumeProfileSummary,
+          crossCheckSummary: buildCrossCheckSummary({
+            swing: swingVolumeProfileSummary
+          })
+        }
+      : undefined
   };
 
   logger.info("smartMoney:analyze:success", {

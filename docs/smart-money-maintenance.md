@@ -1,227 +1,178 @@
-# Smart Money Maintenance Guide
+# Smart Money 유지보수 가이드
 
-## Purpose
+기준일: 2026-05-08
 
-This document explains the parts of the smart-money engine that are easiest to misread during maintenance.
-The most important rule is:
+## 핵심 원칙
 
-- `matched` means the pattern quality cleared a score threshold.
-- `actionable` means the setup is actually tradable now.
-- The server swing scan now classifies matched setups into `execution_ready`, `execution_probe`, or `watch`.
-- `execution_ready` is the only bucket that should be treated like a clean live-entry state.
-- `execution_probe` means price is near the SMA20-based entry zone, but one or more quality gates are still missing.
+스윙 엔진에서 가장 중요한 구분은 다음입니다.
 
-That distinction exists so early watch setups do not leak into the executable swing list.
+- `matched`: 패턴 품질이 기준을 넘었다.
+- `actionable`: 지금 실행 가능한 상태다.
+- `execution_ready`: 실제 실행 후보에 가깝다.
+- `execution_probe`: 진입권에 가까우나 품질 gate가 부족하다.
+- `watch`: 관찰할 가치는 있으나 아직 실행 후보는 아니다.
 
-## Files To Know
+이 구분을 흐리면 초기 watch setup이 실행 후보로 섞입니다.
+
+## 주요 파일
 
 - `src/services/smartMoneyEngine.ts`
-  - Main pattern evaluation pipeline.
-  - Builds setup and breakout candidates.
-  - Decides `matched`, `actionable`, `status`, score ranking, explainability fields, and final selected candidate.
-
+  - setup/breakout 후보 생성
+  - 점수, 상태, staged buy plan, stop-loss, risk/reward 산출
+  - `swingVolumeProfile` 반영
 - `src/services/smartMoney/config.ts`
-  - Default smart-money filter values.
-  - Use this file first when you want to tighten or loosen thresholds.
-
+  - threshold와 기본 필터
 - `src/services/smartMoney/utils.ts`
-  - Shared math and workflow helpers.
-  - Use this file for reusable engine calculations instead of re-adding helpers into large files.
-
+  - 공통 계산 유틸
 - `src/services/smartMoney/marketContext.ts`
-  - Builds the auto market context from KOSPI/KOSDAQ, USD/KRW, and gold snapshots.
-  - Cached briefly during batch scans to avoid repeated network loads.
-
+  - 시장 context 생성
 - `src/services/recommendationUniverse.ts`
-  - Final swing bucket classification layer.
-  - Converts engine output into `execution_ready`, `execution_probe`, or `watch`.
-  - Applies reason-based trading halt behavior before save.
-
+  - universe scan 결과 bucket 분류와 저장
 - `src/services/tradingHalts.ts`
-  - Loads the current KIND halt list.
-  - Maps raw halt reasons into `haltCategory` and `haltAction`.
-  - `critical` and `structural` halts are excluded.
-  - `event` halts are allowed with penalty.
-  - `technical` halts are kept as watch-only.
+  - 거래정지 사유 분류
+- `src/services/volumeProfile.ts`
+  - 스윙 매물대 분석
 
-- `src/scripts/scanUniverseSwingPicks.ts`
-  - Universe scan entrypoint.
-  - Writes `data/server-swing-picks.json`.
-  - Server output still preserves `executionItems` and `watchItems` for compatibility.
-  - Execution-side saved names may now be `execution_ready` or `execution_probe`.
+## 실행 가능 상태 기준
 
-## Actionable Rule
+setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실행 후보로 봅니다.
 
-For setup candidates, the engine should only behave like a first-buy signal when the staged-buy logic says the SMA20-based first-buy area is active.
+실무 해석:
 
-Practical meaning:
+- `matched=true`여도 너무 이르면 실행 후보가 아닙니다.
+- `buy_ready`에 가까울 때만 첫 매수 검토 대상으로 봅니다.
+- universe scan 결과는 `execution_ready`, `execution_probe`, `watch`로 분리합니다.
+- `execution_probe`는 매수 후보가 아니라 확인 후보입니다.
 
-- A setup may be `matched=true` and still be too early.
-- A setup should only be treated like a real entry when it becomes `buy_ready`.
-- Universe scan output is split into execution-side and watch-side buckets.
-- `execution_ready` should stay close to names you would actually trade.
-- `execution_probe` may be near entry, but should still carry caution.
-- `watch` may contain matched setups that are not yet near entry or are still missing quality.
+## Bucket 기준
 
-If you loosen this carelessly, low-quality early pullback names can leak into execution-side output.
+### execution_ready
 
-## Current Bucket Rules
+- 엔진이 이미 실행 가능하다고 판단한 상태
+- 시장 국면 gate 통과
+- risk/reward와 유효기간 조건 통과
+- 거래량, 캔들, 지지 안정성, 거래정지 패널티가 치명적이지 않음
 
-- `execution_ready`
-  - Engine already says `pattern.actionable === true`.
-  - Regime gate is already cleared inside the engine.
-  - Risk/reward, validity, and execution thresholds are stage-aware in `smartMoneyEngine.ts`.
-  - Classification should still reject names with weak contraction, weak candles, negative SMA20 slope, unstable support, or halt penalties.
+### execution_probe
 
-- `execution_probe`
-  - Primary use case is a setup that has entered the SMA20-based entry zone.
-  - Probe names are not full executions.
-  - Typical reasons:
-    - `weak_volume_contraction`
-    - `weak_candle_structure`
-    - `sma20_slope_negative`
-    - `unstable_support`
-    - `risk_reward_thin`
-    - `halt_penalty_active`
+- SMA20 기반 진입 구간에 근접했지만 품질 gate가 부족한 상태
+- 대표 사유:
+  - `weak_volume_contraction`
+  - `weak_candle_structure`
+  - `sma20_slope_negative`
+  - `unstable_support`
+  - `risk_reward_thin`
+  - `halt_penalty_active`
 
-- `watch`
-  - Matched but not close enough to entry, or still too low quality.
-  - Watch names now expose UI/debug tags such as:
-    - `watch_extended_leader`
-    - `watch_pullback_pending`
-    - `watch_low_quality`
-    - `watch_halt_event`
-    - `watch_halt_structural`
+### watch
 
-## Explainability Fields
+- 패턴은 보이나 실행 시점이 아니거나 품질이 낮은 상태
+- 대표 tag:
+  - `watch_extended_leader`
+  - `watch_pullback_pending`
+  - `watch_low_quality`
+  - `watch_halt_event`
+  - `watch_halt_structural`
 
-Every saved swing candidate should carry explainability data:
+## 매물대 반영 원칙
+
+스윙 매물대는 BUY를 공격적으로 늘리는 지표가 아닙니다.
+
+반영 방식:
+
+- 위 매물 부담, 리테스트 실패, 제한적 reward/risk는 강하게 감점합니다.
+- 돌파 안착, 눌림 지지 품질은 보조적으로만 가산합니다.
+- 양수 매물대 점수는 `patternScore`를 직접 올리지 않습니다.
+- 양수 매물대 점수는 `finalRankScore`에 최대 +8 수준의 ranking support로만 반영합니다.
+- 음수 매물대 점수는 `patternScore`, `regimeAdjustedScore`, `finalRankScore`에 리스크 조정으로 반영합니다.
+
+중요 필드:
+
+- `pattern.swingVolumeProfile`
+- `volumeProfileAnalysis.swing`
+- `advancedVolumeProfile.dynamicBinSize`
+- `advancedVolumeProfile.rewardRiskRatio`
+- `advancedVolumeProfile.profileReliability`
+- `advancedVolumeProfile.retestSuccessScore`
+- `advancedVolumeProfile.retestFailureRisk`
+
+## 매물대 해석 체크리스트
+
+- 현재가 바로 위 2~5% 구간에 두꺼운 매물이 있으면 추격 위험을 높입니다.
+- 주요 매물대를 돌파했더라도 리테스트 실패가 있으면 감점합니다.
+- 아래 3~8% 구간에 지지 매물이 있고 pullbackScore가 좋으면 눌림 품질을 보조 가산합니다.
+- `profileReliability`가 낮으면 모든 가산 해석을 축소합니다.
+- 시장 국면이 약하면 매물대 구조가 좋아도 신뢰도를 낮춥니다.
+
+## 거래정지 처리
+
+거래정지는 blanket exclusion이 아닙니다.
+
+- `critical`: 제외
+- `structural`: 제외
+- `event`: 패널티 후 허용
+- `technical`: watch-only
+- `other`: 기본 보수 처리
+
+## 설명 가능성 필드
+
+저장 후보는 다음 필드를 유지해야 합니다.
 
 - `reasons`
-  - Machine-readable explanation tags for why a name landed in its current bucket.
-  - Examples: `entryZone_hit`, `execution_gate_not_cleared`, `halt_penalty_active`.
-
 - `tags`
-  - Structural or informational tags.
-  - Examples: `tag_sma20_primary`, `tag_alt_anchor_pivot_retest`, `tag_alt_anchor_box_support`, `tag_alt_anchor_shallow_pullback`.
-
 - `penaltyFactors`
-  - Ranked penalty details with `code`, `label`, `impact`, and `reason`.
-  - These explain why a probe or watch name was held back.
+- `debugMeta`
+- `swingVolumeProfile`
 
-Do not remove these fields when adjusting output schemas. They are now part of the expected debugging surface.
+이 필드는 UI와 디버깅 표면의 일부입니다.
 
-## Threshold Notes
+## 튜닝 위치
 
-The engine no longer relies on a single global `55/55` gate.
+느슨한 후보가 너무 많으면 먼저 `src/services/smartMoney/config.ts`를 봅니다.
 
-- Setup thresholds
-  - `setupValidityMin`
-  - `setupExecutionMin`
+우선 확인할 값:
 
-- Breakout thresholds
-  - `breakoutValidityMin`
-  - `breakoutExecutionMin`
+- `minSetupPullbackSessions`
+- `maxSetupPullbackDrawdownPercent`
+- `maxSetupPullbackRangePercent`
+- `pullbackBuyStartPercentFromPeak`
+- `firstBuySma20ProximityPercent`
+- `setupValidityMin`
+- `setupExecutionMin`
+- `breakoutValidityMin`
+- `breakoutExecutionMin`
+- `executionReadyRiskRewardMin`
+- `executionProbeRiskRewardMin`
 
-- Risk/reward thresholds
-  - `executionReadyRiskRewardMin`
-  - `executionProbeRiskRewardMin`
+ranking은 맞는데 포함/제외가 문제라면 threshold를 보고, 포함/제외는 맞는데 순위만 이상하면 `finalRankScore`와 penalty weighting을 봅니다.
 
-- Regime adjustments
-  - Bull market can loosen breakout thresholds.
-  - Bear market can tighten setup thresholds.
+## 안전 수정 체크리스트
 
-When tuning, change these in `src/services/smartMoney/config.ts` before changing hard logic.
-
-## Volume And Candle Interpretation
-
-The engine still keeps the hard filters:
-
-- absolute volume thresholds
-- relative volume thresholds
-- turnover thresholds
-
-It now adds more interpretation on top:
-
-- trading value matters more than raw share count
-- low-price names receive a liquidity drag penalty
-- turnover proxy versus recent average is included
-- candle structure now scores upper wick, close position, body ratio, and gap rejection
-
-These refinements are intended to reduce false executions without relaxing the original strict filters.
-
-## Trading Halt Handling
-
-Trading halts are no longer handled as a single blanket exclusion.
-
-- `critical`
-  - Always exclude.
-  - Examples: delisting risk, audit refusal, fraud-like governance failures.
-
-- `structural`
-  - Exclude, but still track separately in halt metadata.
-  - Examples: delayed filings, disclosure violations.
-
-- `event`
-  - Do not exclude automatically.
-  - Keep visible with `allow_with_penalty`.
-  - Examples: merger, split, rights offering, tender offer.
-
-- `technical`
-  - Do not exclude automatically.
-  - Keep as `watch_only`.
-  - Examples: volatility or warning-driven halts.
-
-## Where To Change Behavior
-
-If too many loose setup names are appearing:
-
-1. Check `src/services/smartMoney/config.ts`
-2. Review these filters first:
-   - `minSetupPullbackSessions`
-   - `maxSetupPullbackDrawdownPercent`
-   - `maxSetupPullbackRangePercent`
-   - `pullbackBuyStartPercentFromPeak`
-   - `firstBuySma20ProximityPercent`
-   - `setupValidityMin`
-   - `setupExecutionMin`
-   - `breakoutValidityMin`
-   - `breakoutExecutionMin`
-   - `executionReadyRiskRewardMin`
-   - `executionProbeRiskRewardMin`
-3. Re-run the universe scan and inspect the saved file again.
-
-If the ranking feels wrong but the inclusion or exclusion is correct:
-
-1. Review `finalRankScore` weighting in `smartMoneyEngine.ts`.
-2. Review `dangerPenalty` adjustments in `smartMoneyEnhancer.ts`.
-
-## Safe Edit Checklist
-
-Whenever smart-money logic changes, run:
+변경 후 실행:
 
 ```bash
+npm run check
 npm run build
+npx tsx src/scripts/verifyVolumeProfile.ts
+```
+
+스윙 universe를 건드렸다면:
+
+```bash
 npm run scan:swing-universe
 ```
 
-Then verify:
+확인 항목:
 
-1. `execution_ready` only contains names you would accept as executable setups or valid breakouts.
-2. `execution_probe` contains near-entry names that still need caution, not clean executions.
-3. `watchItems` only contains matched watch setups you still want surfaced to the UI.
-4. A known early-watch setup does not reappear as ready just because it entered the entry zone.
-5. A known valid 20-day moving-average first-buy setup still appears.
-6. Event-driven halt names remain visible only with penalty, while structural or critical halts stay excluded.
+- `execution_ready`에 실행 가능한 setup만 남는가
+- `execution_probe`가 clean execution처럼 보이지 않는가
+- `watchItems`가 너무 느슨해지지 않았는가
+- 매물대 양수 점수만으로 BUY가 승격되지 않는가
+- 위 매물/리테스트 실패가 제대로 감점되는가
+- event halt는 보이되 penalty가 유지되는가
 
-## Latest Notes
+## 최근 반영
 
-- As of `2026-04-14`, the live scan is running with three swing buckets: `execution_ready`, `execution_probe`, and `watch`.
-- As of `2026-04-14`, the saved live scan currently has `1` probe name and `19` watch names, with no `execution_ready` names.
-- `HLB이노베이션 (024850)` is currently a useful reference example for `event` halt handling because it is not excluded, but it still carries a halt penalty and remains below ready status.
-- If a name looks missing in the UI while the engine says `matched=true` and `actionable=true`, verify the saved `data/server-swing-picks.json` file after running `npm run scan:swing-universe` before changing thresholds.
-
-## Notes On Monitoring
-
-I can keep checking changes while we are actively working in this session, but I cannot watch the repository autonomously after the session ends.
-For any future engine change, use the checklist above and then ask me to review the updated result set.
+- 2026-04-14: `execution_ready`, `execution_probe`, `watch` bucket 구조 정리
+- 2026-05-08: 스윙 매물대 분석 추가
+- 2026-05-08: 매물대 양수 가산을 BUY 직접 승격에서 제외하고 ranking support로 보수화

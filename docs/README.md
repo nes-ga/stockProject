@@ -1,24 +1,35 @@
-# 프로젝트 문서 안내
+# 문서 인덱스
 
-`docs` 폴더는 현재 구현 상태, 엔진 설계, 유지보수 기록을 정리하는 공간이다. 기존 일부 문서는 한글 인코딩이 깨져 있으므로, 최신 진입 문서는 아래 문서를 우선 사용한다.
+이 디렉터리는 StockMon Dashboard의 현재 구조, 엔진 설계, 유지보수 기준, 작업 연혁을 정리합니다. 기존 문서 중 깨진 한글 문서는 2026-05-08 기준 코드 상태에 맞춰 UTF-8 문서로 다시 정리했습니다.
 
-## 먼저 읽을 문서
+## 먼저 볼 문서
 
-1. [프로젝트 현황 문서 - 2026-04-27](./project-overview-2026-04-27.md)
-2. [현재 구현 기능 정리](./current-implemented-features.md)
-3. [스마트머니 유지보수 가이드](./smart-money-maintenance.md)
-4. [중장기 엔진 설계 문서](./long-term-engine-design.md)
+1. [현재 구현 기능](./current-implemented-features.md)
+2. [프로젝트 개요](./project-overview-2026-04-27.md)
+3. [프로젝트 연혁](./project-history.md)
+4. [스마트머니 유지보수 가이드](./smart-money-maintenance.md)
+5. [중장기 엔진 설계](./long-term-engine-design.md)
+
+## 주제별 문서
+
+- [현재 구현 기능](./current-implemented-features.md): API, UI, 엔진, 데이터 저장소, 검증 명령 요약
+- [프로젝트 개요](./project-overview-2026-04-27.md): 전체 아키텍처와 주요 파일 지도
+- [스마트머니 유지보수 가이드](./smart-money-maintenance.md): 스윙 엔진, bucket, actionable 기준, 매물대 반영 원칙
+- [중장기 엔진 설계](./long-term-engine-design.md): 장기 후보 선정 철학과 점수 구조
+- [차트 이슈 조사](./chart-investigation-2026-04-30.md): 비거래일/공휴일 공백과 `open=0` 해석
 
 ## 작업 기록
 
-- [작업 요약 2026-04-10](./work-summary-2026-04-10.md)
-- [작업 요약 2026-04-13](./work-summary-2026-04-13.md)
-- [작업 요약 2026-04-14](./work-summary-2026-04-14.md)
+- [2026-04-10 작업 요약](./work-summary-2026-04-10.md)
+- [2026-04-13 작업 요약](./work-summary-2026-04-13.md)
+- [2026-04-14 작업 요약](./work-summary-2026-04-14.md)
 - [수정 파일 요약](./modified-files-summary.md)
+- [프로젝트 연혁](./project-history.md)
 
 ## 문서 관리 원칙
 
-- 현재 코드 기준의 전체 구조는 `project-overview-2026-04-27.md`에 업데이트한다.
-- 기능별 상세 정책은 전용 문서에 둔다.
-- 사용자에게 보이는 문구, API, 데이터 저장 구조가 바뀌면 문서도 함께 갱신한다.
-- 깨진 한글 문서는 새 UTF-8 문서로 대체하거나, 수정 시 전체 문단 단위로 재작성한다.
+- 코드와 다른 설명은 제거하고 현재 동작 기준으로 작성합니다.
+- 사용자에게 보이는 용어는 UI/JSON 필드명과 최대한 맞춥니다.
+- 엔진 점수는 “매수 신호”와 “보조 해석”을 구분해서 적습니다.
+- 날짜별 변화는 `project-history.md`에 누적하고, 설계 원칙은 각 엔진 문서에 유지합니다.
+- 문서는 UTF-8로 저장합니다.

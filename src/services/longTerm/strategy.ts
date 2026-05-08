@@ -1,4 +1,5 @@
 import type {
+  ChartPoint,
   LongTermScanCandidate,
   LongTermScanFilters,
   LongTermScoreBreakdown,
@@ -6,6 +7,7 @@ import type {
   StockUniverseItem
 } from "../../types.js";
 import { passesBaseLiquidityFloor } from "../sharedLiquidity.js";
+import { analyzeLongTermVolumeProfile } from "../volumeProfile.js";
 import { calculateCorrectionScore, hasMeaningfulCorrection, resolveLongTermCorrectionContext } from "./correctionScore.js";
 import { evaluateLongTermFinancials, type LongTermFinancialEvaluation } from "./fundamentalScore.js";
 import {
@@ -25,6 +27,7 @@ export type LongTermRankedEntry = {
   seedSource: "curated" | "ad_hoc";
   market?: StockUniverseItem["market"];
   sector?: string;
+  chartPoints?: ChartPoint[];
   metrics: LongTermMetricSnapshot;
   turnoverRank?: number;
   sectorTurnoverRank?: number;
@@ -33,7 +36,7 @@ export type LongTermRankedEntry = {
 };
 
 function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">, filters: LongTermScanFilters) {
-  return Math.round(
+  const baseScore = Math.round(
     scores.leaderScore * filters.leaderWeight +
       scores.correctionScore * filters.correctionWeight +
       scores.trendScore * filters.trendWeight +
@@ -41,6 +44,7 @@ function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">,
       scores.stabilizationScore * filters.stabilizationWeight +
       scores.financialScore * filters.financialWeight
   );
+  return baseScore + (scores.volumeProfileScore ?? 0);
 }
 
 function isStructurallyBroken(metrics: LongTermMetricSnapshot, filters: LongTermScanFilters) {
@@ -90,6 +94,14 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
   const liquidityScore = calculateLiquidityScore(entry.metrics, filters);
   const stabilizationScore = calculateStabilizationScore(entry.metrics, filters);
   const financialScore = entry.financialEvaluation.financialScore;
+  const longTermVolumeProfile = entry.chartPoints?.length
+    ? analyzeLongTermVolumeProfile(entry.chartPoints, {
+        trendScore,
+        financialScore,
+        liquidityScore
+      })
+    : undefined;
+  const volumeProfileScore = longTermVolumeProfile?.score ?? 0;
 
   const partialScores = {
     leaderScore,
@@ -98,6 +110,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     liquidityScore,
     stabilizationScore,
     financialScore,
+    volumeProfileScore,
     durabilityScore: financialScore
   };
 
@@ -146,6 +159,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     liquidity: entry.metrics.liquidity,
     financials: entry.financialEvaluation.snapshot,
     fundamentals: entry.financialEvaluation.snapshot,
+    longTermVolumeProfile,
     candidateGroup,
     label,
     reasonSummary: buildLongTermReasonSummary(

@@ -10,9 +10,27 @@ import type {
 } from "../types.js";
 import type {
   RecommendationUniverseAlertBucket,
+  RecommendationUniverseAlertChange,
   RecommendationUniverseAlertCategory,
   RecommendationUniverseAlertDiff
 } from "./recommendationUniverseAlerts.js";
+
+type DiscordEmbed = {
+  title?: string;
+  description?: string;
+  color?: number;
+  footer?: {
+    text: string;
+  };
+  timestamp?: string;
+};
+
+type DiscordWebhookMessage =
+  | string
+  | {
+      content?: string;
+      embeds?: DiscordEmbed[];
+    };
 
 type KoreanMoverAlertFilters = {
   direction: KoreanMoverDirection;
@@ -422,6 +440,117 @@ function buildRecommendationUniverseAlertLines(diff: RecommendationUniverseAlert
   });
 }
 
+function isRecommendationUniverseBuyBucket(bucket?: RecommendationUniverseAlertBucket) {
+  return bucket === "buy" || bucket === "execution";
+}
+
+function getRecommendationUniverseChangePriority(change: RecommendationUniverseAlertChange) {
+  if (change.type === "added" && isRecommendationUniverseBuyBucket(change.toBucket)) {
+    return 0;
+  }
+
+  if (change.type === "moved" && isRecommendationUniverseBuyBucket(change.toBucket)) {
+    return 1;
+  }
+
+  if (change.type === "removed") {
+    return 2;
+  }
+
+  return 3;
+}
+
+function compareRecommendationUniverseAlertChangesForDiscord(
+  left: RecommendationUniverseAlertChange,
+  right: RecommendationUniverseAlertChange
+) {
+  const leftPriority = getRecommendationUniverseChangePriority(left);
+  const rightPriority = getRecommendationUniverseChangePriority(right);
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+
+  return left.symbol.localeCompare(right.symbol, "en");
+}
+
+function formatRecommendationUniverseChangeLine(
+  category: RecommendationUniverseAlertCategory,
+  change: RecommendationUniverseAlertChange,
+  index: number
+) {
+  const prefix = `**${index + 1}. ${change.name} (${change.symbol})**`;
+
+  if (change.type === "added") {
+    return `${prefix}\n**\uC2E0\uADDC \uD3B8\uC785** -> \`${formatRecommendationUniverseBucket(category, change.toBucket)}\``;
+  }
+
+  if (change.type === "removed") {
+    return `${prefix}\n**\uC81C\uC678** | \uC774\uC804 \`${formatRecommendationUniverseBucket(category, change.fromBucket)}\``;
+  }
+
+  return `${prefix}\n**\uC774\uB3D9** | \`${formatRecommendationUniverseBucket(category, change.fromBucket)}\` -> \`${formatRecommendationUniverseBucket(category, change.toBucket)}\``;
+}
+
+function getRecommendationUniverseDiscordGroup(change: RecommendationUniverseAlertChange) {
+  const priority = getRecommendationUniverseChangePriority(change);
+  switch (priority) {
+    case 0:
+      return {
+        key: "new-buy",
+        label: "\uC2E0\uADDC \uD3B8\uC785 / \uB9E4\uC218\uD6C4\uBCF4",
+        color: 0x16a34a,
+        priority
+      };
+    case 1:
+      return {
+        key: "buy-upgrade",
+        label: "\uB9E4\uC218\uD6C4\uBCF4 \uC2B9\uACA9",
+        color: 0x2563eb,
+        priority
+      };
+    case 2:
+      return {
+        key: "removed",
+        label: "\uC81C\uC678",
+        color: 0xdc2626,
+        priority
+      };
+    default:
+      return {
+        key: "watch",
+        label: "\uAD00\uC2EC\uD6C4\uBCF4",
+        color: 0xf59e0b,
+        priority
+      };
+  }
+}
+
+function chunkRecommendationUniverseDescriptionLines(lines: string[], maxLength = 3500) {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const separatorLength = current.length ? 2 : 0;
+    const nextLength = currentLength + separatorLength + line.length;
+    if (current.length && nextLength > maxLength) {
+      chunks.push(current);
+      current = [line];
+      currentLength = line.length;
+      continue;
+    }
+
+    current.push(line);
+    currentLength = nextLength;
+  }
+
+  if (current.length) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
 export function buildRecommendationUniverseDiscordMessages(params: {
   diff: RecommendationUniverseAlertDiff;
   mention?: string;
@@ -432,19 +561,67 @@ export function buildRecommendationUniverseDiscordMessages(params: {
   }
 
   const categoryLabel = formatRecommendationUniverseCategory(diff.category);
-  const headerParts = [
-    mention?.trim(),
-    `${categoryLabel} \uC720\uB2C8\uBC84\uC2A4 \uBCC0\uD654 \uC54C\uB9BC`,
-    `Generated ${nowInSeoul()} KST`,
-    `changes=${diff.changes.length}, current=${diff.currentCount}, previous=${diff.previousCount}`
-  ].filter(Boolean);
-  const header = headerParts.join("\n");
+  const generatedAt = nowInSeoul();
+  const sortedChanges = [...diff.changes].sort(compareRecommendationUniverseAlertChangesForDiscord);
+  const groups = new Map<
+    string,
+    {
+      label: string;
+      color: number;
+      priority: number;
+      changes: RecommendationUniverseAlertChange[];
+    }
+  >();
 
-  return chunkMessages(buildRecommendationUniverseAlertLines(diff), header);
+  for (const change of sortedChanges) {
+    const group = getRecommendationUniverseDiscordGroup(change);
+    const existing = groups.get(group.key);
+    if (existing) {
+      existing.changes.push(change);
+      continue;
+    }
+
+    groups.set(group.key, {
+      label: group.label,
+      color: group.color,
+      priority: group.priority,
+      changes: [change]
+    });
+  }
+
+  const messages: DiscordWebhookMessage[] = [];
+  const mentionText = mention?.trim();
+  let isFirstMessage = true;
+
+  for (const group of [...groups.values()].sort((left, right) => left.priority - right.priority)) {
+    const lines = group.changes.map((change, index) =>
+      formatRecommendationUniverseChangeLine(diff.category, change, index)
+    );
+
+    for (const chunk of chunkRecommendationUniverseDescriptionLines(lines)) {
+      messages.push({
+        content: isFirstMessage ? mentionText : undefined,
+        embeds: [
+          {
+            title: `${categoryLabel} \uC720\uB2C8\uBC84\uC2A4 \uBCC0\uD654 \uC54C\uB9BC | ${group.label}`,
+            description: chunk.join("\n\n"),
+            color: group.color,
+            footer: {
+              text: `${generatedAt} KST | changes=${diff.changes.length}, current=${diff.currentCount}, previous=${diff.previousCount}`
+            },
+            timestamp: new Date().toISOString()
+          }
+        ]
+      });
+      isFirstMessage = false;
+    }
+  }
+
+  return messages.length ? messages : chunkMessages(buildRecommendationUniverseAlertLines(diff), "");
 }
 
 export async function sendDiscordMessages(params: {
-  messages: string[];
+  messages: DiscordWebhookMessage[];
   webhookUrl?: string;
   username?: string;
 }) {
@@ -459,10 +636,17 @@ export async function sendDiscordMessages(params: {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        content: message,
-        username: params.username ?? "Stock Alert Bot"
-      })
+      body: JSON.stringify(
+        typeof message === "string"
+          ? {
+              content: message,
+              username: params.username ?? "Stock Alert Bot"
+            }
+          : {
+              ...message,
+              username: params.username ?? "Stock Alert Bot"
+            }
+      )
     });
 
     if (!response.ok) {

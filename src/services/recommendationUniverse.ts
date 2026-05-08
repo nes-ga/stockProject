@@ -170,7 +170,11 @@ function buildDividendNote(candidate: DividendUniverseCandidate) {
   return [groupLabel, formatDividendNoteLabel(candidate.label), ...highlights].join(" | ");
 }
 
-function buildSwingNote(pattern: SmartMoneyAnalysis["pattern"]) {
+function buildSwingNote(
+  pattern: SmartMoneyAnalysis["pattern"],
+  classification?: Pick<SwingCandidateClassification, "bucket">
+) {
+  const isExecutionCandidate = classification != null && classification.bucket !== "watch";
   const stageLabel =
     pattern.status === "breakout_extended"
       ? "스윙 추격 금지 감지"
@@ -202,13 +206,15 @@ function buildSwingNote(pattern: SmartMoneyAnalysis["pattern"]) {
   const stopText = `손절 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
   const stopRefText = `손절기준 ${pattern.stopLossReferenceDate ?? "-"} ${pattern.stopLossReferenceType === "close_fallback" ? "close" : "low"}`;
 
+  const finalDisplayBuyPlanText = isExecutionCandidate ? buyPlanText : resolvedDisplayBuyPlanText;
+
   return [
     stageLabel,
     `선행 수급 ${pattern.leadInDate ?? "-"}`,
     `급등 피크 ${pattern.surgePeakDate ?? pattern.breakoutDate ?? "-"}`,
     `눌림 ${pattern.pullbackStartDate ?? "-"}~${pattern.pullbackEndDate ?? "-"}`,
     `SMA20 ${pattern.referenceSma20 != null ? Math.round(pattern.referenceSma20) : "-"}`,
-    resolvedDisplayBuyPlanText,
+    finalDisplayBuyPlanText,
     stopText,
     stopRefText,
     `점수 ${pattern.finalRankScore ?? pattern.patternScore}`
@@ -229,7 +235,7 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     symbol: item.code,
     anchorDate: analysis.tradingReferenceDate,
     latestMentionDate: analysis.tradingReferenceDate,
-    note: buildSwingNote(analysis.pattern),
+    note: buildSwingNote(analysis.pattern, classification),
     bucket: classification.bucket,
     tags: classification.tags,
     reasons: classification.reasons,

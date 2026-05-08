@@ -133,6 +133,7 @@ async function loadRankedMetric(options: {
     seedSource: options.seedSource,
     market: options.market,
     sector: options.sector,
+    chartPoints: points,
     metrics,
     financialEvaluation
   };
