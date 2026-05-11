@@ -2,8 +2,10 @@ import type {
   ChartPoint,
   SmartMoneyConditionCheck,
   SmartMoneyDebugInfo,
+  SmartMoneyBuyPlan,
   SmartMoneyPatternFilters,
   SmartMoneyPatternMatch,
+  SmartMoneyPostEntryOutcome,
   SmartMoneyRiskFactor,
   SmartMoneyTradePlan
 } from "../types.js";
@@ -45,6 +47,12 @@ const EXECUTION_GUARD_SETTINGS = {
   minimumRiskRewardRatio: 1.8
 } as const;
 
+const POST_ENTRY_OUTCOME_SETTINGS = {
+  firstBuyTargetReturnPct: 10,
+  secondBuyTargetReturnPct: 10,
+  thirdBuyTargetReturnPct: 8
+} as const;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -71,6 +79,10 @@ function getPointHigh(point: ChartPoint): number {
 
 function getPointLow(point: ChartPoint): number {
   return point.low ?? point.close;
+}
+
+function roundPercent(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function findIndexByDate(points: ChartPoint[], date?: string): number {
@@ -185,6 +197,188 @@ function buildTradePlan(match: SmartMoneyPatternMatch, pricingContext?: SmartMon
     targetPrice,
     riskRewardRatio,
     notes
+  };
+}
+
+function resolveOutcomeBuyPlan(match: SmartMoneyPatternMatch, pricingContext?: SmartMoneyPricingContext): SmartMoneyBuyPlan | undefined {
+  if (match.buyPlan) {
+    return match.buyPlan;
+  }
+
+  const firstBuyPrice =
+    match.entryZoneLow != null && match.entryZoneHigh != null ? Math.max(match.entryZoneLow, match.entryZoneHigh) : undefined;
+  const stopLossPrice = match.tradePlan?.stopLoss ?? match.tradePlan?.invalidationPrice ?? match.invalidationPrice;
+  if (firstBuyPrice == null || stopLossPrice == null || firstBuyPrice <= stopLossPrice) {
+    return undefined;
+  }
+
+  const riskBand = firstBuyPrice - stopLossPrice;
+  return {
+    firstBuyPrice: normalizePriceByTick(firstBuyPrice, pricingContext, "down") ?? firstBuyPrice,
+    secondBuyPrice: normalizePriceByTick(stopLossPrice + riskBand * 0.67, pricingContext, "down") ?? stopLossPrice + riskBand * 0.67,
+    thirdBuyPrice: normalizePriceByTick(stopLossPrice + riskBand * 0.33, pricingContext, "down") ?? stopLossPrice + riskBand * 0.33,
+    stopLossPrice: normalizePriceByTick(stopLossPrice, pricingContext, "down") ?? stopLossPrice
+  };
+}
+
+function getTargetReturnPct(executedBuyCount: number): number | undefined {
+  if (executedBuyCount >= 3) {
+    return POST_ENTRY_OUTCOME_SETTINGS.thirdBuyTargetReturnPct;
+  }
+  if (executedBuyCount === 2) {
+    return POST_ENTRY_OUTCOME_SETTINGS.secondBuyTargetReturnPct;
+  }
+  if (executedBuyCount === 1) {
+    return POST_ENTRY_OUTCOME_SETTINGS.firstBuyTargetReturnPct;
+  }
+  return undefined;
+}
+
+function getTargetHitStatus(executedBuyCount: number): SmartMoneyPostEntryOutcome["status"] {
+  if (executedBuyCount >= 3) {
+    return "target_hit_after_third_buy";
+  }
+  if (executedBuyCount === 2) {
+    return "target_hit_after_second_buy";
+  }
+  return "target_hit_after_first_buy";
+}
+
+function calculatePostEntryOutcome(
+  match: SmartMoneyPatternMatch,
+  points: ChartPoint[],
+  referenceIndex: number,
+  pricingContext?: SmartMoneyPricingContext
+): SmartMoneyPostEntryOutcome | undefined {
+  if (match.stage !== "setup" || !match.matched) {
+    return undefined;
+  }
+
+  const buyPlan = resolveOutcomeBuyPlan(match, pricingContext);
+  if (!buyPlan) {
+    return undefined;
+  }
+
+  const startIndex = Math.max(
+    0,
+    findIndexByDate(points, match.pullbackStartDate) !== -1
+      ? findIndexByDate(points, match.pullbackStartDate)
+      : findIndexByDate(points, match.leadInDate) !== -1
+        ? findIndexByDate(points, match.leadInDate)
+        : findIndexByDate(points, match.windowStartDate) !== -1
+          ? findIndexByDate(points, match.windowStartDate)
+          : 0
+  );
+  const endIndex = Math.min(referenceIndex, points.length - 1);
+  const stageDefinitions: Array<{ stage: 1 | 2 | 3; price: number }> = [
+    { stage: 1, price: buyPlan.firstBuyPrice },
+    { stage: 2, price: buyPlan.secondBuyPrice },
+    { stage: 3, price: buyPlan.thirdBuyPrice }
+  ];
+  const executedBuys: SmartMoneyPostEntryOutcome["executedBuys"] = [];
+  const executedStageSet = new Set<number>();
+  let maxFavorablePrice: number | undefined;
+  let maxFavorableDate: string | undefined;
+  let maxFavorableReturnPct: number | undefined;
+  let maxAdversePrice: number | undefined;
+  let maxAdverseDate: string | undefined;
+  let maxAdverseReturnPct: number | undefined;
+  let targetHitStatus: SmartMoneyPostEntryOutcome["status"] | undefined;
+  let targetHitStageCount = 0;
+
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const point = points[index];
+    if (!point) {
+      continue;
+    }
+
+    const rawLow = getPointLow(point);
+    const low = rawLow > 0 ? rawLow : point.close;
+    let executedNewStage = false;
+    for (const buy of stageDefinitions) {
+      if (!executedStageSet.has(buy.stage) && low <= buy.price) {
+        executedStageSet.add(buy.stage);
+        executedNewStage = true;
+        executedBuys.push({
+          stage: buy.stage,
+          price: buy.price,
+          date: point.date
+        });
+      }
+    }
+
+    if (!executedBuys.length) {
+      continue;
+    }
+
+    if (executedNewStage) {
+      maxFavorablePrice = undefined;
+      maxFavorableDate = undefined;
+      maxFavorableReturnPct = undefined;
+      maxAdversePrice = undefined;
+      maxAdverseDate = undefined;
+      maxAdverseReturnPct = undefined;
+      targetHitStatus = undefined;
+      targetHitStageCount = executedBuys.length;
+    }
+
+    const averageBuyPrice = average(executedBuys.map((buy) => buy.price));
+    if (averageBuyPrice == null) {
+      continue;
+    }
+
+    const rawHigh = getPointHigh(point);
+    const high = rawHigh > 0 ? rawHigh : point.close;
+    const highReturnPct = percentChange(high, averageBuyPrice);
+    if (highReturnPct != null && (maxFavorableReturnPct == null || highReturnPct > maxFavorableReturnPct)) {
+      maxFavorablePrice = high;
+      maxFavorableDate = point.date;
+      maxFavorableReturnPct = highReturnPct;
+    }
+
+    const adverseLow = low;
+    const adverseReturnPct = percentChange(adverseLow, averageBuyPrice);
+    if (adverseReturnPct != null && (maxAdverseReturnPct == null || adverseReturnPct < maxAdverseReturnPct)) {
+      maxAdversePrice = adverseLow;
+      maxAdverseDate = point.date;
+      maxAdverseReturnPct = adverseReturnPct;
+    }
+
+    const targetReturnPct = getTargetReturnPct(executedBuys.length);
+    if (
+      targetReturnPct != null &&
+      maxFavorableReturnPct != null &&
+      maxFavorableReturnPct >= targetReturnPct &&
+      executedBuys.length >= targetHitStageCount
+    ) {
+      targetHitStageCount = executedBuys.length;
+      targetHitStatus = getTargetHitStatus(executedBuys.length);
+    }
+  }
+
+  if (!executedBuys.length) {
+    return {
+      status: "no_entry",
+      executedBuyCount: 0,
+      executedBuys: []
+    };
+  }
+
+  const averageBuyPrice = average(executedBuys.map((buy) => buy.price));
+  const targetReturnPct = getTargetReturnPct(executedBuys.length);
+
+  return {
+    status: targetHitStatus ?? "active",
+    executedBuyCount: executedBuys.length,
+    executedBuys,
+    averageBuyPrice: averageBuyPrice == null ? undefined : roundPrice(averageBuyPrice, pricingContext),
+    maxFavorablePrice: roundPrice(maxFavorablePrice, pricingContext),
+    maxFavorableDate,
+    maxFavorableReturnPct: maxFavorableReturnPct == null ? undefined : roundPercent(maxFavorableReturnPct),
+    maxAdversePrice: roundPrice(maxAdversePrice, pricingContext),
+    maxAdverseDate,
+    maxAdverseReturnPct: maxAdverseReturnPct == null ? undefined : roundPercent(maxAdverseReturnPct),
+    targetReturnPct
   };
 }
 
@@ -768,6 +962,7 @@ export function enhanceSmartMoneyMatch(input: EnhanceSmartMoneyMatchInput): Smar
     ...executionManaged.match,
     tradePlan: finalizedTradePlan
   };
+  const postEntryOutcome = calculatePostEntryOutcome(finalizedMatch, input.points, input.referenceIndex, input.pricingContext);
   const conditions = buildConditionChecks(
     finalizedMatch,
     input.filters,
@@ -797,6 +992,7 @@ export function enhanceSmartMoneyMatch(input: EnhanceSmartMoneyMatchInput): Smar
 
   return {
     ...finalizedMatch,
+    postEntryOutcome,
     dangerScore,
     riskFactors,
     rejectionReasons: finalizedMatch.matched && finalizedMatch.actionable ? [] : rejectionReasons,

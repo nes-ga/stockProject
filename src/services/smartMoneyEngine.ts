@@ -6,6 +6,7 @@ import type {
   SmartMoneyClassificationTag,
   SmartMoneyDebugMeta,
   SmartMoneyEntryStrategy,
+  SmartMoneyEnvelopeAnalysis,
   SmartMoneyExecutionBucket,
   SmartMoneyMarketContext,
   SmartMoneyPenaltyFactor,
@@ -410,6 +411,75 @@ function deriveSupportStabilityScore(params: {
   }
 
   return clamp(Math.round(score), 0, 100);
+}
+
+function deriveEnvelopeAnalysis(
+  points: ChartPoint[],
+  referenceIndex: number,
+  referenceSma20?: number
+): SmartMoneyEnvelopeAnalysis | undefined {
+  if (referenceSma20 == null || referenceSma20 <= 0 || referenceIndex < 0 || !points[referenceIndex]) {
+    return undefined;
+  }
+
+  const close = points[referenceIndex].close;
+  const upper = referenceSma20 * 1.1;
+  const lower = referenceSma20 * 0.9;
+  const distanceFromBasisPercent = percentChange(close, referenceSma20) ?? 0;
+  const distanceFromLowerPercent = percentChange(close, lower) ?? 0;
+  const distanceFromUpperPercent = percentChange(close, upper) ?? 0;
+  let position: SmartMoneyEnvelopeAnalysis["position"];
+
+  if (close > upper) {
+    position = "above_upper";
+  } else if (close >= referenceSma20 * 1.02) {
+    position = "upper_band";
+  } else if (close >= referenceSma20 * 0.98) {
+    position = "basis_zone";
+  } else if (close >= lower) {
+    position = "lower_band";
+  } else {
+    position = "below_lower";
+  }
+
+  let lowerBreakSessions = 0;
+  for (let index = referenceIndex; index >= 0; index -= 1) {
+    const basis = getAverageCloseThrough(points, index, 20);
+    const point = points[index];
+    if (basis == null || basis <= 0 || !point || point.close >= basis * 0.9) {
+      break;
+    }
+
+    lowerBreakSessions += 1;
+  }
+
+  let lowerReclaimed = false;
+  if (close >= lower) {
+    const startIndex = Math.max(0, referenceIndex - 3);
+    for (let index = startIndex; index < referenceIndex; index += 1) {
+      const basis = getAverageCloseThrough(points, index, 20);
+      const point = points[index];
+      if (basis != null && basis > 0 && point && point.close < basis * 0.9) {
+        lowerReclaimed = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    basisPeriod: 20,
+    bandPercent: 10,
+    basis: Math.round(referenceSma20 * 100) / 100,
+    upper: Math.round(upper * 100) / 100,
+    lower: Math.round(lower * 100) / 100,
+    position,
+    distanceFromBasisPercent: Math.round(distanceFromBasisPercent * 100) / 100,
+    distanceFromLowerPercent: Math.round(distanceFromLowerPercent * 100) / 100,
+    distanceFromUpperPercent: Math.round(distanceFromUpperPercent * 100) / 100,
+    lowerBreakSessions,
+    lowerReclaimed,
+    inBand: close >= lower && close <= upper
+  };
 }
 
 function deriveVolumeContractionScore(pullback: PullbackAssessment) {
@@ -1204,6 +1274,16 @@ function classifyPullback(
     supportHoldingRangePercent <= filters.maxSetupPullbackRangePercent &&
     referencePoint.close > stopLossReferencePrice &&
     referenceCloseVsLeadInPercent >= Math.max(filters.minVolatileDigestionReferenceCloseVsLeadInPercent, -15);
+  // Product rule: a pullback may run longer than maxPullbackSessions, but it must remain a candidate while
+  // the protective stop is intact and volume has cooled. Do not drop these solely because the pullback is old.
+  const stopValidExtendedPullback =
+    pullbackPoints.length > filters.maxPullbackSessions &&
+    pullbackPoints.length >= filters.minSetupPullbackSessions &&
+    pullbackMaxDrawdownPercent >= Math.max(filters.minPullbackDrawdownPercent, filters.pullbackBuyStartPercentFromPeak) &&
+    pullbackMaxDrawdownPercent <= filters.maxSetupPullbackDrawdownPercent &&
+    supportHoldingRangePercent <= filters.maxSetupPullbackRangePercent &&
+    referencePoint.close > stopLossReferencePrice &&
+    (pullbackVolumeRatioToLeadIn ?? Infinity) <= filters.maxPullbackAvgVolumeRatio;
   const rejectReasons: string[] = [];
   const volumeContractionThreshold = volatilePowerDigestionValid
     ? Math.min(filters.maxPullbackAvgVolumeRatio, filters.maxVolatileDigestionAvgVolumeRatio)
@@ -1211,13 +1291,13 @@ function classifyPullback(
   if (pullbackVolumeRatioToLeadIn == null || pullbackVolumeRatioToLeadIn > volumeContractionThreshold) {
     rejectReasons.push("Pullback volume did not contract enough.");
   }
-  if (!pricePullbackValid && !timeCorrectionValid && !volatilePowerDigestionValid && !supportHoldingValid) {
+  if (!pricePullbackValid && !timeCorrectionValid && !volatilePowerDigestionValid && !supportHoldingValid && !stopValidExtendedPullback) {
     rejectReasons.push("Consolidation was neither a clean price pullback, a tight time correction, nor a volatile power digestion.");
   }
 
   const setupType = timeCorrectionValid
     ? "time_correction"
-    : supportHoldingValid
+    : supportHoldingValid || stopValidExtendedPullback
       ? "support_holding_pullback"
       : pricePullbackValid
         ? "tight_price_pullback"
@@ -1277,6 +1357,7 @@ function toSummary(match: SmartMoneyPatternMatch, rejectReasons: string[]): Smar
     executionBucket: match.executionBucket,
     buyPlan: match.buyPlan,
     referenceSma20: match.referenceSma20,
+    envelope: match.envelope,
     stopLossReferenceDate: match.stopLossReferenceDate,
     stopLossReferenceType: match.stopLossReferenceType,
     lookbackWindowDays: match.lookbackWindowDays ?? 0,
@@ -1399,6 +1480,7 @@ function buildCandidateMatch(params: {
   buyPlan?: SmartMoneyBuyPlan;
   buyPlanEligible?: boolean;
   referenceSma20?: number;
+  envelope?: SmartMoneyEnvelopeAnalysis;
   stopLossReference?: StopLossReference;
   minSetupPullbackSessions: number;
   breakoutHoldTolerancePercent: number;
@@ -1444,6 +1526,7 @@ function buildCandidateMatch(params: {
     entryStrategy,
     buyPlan,
     referenceSma20: params.referenceSma20,
+    envelope: params.envelope,
     stopLossReferenceDate: params.stopLossReference?.date,
     stopLossReferenceType: params.stopLossReference?.type,
     signal: toSignal(rawScore),
@@ -1480,7 +1563,7 @@ function buildCandidateMatch(params: {
     tradePlan: undefined,
     tags: [...new Set(params.tags ?? [])],
     penaltyFactors: params.penaltyFactors ?? [],
-    classificationReasons: [...new Set(params.classificationReasons ?? [])],
+    classificationReasons: [...new Set(params.classificationReasons ?? [])].filter(Boolean),
     referenceDate: params.referenceDate,
     windowStartDate: params.windowPoints[0]?.date,
     windowEndDate: params.windowPoints.at(-1)?.date,
@@ -1541,6 +1624,9 @@ export function evaluateSmartMoneyPattern(
   const referencePoint = points[referenceIndex];
   const referenceDate = referencePoint?.date ?? "";
   const referenceSma20 = getAverageCloseThrough(points, referenceIndex, 20);
+  const envelope = deriveEnvelopeAnalysis(points, referenceIndex, referenceSma20);
+  const envelopeLowerBreakConfirmed = envelope?.position === "below_lower" && envelope.lowerBreakSessions >= 2;
+  const envelopeLowerHold = envelope?.position === "lower_band" || envelope?.lowerReclaimed;
   const visibleStopLossReference = getLowestPointReference(
     points,
     Math.max(0, referenceIndex - filters.stopLossLookbackSessions + 1),
@@ -1632,7 +1718,7 @@ export function evaluateSmartMoneyPattern(
         const qualifiedLeadInPriceChangePercent = leadInPriceChangePercent ?? 0;
 
         const setupPullbackPoints = points.slice(surgePeakIndex + 1, referenceIndex + 1);
-        if (setupPullbackPoints.length < Math.max(filters.minPullbackSessions, filters.minSetupPullbackSessions) || setupPullbackPoints.length > filters.maxPullbackSessions) {
+        if (setupPullbackPoints.length < Math.max(filters.minPullbackSessions, filters.minSetupPullbackSessions)) {
           continue;
         }
         const setupPullback = classifyPullback(leadInPoint, surgePeakPoint, setupPullbackPoints, referencePoint, filters, preLeadBaseClose);
@@ -1739,6 +1825,10 @@ export function evaluateSmartMoneyPattern(
               : riskRewardRatio >= filters.executionProbeRiskRewardMin
                 ? 66
                 : 28;
+        // Keep mature pullbacks in the universe until the stop is broken. Age alone is not an exclusion reason.
+        const stopValidPullback =
+          setupPullback.setupType === "support_holding_pullback" &&
+          referencePoint.close > stopLossReference.price;
         const baseFilterPassed = referenceCloseVsBasePercent >= filters.minReferenceCloseVsBasePercent;
         const baseReclaimWatchEligible = isBaseReclaimWatchEligible({
           pullback: setupPullback,
@@ -1750,7 +1840,7 @@ export function evaluateSmartMoneyPattern(
           riskRewardRatio,
           filters
         });
-        if (!baseFilterPassed && !baseReclaimWatchEligible) {
+        if (!baseFilterPassed && !baseReclaimWatchEligible && !stopValidPullback) {
           continue;
         }
         const baseValidityScore =
@@ -1810,7 +1900,10 @@ export function evaluateSmartMoneyPattern(
           ...leadInCandleQuality.tags,
           ...(volumeContractionScore < 55 ? (["tag_volume_weak"] as const) : []),
           ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
-          ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : [])
+          ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : []),
+          ...(envelopeLowerHold ? (["tag_envelope_lower_hold"] as const) : []),
+          ...(envelopeLowerBreakConfirmed ? (["tag_envelope_lower_break"] as const) : []),
+          ...(envelope?.position === "above_upper" ? (["tag_envelope_upper_extension"] as const) : [])
         ];
         const setupPenaltyFactors: SmartMoneyPenaltyFactor[] = [
           ...effectiveLeadInVolume.penaltyFactors,
@@ -1854,6 +1947,16 @@ export function evaluateSmartMoneyPattern(
                   `Current close is ${Math.abs(referenceCloseVsBasePercent).toFixed(1)}% below the pre-lead base at ${preLeadBaseClose.toFixed(0)}.`
                 )
               ]
+            : []),
+          ...(envelopeLowerBreakConfirmed
+            ? [
+                createPenaltyFactor(
+                  "envelope_lower_break",
+                  "SMA20 envelope lower break",
+                  12,
+                  `Reference close is ${Math.abs(envelope.distanceFromLowerPercent).toFixed(1)}% below the SMA20 -10% envelope.`
+                )
+              ]
             : [])
         ];
         const rangePenaltyMultiplier = setupPullback.setupType === "support_holding_pullback" ? 1.6 : 5;
@@ -1882,15 +1985,26 @@ export function evaluateSmartMoneyPattern(
           0,
           100
         );
-        const matched = !baseReclaimWatchEligible && setupScore >= setupThresholdScore;
+        const stopValidExtendedPullback = stopValidPullback && setupPullbackPoints.length > filters.maxPullbackSessions;
+        const matched = !baseReclaimWatchEligible && (setupScore >= setupThresholdScore || stopValidPullback);
         const setupClassificationReasons = [
           matched ? "matched_setup" : "setup_watch_only",
+          stopValidExtendedPullback ? "stop_valid_extended_pullback" : "",
           ...(qualifiedLeadIn.seedAnchor ? (["seed_anchor_confirmed"] as const) : []),
           pullbackBuyStarted ? "entry_sma20_hit" : withinSetupEntryZone ? "entry_zone_hit" : "entry_zone_pending",
           volumeContractionScore < 55 ? "weak_volume_contraction" : "volume_contraction_ok",
           leadInCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
           sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
           supportStabilityScore < 55 ? "unstable_support" : "support_holding",
+          envelopeLowerBreakConfirmed
+            ? "envelope_lower_break"
+            : envelope?.position === "above_upper"
+              ? "envelope_upper_extension"
+              : envelopeLowerHold
+                ? "envelope_lower_hold"
+                : envelope
+                  ? "envelope_in_band"
+                  : "",
           riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok",
           ...(baseReclaimWatchEligible ? (["base_reclaim_watch"] as const) : [])
         ];
@@ -1953,6 +2067,7 @@ export function evaluateSmartMoneyPattern(
           buyPlan: pullbackBuyPlan,
           buyPlanEligible: pullbackBuyEligible,
           referenceSma20,
+          envelope,
           stopLossReference,
           minSetupPullbackSessions: filters.minSetupPullbackSessions,
           breakoutHoldTolerancePercent: filters.breakoutHoldTolerancePercent,
@@ -2095,7 +2210,9 @@ export function evaluateSmartMoneyPattern(
             ...breakoutVolume.tags,
             ...breakoutCandleQuality.tags,
             ...(sma20SlopePercent != null && sma20SlopePercent < 0 ? (["tag_sma20_slope_negative"] as const) : []),
-            ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : [])
+            ...(supportStabilityScore < 55 ? (["tag_support_unstable"] as const) : []),
+            ...(envelopeLowerBreakConfirmed ? (["tag_envelope_lower_break"] as const) : []),
+            ...(envelope?.position === "above_upper" ? (["tag_envelope_upper_extension"] as const) : [])
           ];
           const breakoutPenaltyFactors: SmartMoneyPenaltyFactor[] = [
             ...breakoutVolume.penaltyFactors,
@@ -2119,6 +2236,16 @@ export function evaluateSmartMoneyPattern(
                     `Support stability score dropped to ${supportStabilityScore}.`
                   )
                 ]
+              : []),
+            ...(envelopeLowerBreakConfirmed
+              ? [
+                  createPenaltyFactor(
+                    "envelope_lower_break",
+                    "SMA20 envelope lower break",
+                    12,
+                    `Reference close is ${Math.abs(envelope.distanceFromLowerPercent).toFixed(1)}% below the SMA20 -10% envelope.`
+                  )
+                ]
               : [])
           ];
           const breakoutClassificationReasons = [
@@ -2128,6 +2255,13 @@ export function evaluateSmartMoneyPattern(
             breakoutCandleQuality.candleQualityScore < 60 ? "weak_candle_structure" : "candle_structure_ok",
             sma20SlopePercent != null && sma20SlopePercent < 0 ? "sma20_slope_negative" : "sma20_slope_ok",
             supportStabilityScore < 55 ? "unstable_support" : "support_holding",
+            envelopeLowerBreakConfirmed
+              ? "envelope_lower_break"
+              : envelope?.position === "above_upper"
+                ? "envelope_upper_extension"
+                : envelope
+                  ? "envelope_in_band"
+                  : "",
             riskRewardRatio != null && riskRewardRatio < filters.executionReadyRiskRewardMin ? "risk_reward_thin" : "risk_reward_ok"
           ];
           const actionableBreakout =
@@ -2188,6 +2322,7 @@ export function evaluateSmartMoneyPattern(
             entryZoneHigh: adjustedBreakoutEntryZone.entryZoneHigh,
             invalidationPrice: stopLossReference.price,
             referenceSma20,
+            envelope,
             stopLossReference,
             minSetupPullbackSessions: filters.minSetupPullbackSessions,
             breakoutHoldTolerancePercent: filters.breakoutHoldTolerancePercent,

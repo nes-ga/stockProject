@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { SmartMoneyEnvelopeAnalysis, SmartMoneyPostEntryOutcome } from "../types.js";
 import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
 export type ServerSwingPick = {
@@ -18,6 +19,8 @@ export type ServerSwingPick = {
     impact: number;
     reason: string;
   }>;
+  postEntryOutcome?: SmartMoneyPostEntryOutcome;
+  envelope?: SmartMoneyEnvelopeAnalysis;
   haltCategory?: string;
   haltAction?: string;
   category: "swing";
@@ -101,6 +104,14 @@ function normalizeServerSwingPick(
             typeof (item as { reason?: unknown }).reason === "string"
         )
       : undefined,
+    postEntryOutcome:
+      candidate.postEntryOutcome && typeof candidate.postEntryOutcome === "object"
+        ? (candidate.postEntryOutcome as SmartMoneyPostEntryOutcome)
+        : undefined,
+    envelope:
+      candidate.envelope && typeof candidate.envelope === "object"
+        ? (candidate.envelope as SmartMoneyEnvelopeAnalysis)
+        : undefined,
     haltCategory: typeof candidate.haltCategory === "string" ? candidate.haltCategory : undefined,
     haltAction: typeof candidate.haltAction === "string" ? candidate.haltAction : undefined,
     category: "swing",

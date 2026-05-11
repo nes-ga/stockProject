@@ -5,6 +5,7 @@ import type {
   TradingHaltReasonCategory
 } from "../types.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
+import { getCorporateAliasCandidates, normalizeCorporateName } from "./corporateAliases.js";
 import { getStockUniverse } from "./stockUniverse.js";
 
 type TradingHaltMarket = Extract<StockUniverseItem["market"], "KOSPI" | "KOSDAQ" | "KONEX">;
@@ -58,10 +59,6 @@ function decodeHtml(text: string): string {
 
 function stripTags(html: string): string {
   return decodeHtml(html.replace(/<[^>]+>/g, " "));
-}
-
-function normalizeName(value: string): string {
-  return value.replace(/[^0-9A-Z\uAC00-\uD7A3]+/giu, "").toUpperCase();
 }
 
 function parseAsOfDate(html: string): string | undefined {
@@ -335,7 +332,7 @@ export async function getTradingHaltLookup(options?: { forceRefresh?: boolean })
     .then(([items, universe]) => {
       const haltByName = new Map<string, TradingHaltItem>();
       for (const item of items) {
-        haltByName.set(`${item.market}:${normalizeName(item.name)}`, item);
+        haltByName.set(`${item.market}:${normalizeCorporateName(item.name)}`, item);
       }
 
       const bySymbol = new Map<string, TradingHaltItem>();
@@ -344,7 +341,9 @@ export async function getTradingHaltLookup(options?: { forceRefresh?: boolean })
           continue;
         }
 
-        const matched = haltByName.get(`${item.market}:${normalizeName(item.name)}`);
+        const matched = getCorporateAliasCandidates(item)
+          .map((name) => haltByName.get(`${item.market}:${normalizeCorporateName(name)}`))
+          .find((candidate): candidate is TradingHaltItem => candidate != null);
         if (!matched) {
           continue;
         }

@@ -31,6 +31,7 @@ import {
 } from "../services/stockAnalysis.js";
 import { getNewsSignalDashboard } from "../services/newsSignals.js";
 import { getOnlinePresenceSnapshot, heartbeatOnlineViewer } from "../services/onlinePresence.js";
+import { readSwingRecommendationHistory } from "../services/recommendationHistory.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile } from "../services/swingProfiles.js";
 
@@ -296,6 +297,22 @@ const serverSwingPickSchema = z.object({
         reason: z.string().min(1)
       })
     )
+    .optional(),
+  envelope: z
+    .object({
+      basisPeriod: z.literal(20),
+      bandPercent: z.literal(10),
+      basis: z.coerce.number(),
+      upper: z.coerce.number(),
+      lower: z.coerce.number(),
+      position: z.enum(["above_upper", "upper_band", "basis_zone", "lower_band", "below_lower"]),
+      distanceFromBasisPercent: z.coerce.number(),
+      distanceFromLowerPercent: z.coerce.number(),
+      distanceFromUpperPercent: z.coerce.number(),
+      lowerBreakSessions: z.coerce.number().int().min(0),
+      lowerReclaimed: z.boolean(),
+      inBand: z.boolean()
+    })
     .optional(),
   haltCategory: z.string().min(1).optional(),
   haltAction: z.string().min(1).optional(),
@@ -874,6 +891,16 @@ analysisRoutes.get("/news-signals", (_request, response, next) => {
     response.json(payload);
   } catch (error) {
     logger.error("news-signals:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/recommendation-history/swing", async (_request, response, next) => {
+  try {
+    const payload = await readSwingRecommendationHistory();
+    response.json(payload);
+  } catch (error) {
+    logger.error("recommendation-history:swing:failed", toErrorContext(error));
     next(error);
   }
 });

@@ -1,0 +1,150 @@
+
+> stockmon-api@0.1.0 dev
+> tsx watch src/server.ts
+
+[2026-05-11T15:00:07.008+09:00] INFO server listening port=3001
+[2026-05-11T15:00:07.560+09:00] INFO newsSignals news-signals:refreshed articleCount=15 signalCount=2 sectorCount=2 collectedAt="2026-05-11T06:00:06.785Z" refreshIntervalMinutes=5
+[2026-05-11T15:00:07.564+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T15:00:07.873+09:00] INFO app request:start requestId="20f29a84" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:00:07.893+09:00] INFO app request:finish requestId="20f29a84" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=20
+[2026-05-11T15:00:24.923+09:00] INFO app request:start requestId="ff860c90" method="GET" path="/" ip="::1"
+[2026-05-11T15:00:24.932+09:00] INFO app request:finish requestId="ff860c90" method="GET" path="/" status=200 durationMs=9
+[2026-05-11T15:00:24.971+09:00] INFO app request:start requestId="ccb541df" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:00:24.975+09:00] INFO app request:finish requestId="ccb541df" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=4
+[2026-05-11T15:00:54.284+09:00] INFO app request:start requestId="31fa8ee8" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:00:54.290+09:00] INFO app request:finish requestId="31fa8ee8" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=6
+[2026-05-11T15:03:45.510+09:00] INFO app request:start requestId="d7f91f7c" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:03:45.513+09:00] INFO app request:finish requestId="d7f91f7c" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=3
+[2026-05-11T15:03:45.536+09:00] INFO app request:start requestId="fa1b6613" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:03:45.539+09:00] INFO app request:finish requestId="fa1b6613" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=3
+[2026-05-11T15:03:51.638+09:00] INFO app request:start requestId="f0977997" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:03:51.644+09:00] INFO app request:finish requestId="f0977997" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=6
+[2026-05-11T15:04:06.586+09:00] INFO app request:start requestId="58cee4ce" method="GET" path="/" ip="::1"
+[2026-05-11T15:04:06.588+09:00] INFO app request:finish requestId="58cee4ce" method="GET" path="/" status=200 durationMs=2
+[2026-05-11T15:04:06.627+09:00] INFO app request:start requestId="50eaf57d" method="GET" path="/app.js" ip="::1"
+[2026-05-11T15:04:06.707+09:00] INFO app request:finish requestId="50eaf57d" method="GET" path="/app.js" status=200 durationMs=80
+[2026-05-11T15:05:07.812+09:00] INFO newsSignals news-signals:refreshed articleCount=15 signalCount=3 sectorCount=3 collectedAt="2026-05-11T06:05:07.575Z" refreshIntervalMinutes=5
+[2026-05-11T15:06:53.790+09:00] INFO app request:start requestId="573d6097" method="GET" path="/analysis/recommendation-history/swing" ip="::1"
+[2026-05-11T15:06:53.796+09:00] INFO app request:finish requestId="573d6097" method="GET" path="/analysis/recommendation-history/swing" status=200 durationMs=7
+[2026-05-11T15:10:07.880+09:00] INFO newsSignals news-signals:refreshed articleCount=18 signalCount=1 sectorCount=1 collectedAt="2026-05-11T06:10:07.590Z" refreshIntervalMinutes=5
+PM 3:12:45 [tsx] change in ./src\services\recommendationHistory.ts Restarting...
+c[2026-05-11T15:12:52.742+09:00] INFO server listening port=3001
+[2026-05-11T15:12:53.259+09:00] INFO newsSignals news-signals:refreshed articleCount=15 signalCount=1 sectorCount=1 collectedAt="2026-05-11T06:12:51.898Z" refreshIntervalMinutes=5
+[2026-05-11T15:12:53.260+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 3:26:39 [tsx] change in ./src\services\recommendationUniverse.ts Rerunning...
+c[2026-05-11T15:26:43.827+09:00] INFO server listening port=3001
+[2026-05-11T15:26:44.436+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=3 sectorCount=2 collectedAt="2026-05-11T06:26:43.544Z" refreshIntervalMinutes=5
+[2026-05-11T15:26:44.438+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 3:30:21 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T15:30:23.445+09:00] INFO server listening port=3001
+[2026-05-11T15:30:23.610+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T06:30:23.296Z" refreshIntervalMinutes=5
+[2026-05-11T15:30:23.611+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T15:35:23.740+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=1 sectorCount=1 collectedAt="2026-05-11T06:35:23.619Z" refreshIntervalMinutes=5
+[2026-05-11T15:40:23.747+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T06:40:23.622Z" refreshIntervalMinutes=5
+[2026-05-11T15:45:24.227+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T06:45:23.632Z" refreshIntervalMinutes=5
+[2026-05-11T15:50:23.658+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T06:50:23.646Z" refreshIntervalMinutes=5
+[2026-05-11T15:55:21.313+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T06:55:21.075Z" refreshIntervalMinutes=5
+[2026-05-11T16:00:21.269+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:00:21.078Z" refreshIntervalMinutes=5
+PM 4:02:54 [tsx] change in ./src\services\smartMoneyEnhancer.ts Restarting...
+c[2026-05-11T16:02:58.990+09:00] INFO server listening port=3001
+[2026-05-11T16:03:00.489+09:00] INFO newsSignals news-signals:refreshed articleCount=5 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:02:58.571Z" refreshIntervalMinutes=5
+[2026-05-11T16:03:00.492+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:03:03 [tsx] change in ./src\services\smartMoneyEnhancer.ts Restarting...
+c[2026-05-11T16:03:11.608+09:00] INFO server listening port=3001
+[2026-05-11T16:03:12.377+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:03:10.999Z" refreshIntervalMinutes=5
+[2026-05-11T16:03:12.379+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:03:15 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:03:21.080+09:00] INFO server listening port=3001
+[2026-05-11T16:03:21.899+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:03:20.709Z" refreshIntervalMinutes=5
+[2026-05-11T16:03:21.900+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:03:27 [tsx] change in ./src\services\serverSwingPicks.ts Restarting...
+c[2026-05-11T16:03:35.853+09:00] INFO server listening port=3001
+[2026-05-11T16:03:36.516+09:00] INFO newsSignals news-signals:refreshed articleCount=4 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:03:34.938Z" refreshIntervalMinutes=5
+[2026-05-11T16:03:36.518+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:03:37 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:03:43.497+09:00] INFO server listening port=3001
+[2026-05-11T16:03:44.447+09:00] INFO newsSignals news-signals:refreshed articleCount=3 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:03:43.112Z" refreshIntervalMinutes=5
+[2026-05-11T16:03:44.449+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:04:52 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:04:56.542+09:00] INFO server listening port=3001
+[2026-05-11T16:04:57.201+09:00] INFO newsSignals news-signals:refreshed articleCount=11 signalCount=2 sectorCount=2 collectedAt="2026-05-11T07:04:56.245Z" refreshIntervalMinutes=5
+[2026-05-11T16:04:57.202+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:06:19 [tsx] change in ./src\services\smartMoneyEnhancer.ts Restarting...
+c[2026-05-11T16:06:24.443+09:00] INFO server listening port=3001
+[2026-05-11T16:06:24.865+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:06:24.109Z" refreshIntervalMinutes=5
+[2026-05-11T16:06:24.869+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T16:11:25.144+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=2 sectorCount=1 collectedAt="2026-05-11T07:11:24.874Z" refreshIntervalMinutes=5
+[2026-05-11T16:16:25.314+09:00] INFO newsSignals news-signals:refreshed articleCount=5 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:16:24.885Z" refreshIntervalMinutes=5
+[2026-05-11T16:21:25.819+09:00] INFO newsSignals news-signals:refreshed articleCount=11 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:21:24.896Z" refreshIntervalMinutes=5
+PM 4:24:57 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:25:03.658+09:00] INFO server listening port=3001
+[2026-05-11T16:25:05.358+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=2 sectorCount=2 collectedAt="2026-05-11T07:25:03.222Z" refreshIntervalMinutes=5
+[2026-05-11T16:25:05.359+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:27:51 [tsx] change in ./src\services\smartMoneyEnhancer.ts Restarting...
+c[2026-05-11T16:27:56.553+09:00] INFO server listening port=3001
+[2026-05-11T16:27:57.113+09:00] INFO newsSignals news-signals:refreshed articleCount=5 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:27:56.287Z" refreshIntervalMinutes=5
+[2026-05-11T16:27:57.114+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T16:32:57.316+09:00] INFO newsSignals news-signals:refreshed articleCount=4 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:32:57.122Z" refreshIntervalMinutes=5
+[2026-05-11T16:37:57.526+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:37:57.127Z" refreshIntervalMinutes=5
+PM 4:42:17 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:42:19.572+09:00] INFO server listening port=3001
+[2026-05-11T16:42:19.902+09:00] INFO newsSignals news-signals:refreshed articleCount=11 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:42:19.416Z" refreshIntervalMinutes=5
+[2026-05-11T16:42:19.903+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:42:29 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:42:31.794+09:00] INFO server listening port=3001
+[2026-05-11T16:42:32.202+09:00] INFO newsSignals news-signals:refreshed articleCount=12 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:42:31.592Z" refreshIntervalMinutes=5
+[2026-05-11T16:42:32.202+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:42:39 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:42:42.009+09:00] INFO server listening port=3001
+[2026-05-11T16:42:42.454+09:00] INFO newsSignals news-signals:refreshed articleCount=2 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:42:41.827Z" refreshIntervalMinutes=5
+[2026-05-11T16:42:42.455+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:43:24 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:43:26.844+09:00] INFO server listening port=3001
+[2026-05-11T16:43:27.141+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:43:26.670Z" refreshIntervalMinutes=5
+[2026-05-11T16:43:27.142+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:43:42 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:43:44.879+09:00] INFO server listening port=3001
+[2026-05-11T16:43:45.373+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:43:44.678Z" refreshIntervalMinutes=5
+[2026-05-11T16:43:45.374+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:44:13 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:44:16.211+09:00] INFO server listening port=3001
+[2026-05-11T16:44:16.462+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:44:16.057Z" refreshIntervalMinutes=5
+[2026-05-11T16:44:16.463+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:44:23 [tsx] change in ./src\services\serverSwingPicks.ts Restarting...
+c[2026-05-11T16:44:25.864+09:00] INFO server listening port=3001
+[2026-05-11T16:44:26.172+09:00] INFO newsSignals news-signals:refreshed articleCount=4 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:44:25.706Z" refreshIntervalMinutes=5
+[2026-05-11T16:44:26.173+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:44:46 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:44:49.196+09:00] INFO server listening port=3001
+[2026-05-11T16:44:49.645+09:00] INFO newsSignals news-signals:refreshed articleCount=5 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:44:49.036Z" refreshIntervalMinutes=5
+[2026-05-11T16:44:49.646+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:45:08 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:45:10.531+09:00] INFO server listening port=3001
+[2026-05-11T16:45:10.829+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:45:10.288Z" refreshIntervalMinutes=5
+[2026-05-11T16:45:10.830+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:45:22 [tsx] change in ./src\routes\analysisRoutes.ts Restarting...
+c[2026-05-11T16:45:24.525+09:00] INFO server listening port=3001
+[2026-05-11T16:45:24.829+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:45:24.342Z" refreshIntervalMinutes=5
+[2026-05-11T16:45:24.830+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:47:17 [tsx] change in ./src\services\smartMoneyEngine.ts Restarting...
+c[2026-05-11T16:47:19.557+09:00] INFO server listening port=3001
+[2026-05-11T16:47:19.754+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-11T07:47:19.355Z" refreshIntervalMinutes=5
+[2026-05-11T16:47:19.755+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+PM 4:47:37 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T16:47:39.332+09:00] INFO server listening port=3001
+[2026-05-11T16:47:39.595+09:00] INFO newsSignals news-signals:refreshed articleCount=2 signalCount=1 sectorCount=1 collectedAt="2026-05-11T07:47:39.161Z" refreshIntervalMinutes=5
+[2026-05-11T16:47:39.596+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T17:11:18.372+09:00] INFO newsSignals news-signals:refreshed articleCount=3 signalCount=0 sectorCount=0 collectedAt="2026-05-11T08:11:16.587Z" refreshIntervalMinutes=5
+[2026-05-11T17:16:16.875+09:00] INFO newsSignals news-signals:refreshed articleCount=12 signalCount=2 sectorCount=2 collectedAt="2026-05-11T08:16:16.616Z" refreshIntervalMinutes=5
+PM 5:18:02 [tsx] change in ./src\services\recommendationHistory.ts Restarting...
+c[2026-05-11T17:18:14.044+09:00] INFO server listening port=3001
+[2026-05-11T17:18:14.575+09:00] INFO newsSignals news-signals:refreshed articleCount=1 signalCount=0 sectorCount=0 collectedAt="2026-05-11T08:18:13.885Z" refreshIntervalMinutes=5
+[2026-05-11T17:18:14.576+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T17:23:14.962+09:00] INFO newsSignals news-signals:refreshed articleCount=3 signalCount=1 sectorCount=1 collectedAt="2026-05-11T08:23:14.586Z" refreshIntervalMinutes=5
+[2026-05-11T17:28:15.225+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=2 sectorCount=2 collectedAt="2026-05-11T08:28:14.599Z" refreshIntervalMinutes=5
+[2026-05-11T17:33:14.974+09:00] INFO newsSignals news-signals:refreshed articleCount=3 signalCount=1 sectorCount=1 collectedAt="2026-05-11T08:33:14.613Z" refreshIntervalMinutes=5
+PM 5:33:38 [tsx] change in ./src\services\recommendationUniverse.ts Restarting...
+c[2026-05-11T17:33:43.462+09:00] INFO server listening port=3001
+[2026-05-11T17:33:43.894+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=2 sectorCount=2 collectedAt="2026-05-11T08:33:43.132Z" refreshIntervalMinutes=5
+[2026-05-11T17:33:43.895+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-11T17:38:44.262+09:00] INFO newsSignals news-signals:refreshed articleCount=2 signalCount=1 sectorCount=1 collectedAt="2026-05-11T08:38:43.910Z" refreshIntervalMinutes=5

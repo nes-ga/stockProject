@@ -1,5 +1,6 @@
 import type { StockUniverseItem } from "../types.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
+import { applyCorporateAliasesToUniverseItem } from "./corporateAliases.js";
 
 const KRX_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const eucKrDecoder = new TextDecoder("euc-kr");
@@ -144,7 +145,7 @@ function dedupeUniverse(items: StockUniverseItem[]): StockUniverseItem[] {
   const map = new Map<string, StockUniverseItem>();
   for (const item of items) {
     if (!map.has(item.code)) {
-      map.set(item.code, item);
+      map.set(item.code, applyCorporateAliasesToUniverseItem(item));
     }
   }
 

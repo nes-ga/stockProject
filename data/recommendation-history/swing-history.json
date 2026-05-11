@@ -1,0 +1,2074 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-11T05:49:40.404Z",
+  "asOfDate": "2026-05-11",
+  "scope": {
+    "strategy": "swing",
+    "profiles": [
+      "default",
+      "smallcap"
+    ],
+    "sourceFiles": [
+      "data/server-swing-picks.json",
+      "data/server-smallcap-swing-picks.json"
+    ],
+    "includedBuckets": [
+      "executionItems"
+    ],
+    "includeOnlyTouchedFirstBuy": true
+  },
+  "summary": {
+    "scannedExecutionCandidates": 33,
+    "openedCases": 33,
+    "defaultCases": 25,
+    "smallcapCases": 8,
+    "firstBuyOnlyCases": 25,
+    "secondBuyReachedCases": 8,
+    "thirdBuyReachedCases": 0
+  },
+  "cases": [
+    {
+      "id": "swing:default:020400:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "020400",
+      "name": "대동금속",
+      "sourceKey": "대동금속-020400",
+      "openedAt": "2026-05-11T05:49:39.475Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 5802,
+        "secondBuyPrice": 4901,
+        "thirdBuyPrice": 3973,
+        "stopLossPrice": 3072
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 5802
+        },
+        {
+          "stage": 2,
+          "price": 4901
+        }
+      ],
+      "averageBuyPrice": 5351.5,
+      "latestClose": 4220,
+      "latestLow": 4165,
+      "unrealizedReturnPct": -21.14,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-27 | 급등 피크 2026-03-30 | 눌림 2026-03-31~2026-05-11 | SMA20 5951 | 매수 5802/4901/3973 | 손절 3072 | 손절기준 2026-03-09 low | 점수 74",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:228670:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "228670",
+      "name": "레이",
+      "sourceKey": "레이-228670",
+      "openedAt": "2026-05-11T05:49:39.348Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 8594,
+        "secondBuyPrice": 7340,
+        "thirdBuyPrice": 6049,
+        "stopLossPrice": 4795
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 8594
+        },
+        {
+          "stage": 2,
+          "price": 7340
+        }
+      ],
+      "averageBuyPrice": 7967,
+      "latestClose": 7270,
+      "latestLow": 6950,
+      "unrealizedReturnPct": -8.75,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-08",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-09 | 급등 피크 2026-04-15 | 눌림 2026-04-16~2026-05-11 | SMA20 8815 | 매수 8594/7340/6049 | 손절 4795 | 손절기준 2026-04-07 low | 점수 83",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:003000:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "003000",
+      "name": "부광약품",
+      "sourceKey": "부광약품-003000",
+      "openedAt": "2026-05-11T05:49:40.004Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 6951,
+        "secondBuyPrice": 6195,
+        "thirdBuyPrice": 5416,
+        "stopLossPrice": 4660
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 6951
+        },
+        {
+          "stage": 2,
+          "price": 6195
+        }
+      ],
+      "averageBuyPrice": 6573,
+      "latestClose": 5900,
+      "latestLow": 5850,
+      "unrealizedReturnPct": -10.24,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-08",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-24 | 급등 피크 2026-03-30 | 눌림 2026-03-31~2026-05-11 | SMA20 7130 | 매수 6951/6195/5416 | 손절 4660 | 손절기준 2026-03-09 low | 점수 43",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "base_reclaim_watch",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:294630:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "294630",
+      "name": "서남",
+      "sourceKey": "서남-294630",
+      "openedAt": "2026-05-11T05:49:39.622Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 4560,
+        "secondBuyPrice": 4236,
+        "thirdBuyPrice": 3903,
+        "stopLossPrice": 3580
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 4560
+        },
+        {
+          "stage": 2,
+          "price": 4236
+        }
+      ],
+      "averageBuyPrice": 4398,
+      "latestClose": 4260,
+      "latestLow": 4045,
+      "unrealizedReturnPct": -3.14,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-13 | 급등 피크 2026-04-16 | 눌림 2026-04-17~2026-05-11 | SMA20 4677 | 매수 4560/4236/3903 | 손절 3580 | 손절기준 2026-03-31 low | 점수 61",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:321820:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "321820",
+      "name": "아티스트컴퍼니",
+      "sourceKey": "아티스트컴퍼니-321820",
+      "openedAt": "2026-05-11T05:49:40.349Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 4805,
+        "secondBuyPrice": 4186,
+        "thirdBuyPrice": 3549,
+        "stopLossPrice": 2930
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 4805
+        },
+        {
+          "stage": 2,
+          "price": 4186
+        }
+      ],
+      "averageBuyPrice": 4495.5,
+      "latestClose": 4135,
+      "latestLow": 4095,
+      "unrealizedReturnPct": -8.02,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-11",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-17 | 눌림 2026-04-20~2026-05-11 | SMA20 4928 | 매수 4805/4186/3549 | 손절 2930 | 손절기준 2026-03-09 low | 점수 54",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:095700:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "095700",
+      "name": "제넥신",
+      "sourceKey": "제넥신-095700",
+      "openedAt": "2026-05-11T05:49:40.323Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 5520,
+        "secondBuyPrice": 5140,
+        "thirdBuyPrice": 4745,
+        "stopLossPrice": 4365
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 5520
+        },
+        {
+          "stage": 2,
+          "price": 5140
+        }
+      ],
+      "averageBuyPrice": 5330,
+      "latestClose": 5340,
+      "latestLow": 5120,
+      "unrealizedReturnPct": 0.19,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-15 | 급등 피크 2026-04-17 | 눌림 2026-04-20~2026-05-11 | SMA20 5671 | 매수 5520/5140/4745 | 손절 4365 | 손절기준 2026-03-23 low | 점수 59",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:140430:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "140430",
+      "name": "카티스",
+      "sourceKey": "카티스-140430",
+      "openedAt": "2026-05-11T05:49:39.593Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 855,
+        "secondBuyPrice": 769,
+        "thirdBuyPrice": 681,
+        "stopLossPrice": 595
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 855
+        },
+        {
+          "stage": 2,
+          "price": 769
+        }
+      ],
+      "averageBuyPrice": 812,
+      "latestClose": 752,
+      "latestLow": 752,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -7.39,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-07 | 급등 피크 2026-04-14 | 눌림 2026-04-15~2026-05-11 | SMA20 877 | 매수 855/769/681 | 손절 595 | 손절기준 2026-03-23 low | 점수 66",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:225530:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "225530",
+      "name": "HC보광산업",
+      "sourceKey": "HC보광산업-225530",
+      "openedAt": "2026-05-11T05:49:40.294Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 3629,
+        "secondBuyPrice": 3256,
+        "thirdBuyPrice": 2873,
+        "stopLossPrice": 2500
+      },
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 3629
+        },
+        {
+          "stage": 2,
+          "price": 3256
+        }
+      ],
+      "averageBuyPrice": 3442.5,
+      "latestClose": 3030,
+      "latestLow": 3000,
+      "unrealizedReturnPct": -11.98,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-25 | 급등 피크 2026-03-27 | 눌림 2026-03-30~2026-05-11 | SMA20 3722 | 매수 3629/3256/2873 | 손절 2500 | 손절기준 2026-03-09 low | 점수 61",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_seed_anchor_confirmed",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "seed_anchor_confirmed",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:317120:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "317120",
+      "name": "라닉스",
+      "sourceKey": "라닉스-317120",
+      "openedAt": "2026-05-11T05:49:39.907Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 2475,
+        "secondBuyPrice": 2231,
+        "thirdBuyPrice": 1979,
+        "stopLossPrice": 1735
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2475
+        }
+      ],
+      "averageBuyPrice": 2475,
+      "latestClose": 2390,
+      "latestLow": 2335,
+      "unrealizedReturnPct": -3.43,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-15 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-05-11 | SMA20 2538 | 매수 2475/2231/1979 | 손절 1735 | 손절기준 2026-03-09 low | 점수 47",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:058110:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "058110",
+      "name": "멕아이씨에스",
+      "sourceKey": "멕아이씨에스-058110",
+      "openedAt": "2026-05-11T05:49:39.849Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 2840,
+        "secondBuyPrice": 2411,
+        "thirdBuyPrice": 1968,
+        "stopLossPrice": 1539
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2840
+        }
+      ],
+      "averageBuyPrice": 2840,
+      "latestClose": 2660,
+      "latestLow": 2570,
+      "unrealizedReturnPct": -6.34,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-30 | 급등 피크 2026-03-31 | 눌림 2026-04-01~2026-05-11 | SMA20 2913 | 매수 2840/2411/1968 | 손절 1539 | 손절기준 2026-03-09 low | 점수 51",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_seed_anchor_confirmed",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "seed_anchor_confirmed",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:288980:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "288980",
+      "name": "모아데이타",
+      "sourceKey": "모아데이타-288980",
+      "openedAt": "2026-05-11T05:49:39.502Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 1315,
+        "secondBuyPrice": 1076,
+        "thirdBuyPrice": 829,
+        "stopLossPrice": 589
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 1315
+        }
+      ],
+      "averageBuyPrice": 1315,
+      "latestClose": 1174,
+      "latestLow": 1083,
+      "unrealizedReturnPct": -10.72,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-07 | 급등 피크 2026-04-13 | 눌림 2026-04-14~2026-05-11 | SMA20 1349 | 매수 1315/1076/829 | 손절 589 | 손절기준 2026-03-20 low | 점수 73",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:004440:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "004440",
+      "name": "삼일씨엔에스",
+      "sourceKey": "삼일씨엔에스-004440",
+      "openedAt": "2026-05-11T05:49:40.404Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 7470,
+        "secondBuyPrice": 6730,
+        "thirdBuyPrice": 5960,
+        "stopLossPrice": 5220
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 7470
+        }
+      ],
+      "averageBuyPrice": 7470,
+      "latestClose": 6950,
+      "latestLow": 6900,
+      "unrealizedReturnPct": -6.96,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-25 | 급등 피크 2026-04-01 | 눌림 2026-04-02~2026-05-11 | SMA20 7670 | 매수 7470/6730/5960 | 손절 5220 | 손절기준 2026-03-09 low | 점수 29",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:027040:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "027040",
+      "name": "서울전자통신",
+      "sourceKey": "서울전자통신-027040",
+      "openedAt": "2026-05-11T05:49:40.033Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 552,
+        "secondBuyPrice": 452,
+        "thirdBuyPrice": 349,
+        "stopLossPrice": 249
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 552
+        }
+      ],
+      "averageBuyPrice": 552,
+      "latestClose": 480,
+      "latestLow": 480,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -13.04,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-13 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-05-11 | SMA20 566 | 매수 552/452/349 | 손절 249 | 손절기준 2026-03-09 low | 점수 40",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:108860:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "108860",
+      "name": "셀바스AI",
+      "sourceKey": "셀바스AI-108860",
+      "openedAt": "2026-05-11T05:49:39.770Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 13196,
+        "secondBuyPrice": 11940,
+        "thirdBuyPrice": 10646,
+        "stopLossPrice": 9390
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 13196
+        }
+      ],
+      "averageBuyPrice": 13196,
+      "latestClose": 12620,
+      "latestLow": 12600,
+      "unrealizedReturnPct": -4.36,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-24 | 급등 피크 2026-03-27 | 눌림 2026-03-30~2026-05-11 | SMA20 13534 | 매수 13196/11940/10646 | 손절 9390 | 손절기준 2026-03-12 low | 점수 54",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "support_holding",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "unstable_support"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:336370:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "336370",
+      "name": "솔루스첨단소재",
+      "sourceKey": "솔루스첨단소재-336370",
+      "openedAt": "2026-05-11T05:49:39.879Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 12498,
+        "secondBuyPrice": 10865,
+        "thirdBuyPrice": 9183,
+        "stopLossPrice": 7550
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 12498
+        }
+      ],
+      "averageBuyPrice": 12498,
+      "latestClose": 12230,
+      "latestLow": 12130,
+      "unrealizedReturnPct": -2.14,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-11",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-21 | 급등 피크 2026-04-28 | 눌림 2026-04-29~2026-05-11 | SMA20 12818 | 매수 12498/10865/9183 | 손절 7550 | 손절기준 2026-03-09 low | 점수 51",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "support_holding",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:020710:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "020710",
+      "name": "시공테크",
+      "sourceKey": "시공테크-020710",
+      "openedAt": "2026-05-11T05:49:40.116Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 4864,
+        "secondBuyPrice": 4447,
+        "thirdBuyPrice": 4017,
+        "stopLossPrice": 3600
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 4864
+        }
+      ],
+      "averageBuyPrice": 4864,
+      "latestClose": 4610,
+      "latestLow": 4600,
+      "unrealizedReturnPct": -5.22,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-16 | 눌림 2026-04-17~2026-05-11 | SMA20 4989 | 매수 4864/4447/4017 | 손절 3600 | 손절기준 2026-03-09 low | 점수 37",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:052710:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "052710",
+      "name": "아모텍",
+      "sourceKey": "아모텍-052710",
+      "openedAt": "2026-05-11T05:49:39.652Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 22737,
+        "secondBuyPrice": 18764,
+        "thirdBuyPrice": 14672,
+        "stopLossPrice": 10700
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 22737
+        }
+      ],
+      "averageBuyPrice": 22737,
+      "latestClose": 19740,
+      "latestLow": 19560,
+      "unrealizedReturnPct": -13.18,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-17 | 눌림 2026-04-20~2026-05-11 | SMA20 23320 | 매수 22737/18764/14672 | 손절 10700 | 손절기준 2026-03-09 low | 점수 58",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:368600:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "368600",
+      "name": "아이씨에이치",
+      "sourceKey": "아이씨에이치-368600",
+      "openedAt": "2026-05-11T05:49:39.533Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 1142,
+        "secondBuyPrice": 975,
+        "thirdBuyPrice": 803,
+        "stopLossPrice": 636
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 1142
+        }
+      ],
+      "averageBuyPrice": 1142,
+      "latestClose": 1040,
+      "latestLow": 995,
+      "unrealizedReturnPct": -8.93,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-13 | 급등 피크 2026-04-14 | 눌림 2026-04-15~2026-05-11 | SMA20 1171 | 매수 1142/975/803 | 손절 636 | 손절기준 2026-03-06 low | 점수 68",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_seed_anchor_confirmed",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "seed_anchor_confirmed",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:031310:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "031310",
+      "name": "아이즈비전",
+      "sourceKey": "아이즈비전-031310",
+      "openedAt": "2026-05-11T05:49:39.824Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 1888,
+        "secondBuyPrice": 1700,
+        "thirdBuyPrice": 1505,
+        "stopLossPrice": 1317
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 1888
+        }
+      ],
+      "averageBuyPrice": 1888,
+      "latestClose": 1774,
+      "latestLow": 1772,
+      "unrealizedReturnPct": -6.04,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-08 | 급등 피크 2026-04-13 | 눌림 2026-04-14~2026-05-11 | SMA20 1937 | 매수 1888/1700/1505 | 손절 1317 | 손절기준 2026-03-09 low | 점수 52",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:158430:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "158430",
+      "name": "아톤",
+      "sourceKey": "아톤-158430",
+      "openedAt": "2026-05-11T05:49:39.796Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 8127,
+        "secondBuyPrice": 7303,
+        "thirdBuyPrice": 6454,
+        "stopLossPrice": 5630
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 8127
+        }
+      ],
+      "averageBuyPrice": 8127,
+      "latestClose": 7860,
+      "latestLow": 7830,
+      "unrealizedReturnPct": -3.29,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-11",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-15 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-05-11 | SMA20 8335 | 매수 8127/7303/6454 | 손절 5630 | 손절기준 2026-04-07 low | 점수 53",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:061040:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "061040",
+      "name": "알에프텍",
+      "sourceKey": "알에프텍-061040",
+      "openedAt": "2026-05-11T05:49:39.563Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 2016,
+        "secondBuyPrice": 1846,
+        "thirdBuyPrice": 1670,
+        "stopLossPrice": 1500
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2016
+        }
+      ],
+      "averageBuyPrice": 2016,
+      "latestClose": 1937,
+      "latestLow": 1937,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -3.92,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-15 | 눌림 2026-04-16~2026-05-11 | SMA20 2068 | 매수 2016/1846/1670 | 손절 1500 | 손절기준 2026-04-07 low | 점수 66",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:347860:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "347860",
+      "name": "알체라",
+      "sourceKey": "알체라-347860",
+      "openedAt": "2026-05-11T05:49:40.058Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 2550,
+        "secondBuyPrice": 2175,
+        "thirdBuyPrice": 1787,
+        "stopLossPrice": 1410
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2550
+        }
+      ],
+      "averageBuyPrice": 2550,
+      "latestClose": 2300,
+      "latestLow": 2300,
+      "unrealizedReturnPct": -9.8,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-11",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-13 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-05-11 | SMA20 2618 | 매수 2550/2175/1787 | 손절 1410 | 손절기준 2026-03-09 low | 점수 39",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:092600:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "092600",
+      "name": "앤씨앤",
+      "sourceKey": "앤씨앤-092600",
+      "openedAt": "2026-05-11T05:49:40.265Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 1069,
+        "secondBuyPrice": 901,
+        "thirdBuyPrice": 728,
+        "stopLossPrice": 560
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 1069
+        }
+      ],
+      "averageBuyPrice": 1069,
+      "latestClose": 987,
+      "latestLow": 987,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -7.67,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-07 | 급등 피크 2026-04-10 | 눌림 2026-04-13~2026-05-11 | SMA20 1096 | 매수 1069/901/728 | 손절 560 | 손절기준 2026-03-11 low | 점수 68",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:088800:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "088800",
+      "name": "에이스테크",
+      "sourceKey": "에이스테크-088800",
+      "openedAt": "2026-05-11T05:49:40.085Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 5120,
+        "secondBuyPrice": 4240,
+        "thirdBuyPrice": 3330,
+        "stopLossPrice": 2450
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 5120
+        }
+      ],
+      "averageBuyPrice": 5120,
+      "latestClose": 4615,
+      "latestLow": 4605,
+      "unrealizedReturnPct": -9.86,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-14 | 눌림 2026-04-15~2026-05-11 | SMA20 5259 | 매수 5120/4240/3330 | 손절 2450 | 손절기준 2026-03-09 low | 점수 38",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:192410:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "192410",
+      "name": "오늘이엔엠",
+      "sourceKey": "오늘이엔엠-192410",
+      "openedAt": "2026-05-11T05:49:40.239Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 6686,
+        "secondBuyPrice": 5247,
+        "thirdBuyPrice": 3764,
+        "stopLossPrice": 2325
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 6686
+        }
+      ],
+      "averageBuyPrice": 6686,
+      "latestClose": 6810,
+      "latestLow": 6310,
+      "unrealizedReturnPct": 1.85,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-08",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-01 | 급등 피크 2026-04-06 | 눌림 2026-04-07~2026-05-11 | SMA20 6858 | 매수 6686/5247/3764 | 손절 2325 | 손절기준 2026-03-19 low | 점수 76",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "support_holding",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "unstable_support"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:109080:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "109080",
+      "name": "옵티시스",
+      "sourceKey": "옵티시스-109080",
+      "openedAt": "2026-05-11T05:49:40.212Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 16065,
+        "secondBuyPrice": 13436,
+        "thirdBuyPrice": 10728,
+        "stopLossPrice": 8100
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 16065
+        }
+      ],
+      "averageBuyPrice": 16065,
+      "latestClose": 15960,
+      "latestLow": 15300,
+      "unrealizedReturnPct": -0.65,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-07 | 급등 피크 2026-04-14 | 눌림 2026-04-15~2026-05-11 | SMA20 16477 | 매수 16065/13436/10728 | 손절 8100 | 손절기준 2026-03-09 low | 점수 82",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:095270:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "095270",
+      "name": "웨이브일렉트로",
+      "sourceKey": "웨이브일렉트로-095270",
+      "openedAt": "2026-05-11T05:49:39.683Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 9016,
+        "secondBuyPrice": 7529,
+        "thirdBuyPrice": 5997,
+        "stopLossPrice": 4510
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 9016
+        }
+      ],
+      "averageBuyPrice": 9016,
+      "latestClose": 8260,
+      "latestLow": 8200,
+      "unrealizedReturnPct": -8.39,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-10 | 급등 피크 2026-04-15 | 눌림 2026-04-16~2026-05-11 | SMA20 9247 | 매수 9016/7529/5997 | 손절 4510 | 손절기준 2026-03-31 low | 점수 57",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:131760:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "131760",
+      "name": "파인텍",
+      "sourceKey": "파인텍-131760",
+      "openedAt": "2026-05-11T05:49:40.146Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 1122,
+        "secondBuyPrice": 947,
+        "thirdBuyPrice": 766,
+        "stopLossPrice": 591
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 1122
+        }
+      ],
+      "averageBuyPrice": 1122,
+      "latestClose": 1036,
+      "latestLow": 1036,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -7.66,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-16 | 급등 피크 2026-04-23 | 눌림 2026-04-24~2026-05-11 | SMA20 1151 | 매수 1122/947/766 | 손절 591 | 손절기준 2026-04-02 low | 점수 37",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:010820:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "010820",
+      "name": "퍼스텍",
+      "sourceKey": "퍼스텍-010820",
+      "openedAt": "2026-05-11T05:49:39.443Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 13232,
+        "secondBuyPrice": 11033,
+        "thirdBuyPrice": 8768,
+        "stopLossPrice": 6570
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 13232
+        }
+      ],
+      "averageBuyPrice": 13232,
+      "latestClose": 12930,
+      "latestLow": 12730,
+      "unrealizedReturnPct": -2.28,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-17 | 급등 피크 2026-04-22 | 눌림 2026-04-23~2026-05-11 | SMA20 13571 | 매수 13232/11033/8768 | 손절 6570 | 손절기준 2026-03-31 low | 점수 76",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_candle_rejection",
+          "tag_candle_weak",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "weak_candle_structure",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:smallcap:208710:2026-05-11",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "208710",
+      "name": "포톤",
+      "sourceKey": "포톤-208710",
+      "openedAt": "2026-05-11T05:49:40.375Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 2700,
+        "secondBuyPrice": 2395,
+        "thirdBuyPrice": 2080,
+        "stopLossPrice": 1780
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2700
+        }
+      ],
+      "averageBuyPrice": 2700,
+      "latestClose": 2585,
+      "latestLow": 2510,
+      "unrealizedReturnPct": -4.26,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-15 | 급등 피크 2026-04-16 | 눌림 2026-04-17~2026-05-11 | SMA20 2771 | 매수 2700/2395/2080 | 손절 1780 | 손절기준 2026-03-09 low | 점수 33",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:430690:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "430690",
+      "name": "한싹",
+      "sourceKey": "한싹-430690",
+      "openedAt": "2026-05-11T05:49:39.712Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 5010,
+        "secondBuyPrice": 4495,
+        "thirdBuyPrice": 3965,
+        "stopLossPrice": 3450
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 5010
+        }
+      ],
+      "averageBuyPrice": 5010,
+      "latestClose": 4730,
+      "latestLow": 4705,
+      "unrealizedReturnPct": -5.59,
+      "initialSnapshot": {
+        "anchorDate": "2026-05-07",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-14 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-05-11 | SMA20 5139 | 매수 5010/4495/3965 | 손절 3450 | 손절기준 2026-04-07 low | 점수 57",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_seed_anchor_confirmed",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "seed_anchor_confirmed",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:184230:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "184230",
+      "name": "SGA솔루션즈",
+      "sourceKey": "SGA솔루션즈-184230",
+      "openedAt": "2026-05-11T05:49:39.740Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 775,
+        "secondBuyPrice": 681,
+        "thirdBuyPrice": 584,
+        "stopLossPrice": 490
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 775
+        }
+      ],
+      "averageBuyPrice": 775,
+      "latestClose": 754,
+      "latestLow": 754,
+      "rawLatestLow": 0,
+      "unrealizedReturnPct": -2.71,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-30",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-15 | 급등 피크 2026-04-22 | 눌림 2026-04-23~2026-05-11 | SMA20 794 | 매수 775/681/584 | 손절 490 | 손절기준 2026-04-07 low | 점수 57",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "watch_halt_event",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "support_holding",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "unstable_support",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      }
+    },
+    {
+      "id": "swing:default:100090:2026-05-11",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "100090",
+      "name": "SK오션플랜트",
+      "sourceKey": "SK오션플랜트-100090",
+      "openedAt": "2026-05-11T05:49:40.176Z",
+      "openedDate": "2026-05-11",
+      "dataDate": "2026-05-11",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "equal_weight_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      },
+      "buyPlan": {
+        "firstBuyPrice": 22650,
+        "secondBuyPrice": 20700,
+        "thirdBuyPrice": 18740,
+        "stopLossPrice": 16800
+      },
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 22650
+        }
+      ],
+      "averageBuyPrice": 22650,
+      "latestClose": 20900,
+      "latestLow": 20900,
+      "unrealizedReturnPct": -7.73,
+      "initialSnapshot": {
+        "anchorDate": "2026-04-24",
+        "latestMentionDate": "2026-05-11",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-20 | 급등 피크 2026-03-26 | 눌림 2026-03-27~2026-05-11 | SMA20 23270 | 매수 22650/20700/18740 | 손절 16800 | 손절기준 2026-03-06 low | 점수 30",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      }
+    }
+  ]
+}

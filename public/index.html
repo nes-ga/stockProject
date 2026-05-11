@@ -75,11 +75,18 @@
       <header class="hero">
         <div class="hero-brand-row">
           <div class="hero-brand-copygroup">
-            <span class="hero-brand-signature">@myeong._.key</span>
-            <h1 class="hero-brand" aria-label="Myeong._.key's Stock Notes">
-              <span class="hero-brand-stock">Myeong._.key's</span>
-              <span class="hero-brand-mon">Stock Notes</span>
-            </h1>
+            <div class="hero-brand-lockup">
+              <div class="hero-mascot hero-mascot-inline" aria-hidden="true">
+                <img class="hero-mascot-img" src="/assets/stockmon-wave.webp" alt="" />
+              </div>
+              <div class="hero-brand-text">
+                <span class="hero-brand-signature">@myeong._.key</span>
+                <h1 class="hero-brand" aria-label="Myeong._.key's Stock Notes">
+                  <span class="hero-brand-stock">Myeong._.key's</span>
+                  <span class="hero-brand-mon">Stock Notes</span>
+                </h1>
+              </div>
+            </div>
             <p class="hero-brand-copy">하루의 흐름과 마음을 같이 적어두는, 조금 더 다정한 시장 노트.</p>
             <div class="hero-brand-tags" aria-hidden="true">
               <span class="hero-brand-tag">watch the mood</span>
@@ -88,6 +95,24 @@
             </div>
           </div>
           <div class="app-tabs" id="appTabs">
+            <button class="app-tab app-tab-analysis active" type="button" data-view="analysis">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">추천 종목 및 분석</span>
+                <span class="app-tab-copy">중장기·배당·스윙 종목과 차트 분석을 확인</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-books.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+            <button class="app-tab app-tab-history" type="button" data-view="history">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">추천 히스토리</span>
+                <span class="app-tab-copy">추천 이후 수익·손절·엔진 탈락 흐름을 누적 검증</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-camera.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
             <button class="app-tab app-tab-news" type="button" data-view="news">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">뉴스 기사</span>
@@ -106,15 +131,6 @@
                 <img src="/assets/stockmon-laptop.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
-            <button class="app-tab app-tab-analysis active" type="button" data-view="analysis">
-              <span class="app-tab-copywrap">
-                <span class="app-tab-title">추천 종목 및 분석</span>
-                <span class="app-tab-copy">중장기·배당·스윙 종목과 차트 분석을 확인</span>
-              </span>
-              <span class="app-tab-mascot" aria-hidden="true">
-                <img src="/assets/stockmon-books.webp" alt="" loading="lazy" decoding="async" />
-              </span>
-            </button>
             <button class="app-tab app-tab-movers" type="button" data-view="movers">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">급등 및 급락 순위</span>
@@ -124,12 +140,6 @@
                 <img src="/assets/stockmon-pointer.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
-          </div>
-          <div class="hero-mascot-wrap">
-            <span class="hero-brand-note">watch, wait, write</span>
-            <div class="hero-mascot" aria-hidden="true">
-              <img class="hero-mascot-img" src="/assets/stockmon-wave.webp" alt="" />
-            </div>
           </div>
         </div>
       </header>
@@ -192,6 +202,73 @@
             <div class="empty-state">
               <p>시장 흐름 데이터를 준비 중입니다.</p>
             </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="historyView" class="app-view hidden">
+        <section class="panel history-panel">
+          <div class="panel-head">
+            <div>
+              <h2>추천 히스토리</h2>
+              <p class="field-help">
+                추천 발생 이후 가격 성과와 엔진 탈락 흐름을 분리해서 교차 검증하는 화면입니다.
+              </p>
+            </div>
+            <span id="recommendationHistoryStatusBadge" class="status-badge idle">구조 준비</span>
+          </div>
+
+          <div id="recommendationHistorySummary" class="history-summary-grid">
+            <article class="history-summary-card">
+              <span>추적 케이스</span>
+              <strong>-</strong>
+              <p>추천 시점 snapshot 기준</p>
+            </article>
+            <article class="history-summary-card positive">
+              <span>+5% 선도달</span>
+              <strong>-</strong>
+              <p>손절 전 목표 도달률</p>
+            </article>
+            <article class="history-summary-card negative">
+              <span>손절 / 탈락</span>
+              <strong>-</strong>
+              <p>가격 손절과 엔진 탈락 분리</p>
+            </article>
+            <article class="history-summary-card neutral">
+              <span>탈락 후 상승</span>
+              <strong>-</strong>
+              <p>엔진이 빨리 버린 케이스 확인</p>
+            </article>
+          </div>
+
+          <div class="history-toolbar">
+            <div>
+              <h3>현재 상태 분리</h3>
+              <p class="field-help">현재 추천 후보는 종료 케이스에서 제외하고 별도 추적합니다.</p>
+            </div>
+            <button id="openHistoryMatrixModalBtn" class="ghost-button small-button" type="button">교차 검증 매트릭스</button>
+          </div>
+
+          <div class="history-layout">
+            <section class="history-section">
+              <div class="history-section-head">
+                <h3>현재 추천 상태</h3>
+                <span>current candidates</span>
+              </div>
+              <div id="recommendationHistoryCurrentCases" class="history-placeholder">
+                현재 추천 후보와 매수 가정 히스토리 연결 상태를 표시할 자리입니다.
+              </div>
+            </section>
+
+            <section class="history-section">
+              <div class="history-section-head">
+                <h3>종료 케이스</h3>
+                <span>closed cases</span>
+              </div>
+              <div id="recommendationHistoryClosedCases" class="history-placeholder">
+                후보에서 사라진 종목, 손절 도달, 목표가 선도달 케이스를 시간순으로 표시할 자리입니다.
+              </div>
+            </section>
           </div>
         </section>
       </section>
@@ -505,6 +582,21 @@
           <button id="closeSwingScoreModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
         <div id="swingScoreModalBody" class="swing-score-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="historyMatrixModal" class="modal-backdrop hidden">
+      <div class="modal-panel history-matrix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyMatrixModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="historyMatrixModalTitle">교차 검증 매트릭스</h3>
+            <p class="field-help modal-field-help">현재 후보는 진행 중으로 분리하고, 종료 케이스만 가격 결과와 엔진 결과를 교차 검증합니다.</p>
+          </div>
+          <button id="closeHistoryMatrixModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+        <div id="historyMatrixModalBody" class="history-matrix-modal-body">
+          <div class="history-placeholder">교차 검증 데이터를 준비 중입니다.</div>
+        </div>
       </div>
     </div>
 

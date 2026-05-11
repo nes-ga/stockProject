@@ -10,6 +10,7 @@ import { getTradingHaltLookup } from "./tradingHalts.js";
 
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
+const SWING_MIN_REFERENCE_PRICE = 1000;
 
 type RecommendationUniverseCategory = "longTerm" | "dividend" | "swing";
 type RecommendationUniverseScanScope = RecommendationUniverseCategory | `swing:${SwingEngineProfile}`;
@@ -205,6 +206,9 @@ function buildSwingNote(
     : `${pattern.stage === "breakout" ? "관찰" : "구간"} ${displayEntryZoneText}`;
   const stopText = `손절 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
   const stopRefText = `손절기준 ${pattern.stopLossReferenceDate ?? "-"} ${pattern.stopLossReferenceType === "close_fallback" ? "close" : "low"}`;
+  const envelopeText = pattern.envelope
+    ? `ENV20 ${pattern.envelope.position} ${Math.round(pattern.envelope.lower)}/${Math.round(pattern.envelope.basis)}/${Math.round(pattern.envelope.upper)}`
+    : undefined;
 
   const finalDisplayBuyPlanText = isExecutionCandidate ? buyPlanText : resolvedDisplayBuyPlanText;
 
@@ -215,10 +219,11 @@ function buildSwingNote(
     `눌림 ${pattern.pullbackStartDate ?? "-"}~${pattern.pullbackEndDate ?? "-"}`,
     `SMA20 ${pattern.referenceSma20 != null ? Math.round(pattern.referenceSma20) : "-"}`,
     finalDisplayBuyPlanText,
+    envelopeText,
     stopText,
     stopRefText,
     `점수 ${pattern.finalRankScore ?? pattern.patternScore}`
-  ].join(" | ");
+  ].filter(Boolean).join(" | ");
 }
 
 type SwingCandidateClassification = {
@@ -240,6 +245,8 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     tags: classification.tags,
     reasons: classification.reasons,
     penaltyFactors: classification.penaltyFactors,
+    postEntryOutcome: analysis.pattern.postEntryOutcome,
+    envelope: analysis.pattern.envelope,
     haltCategory: analysis.haltCategory,
     haltAction: analysis.haltAction,
     category: "swing" as const,
@@ -313,6 +320,10 @@ function isBelowSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
   return pattern.referenceClose < low;
 }
 
+function isPennyStockRisk(pattern: SmartMoneyAnalysis["pattern"]) {
+  return typeof pattern.referenceClose === "number" && pattern.referenceClose <= SWING_MIN_REFERENCE_PRICE;
+}
+
 function isInOrBelowRawSwingEntryZone(pattern: SmartMoneyAnalysis["pattern"]) {
   if (
     pattern.stage !== "setup" ||
@@ -382,6 +393,55 @@ function isDeepPullbackProbeEligible(pattern: SmartMoneyAnalysis["pattern"], ris
   return riskRewardRatio >= 1.2;
 }
 
+function isAboveInvalidationLine(pattern: SmartMoneyAnalysis["pattern"]) {
+  return (
+    typeof pattern.referenceClose === "number" &&
+    typeof pattern.invalidationPrice === "number" &&
+    pattern.invalidationPrice > 0 &&
+    pattern.referenceClose > pattern.invalidationPrice
+  );
+}
+
+function isBroadSwingReviewEligible(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
+  if (
+    pattern.stage !== "setup" ||
+    pattern.status === "pullback_early" ||
+    pattern.debugInfo.supportStatus !== "holding" ||
+    !isAboveInvalidationLine(pattern)
+  ) {
+    return false;
+  }
+
+  const pullbackDepth = pattern.pullbackMaxDrawdownPercent ?? pattern.debugInfo.pullbackDepthPct ?? 0;
+  const pullbackSessions = pattern.pullbackSessions ?? pattern.debugInfo.pullbackDays ?? 0;
+  const hasMeaningfulPullback = pullbackDepth >= 12 && pullbackSessions >= 3;
+  const hasDriedVolume =
+    (pattern.volumeContractionScore ?? 0) >= 55 || (pattern.debugInfo.volumeDryingRatio ?? Number.POSITIVE_INFINITY) <= 0.3;
+
+  return hasMeaningfulPullback && hasDriedVolume && isInOrBelowRawSwingEntryZone(pattern) && riskRewardRatio >= 1.2;
+}
+
+function isEnvelopeWidePullbackCandidate(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
+  if (!isBroadSwingReviewEligible(pattern, riskRewardRatio) || !pattern.envelope) {
+    return false;
+  }
+
+  if (pattern.envelope.position === "below_lower" || pattern.envelope.position === "above_upper") {
+    return false;
+  }
+
+  const pullbackDepth = pattern.pullbackMaxDrawdownPercent ?? pattern.debugInfo.pullbackDepthPct ?? 0;
+  const strongVolumeDrying =
+    (pattern.volumeContractionScore ?? 0) >= 78 || (pattern.debugInfo.volumeDryingRatio ?? Number.POSITIVE_INFINITY) <= 0.18;
+
+  return (
+    riskRewardRatio >= 1.8 &&
+    pullbackDepth >= 12 &&
+    strongVolumeDrying &&
+    (pattern.envelope.position === "lower_band" || pattern.envelope.lowerReclaimed)
+  );
+}
+
 function dedupeStrings<T extends string>(values: T[]) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -401,6 +461,9 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const setupPullbackReady = pattern.stage !== "setup" || pattern.status === "buy_ready";
   const supportHoldingProbeEligible = isSupportHoldingProbeEligible(pattern, riskRewardRatio);
   const deepPullbackProbeEligible = isDeepPullbackProbeEligible(pattern, riskRewardRatio);
+  const broadReviewEligible = isBroadSwingReviewEligible(pattern, riskRewardRatio);
+  const envelopeWidePullbackCandidate = isEnvelopeWidePullbackCandidate(pattern, riskRewardRatio);
+  const envelopeLowerBreak = pattern.envelope?.position === "below_lower" && pattern.envelope.lowerBreakSessions >= 2;
   const weakVolumeContraction = pattern.stage === "setup" && (pattern.volumeContractionScore ?? 0) < 60;
   const poorCandleStructure = (pattern.candleQualityScore ?? 100) < 60;
   const negativeSma20Slope = (pattern.sma20SlopePercent ?? 0) < 0;
@@ -409,6 +472,13 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const haltWatchOnly = analysis.haltAction === "watch_only";
   const haltPenalty = analysis.haltAction === "allow_with_penalty";
   const lowQuality = weakVolumeContraction || poorCandleStructure || negativeSma20Slope || unstableSupport || weakRiskReward;
+  const rankScore = pattern.finalRankScore ?? pattern.patternScore;
+  const hasUnstableSupportPenalty = (pattern.penaltyFactors ?? []).some((factor) => factor.code === "unstable_support");
+  const lowScoreUnstableSupport = rankScore < 60 && hasUnstableSupportPenalty;
+  const targetHitOutcome =
+    pattern.postEntryOutcome?.status === "target_hit_after_first_buy" ||
+    pattern.postEntryOutcome?.status === "target_hit_after_second_buy" ||
+    pattern.postEntryOutcome?.status === "target_hit_after_third_buy";
   const readyByEngine = pattern.actionable && !haltWatchOnly && !haltPenalty;
   // Setup names should stay on watch until the pullback has progressed to the engine's buy-ready state.
   const probeByLocation =
@@ -416,6 +486,20 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     !haltWatchOnly &&
     ((withinEntryZone && setupPullbackReady) || supportHoldingProbeEligible);
   const probeByDeepPullback = !haltWatchOnly && deepPullbackProbeEligible;
+
+  if (targetHitOutcome) {
+    return {
+      bucket: "watch",
+      reasons: dedupeStrings([
+        ...(pattern.classificationReasons ?? []),
+        pattern.postEntryOutcome?.status ?? "",
+        "post_entry_target_hit",
+        "profit_opportunity_already_given"
+      ]),
+      tags: dedupeStrings([...(pattern.tags ?? []), "watch_low_quality" as const]),
+      penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
+    };
+  }
 
   if (readyByEngine && !lowQuality) {
     return {
@@ -426,13 +510,19 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     };
   }
 
-  if (probeByLocation || probeByDeepPullback) {
+  if ((probeByLocation || probeByDeepPullback) && !envelopeLowerBreak && (!lowScoreUnstableSupport || envelopeWidePullbackCandidate)) {
     const probeReasons = dedupeStrings([
       ...(pattern.classificationReasons ?? []),
       probeByDeepPullback ? "deep_pullback_probe" : "",
       probeByDeepPullback ? "above_stop" : "",
       isInOrBelowRawSwingEntryZone(pattern) ? "entry_zone_hit" : "",
-      readyByEngine ? "execution_ready_blocked_by_quality" : "execution_gate_not_cleared",
+      envelopeWidePullbackCandidate ? "wide_pullback_candidate" : "",
+      envelopeWidePullbackCandidate ? "envelope_lower_hold" : "",
+      readyByEngine
+        ? "execution_ready_blocked_by_quality"
+        : envelopeWidePullbackCandidate
+          ? "execution_gate_overridden_by_envelope"
+          : "execution_gate_not_cleared",
       weakVolumeContraction ? "weak_volume_contraction" : "",
       poorCandleStructure ? "weak_candle_structure" : "",
       negativeSma20Slope ? "sma20_slope_negative" : "",
@@ -444,7 +534,11 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     return {
       bucket: "execution_probe",
       reasons: probeReasons,
-      tags: dedupeStrings([...(pattern.tags ?? []), ...(unstableSupport ? (["tag_support_unstable"] as const) : [])]),
+      tags: dedupeStrings([
+        ...(pattern.tags ?? []),
+        ...(unstableSupport ? (["tag_support_unstable"] as const) : []),
+        ...(envelopeWidePullbackCandidate ? (["tag_envelope_lower_hold"] as const) : [])
+      ]),
       penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
     };
   }
@@ -464,6 +558,10 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
       ...(pattern.classificationReasons ?? []),
       pattern.status === "breakout_extended" ? "extended_leader_watch" : "",
       pattern.stage === "setup" && (!withinEntryZone || pattern.status !== "buy_ready") ? "pullback_pending" : "",
+      broadReviewEligible ? "broad_review_watch" : "",
+      broadReviewEligible ? "above_stop" : "",
+      envelopeLowerBreak ? "envelope_lower_break" : "",
+      lowScoreUnstableSupport ? "probe_demoted_low_score_unstable_support" : "",
       lowQuality ? "quality_not_ready" : "",
       haltPenalty ? "halt_penalty_active" : "",
       haltWatchOnly ? "halt_watch_only" : ""
@@ -474,6 +572,10 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
 }
 
 export function isSwingExecutionEligible(pattern: SmartMoneyAnalysis["pattern"], analysis?: SmartMoneyAnalysis) {
+  if (isPennyStockRisk(pattern)) {
+    return false;
+  }
+
   if (!analysis) {
     return pattern.actionable || isWithinSwingEntryZone(pattern);
   }
@@ -482,8 +584,21 @@ export function isSwingExecutionEligible(pattern: SmartMoneyAnalysis["pattern"],
 }
 
 function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: SwingCandidateClassification) {
+  if (isPennyStockRisk(analysis.pattern)) {
+    return false;
+  }
+
   const resolvedClassification = classification ?? classifySwingCandidate(analysis);
   if (resolvedClassification.bucket !== "watch") {
+    return false;
+  }
+
+  const outcomeStatus = analysis.pattern.postEntryOutcome?.status;
+  if (
+    outcomeStatus === "target_hit_after_first_buy" ||
+    outcomeStatus === "target_hit_after_second_buy" ||
+    outcomeStatus === "target_hit_after_third_buy"
+  ) {
     return false;
   }
 
@@ -491,7 +606,11 @@ function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: Swi
     return true;
   }
 
-  return analysis.pattern.matched && analysis.pattern.status !== "pullback_early";
+  const riskRewardRatio = analysis.pattern.tradePlan?.riskRewardRatio ?? analysis.pattern.riskRewardRatio ?? 0;
+  return (
+    (analysis.pattern.matched && analysis.pattern.status !== "pullback_early") ||
+    isBroadSwingReviewEligible(analysis.pattern, riskRewardRatio)
+  );
 }
 
 async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile) {
@@ -512,6 +631,10 @@ async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile
   for (const result of settled) {
     if (result.status === "fulfilled") {
       if (result.value.analysis.tradingHalted && result.value.analysis.haltAction === "exclude") {
+        continue;
+      }
+
+      if (isPennyStockRisk(result.value.analysis.pattern)) {
         continue;
       }
 

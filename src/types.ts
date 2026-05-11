@@ -195,6 +195,24 @@ export type SmartMoneyBuyPlan = {
   stopLossPrice: number;
 };
 
+export type SmartMoneyPostEntryOutcome = {
+  status: "no_entry" | "active" | "target_hit_after_first_buy" | "target_hit_after_second_buy" | "target_hit_after_third_buy";
+  executedBuyCount: number;
+  executedBuys: Array<{
+    stage: 1 | 2 | 3;
+    price: number;
+    date: string;
+  }>;
+  averageBuyPrice?: number;
+  maxFavorablePrice?: number;
+  maxFavorableDate?: string;
+  maxFavorableReturnPct?: number;
+  maxAdversePrice?: number;
+  maxAdverseDate?: string;
+  maxAdverseReturnPct?: number;
+  targetReturnPct?: number;
+};
+
 export type SmartMoneyWorkflowStatus =
   | "none"
   | "pivot_formed"
@@ -336,6 +354,9 @@ export type SmartMoneyClassificationTag =
   | "tag_candle_rejection"
   | "tag_sma20_slope_negative"
   | "tag_support_unstable"
+  | "tag_envelope_lower_hold"
+  | "tag_envelope_lower_break"
+  | "tag_envelope_upper_extension"
   | "watch_extended_leader"
   | "watch_pullback_pending"
   | "watch_low_quality"
@@ -357,13 +378,37 @@ export type SmartMoneyRejectReason = {
   reason: string;
 };
 
+export type SmartMoneyEnvelopePosition =
+  | "above_upper"
+  | "upper_band"
+  | "basis_zone"
+  | "lower_band"
+  | "below_lower";
+
+export type SmartMoneyEnvelopeAnalysis = {
+  basisPeriod: 20;
+  bandPercent: 10;
+  basis: number;
+  upper: number;
+  lower: number;
+  position: SmartMoneyEnvelopePosition;
+  distanceFromBasisPercent: number;
+  distanceFromLowerPercent: number;
+  distanceFromUpperPercent: number;
+  lowerBreakSessions: number;
+  lowerReclaimed: boolean;
+  inBand: boolean;
+};
+
 export type SmartMoneyCandidateSummary = {
   stage: "setup" | "breakout";
   status: SmartMoneyWorkflowStatus;
   entryStrategy?: SmartMoneyEntryStrategy;
   executionBucket?: SmartMoneyExecutionBucket;
   buyPlan?: SmartMoneyBuyPlan;
+  postEntryOutcome?: SmartMoneyPostEntryOutcome;
   referenceSma20?: number;
+  envelope?: SmartMoneyEnvelopeAnalysis;
   stopLossReferenceDate?: string;
   stopLossReferenceType?: SmartMoneyStopLossReferenceType;
   lookbackWindowDays: number;
@@ -423,6 +468,7 @@ export type SmartMoneyPatternMatch = {
   executionBucket?: SmartMoneyExecutionBucket;
   buyPlan?: SmartMoneyBuyPlan;
   referenceSma20?: number;
+  envelope?: SmartMoneyEnvelopeAnalysis;
   stopLossReferenceDate?: string;
   stopLossReferenceType?: SmartMoneyStopLossReferenceType;
   signal: KoreanMoverSignal;
@@ -498,6 +544,7 @@ export type SmartMoneyPatternMatch = {
   marketContext?: SmartMoneyAppliedMarketContext;
   backtestResult?: SmartMoneyBacktestResult;
   tradePlan?: SmartMoneyTradePlan;
+  postEntryOutcome?: SmartMoneyPostEntryOutcome;
   tags: SmartMoneyClassificationTag[];
   penaltyFactors: SmartMoneyPenaltyFactor[];
   classificationReasons: string[];
@@ -786,6 +833,7 @@ export type StockUniverseItem = {
   name: string;
   market: "KOSPI" | "KOSDAQ" | "KONEX" | "ETF" | "ETN" | "WATCHLIST" | "KRX";
   sector?: string;
+  aliases?: string[];
 };
 
 export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "BTC";
