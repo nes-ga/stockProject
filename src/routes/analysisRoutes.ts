@@ -619,7 +619,10 @@ async function executeRecommendationUniverseScan(input: RecommendationUniverseSc
     discordSent,
     discordMessageCount,
     discordSkippedReason,
-    diffCount: universeDiff.changes.length
+    diffCount: universeDiff.changes.length,
+    historyUpdated: payload.category === "swing" ? payload.historyUpdated : undefined,
+    historyCaseCount: payload.category === "swing" ? payload.historyUpdate?.caseCount : undefined,
+    historyUpdateError: payload.category === "swing" ? payload.historyUpdateError : undefined
   });
 
   return {

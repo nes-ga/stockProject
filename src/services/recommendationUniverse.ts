@@ -7,6 +7,7 @@ import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 import { getTradingHaltLookup } from "./tradingHalts.js";
+import { updateSwingRecommendationHistoryFromCurrentPicks } from "./recommendationHistory.js";
 
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
@@ -20,6 +21,7 @@ type DividendScanResult = Awaited<ReturnType<typeof scanDividendUniverse>>;
 type DividendUniverseCandidate = DividendScanResult["candidates"][number];
 type LongTermScanResult = Awaited<ReturnType<typeof scanLongTermUniverse>>;
 type LongTermUniverseCandidate = LongTermScanResult["candidates"][number];
+type SwingHistoryUpdate = Awaited<ReturnType<typeof updateSwingRecommendationHistoryFromCurrentPicks>>;
 
 type SwingScanRankedItem = {
   item: UniverseItem;
@@ -55,6 +57,9 @@ type RecommendationUniverseScanResult =
       items: Awaited<ReturnType<typeof writeServerSwingPicks>>["items"];
       executionItems: Awaited<ReturnType<typeof writeServerSwingPicks>>["executionItems"];
       watchItems: Awaited<ReturnType<typeof writeServerSwingPicks>>["watchItems"];
+      historyUpdated: boolean;
+      historyUpdate?: SwingHistoryUpdate;
+      historyUpdateError?: string;
     };
 
 const activeScanByCategory = new Map<RecommendationUniverseScanScope, Promise<RecommendationUniverseScanResult>>();
@@ -768,6 +773,14 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
       profile
     }
   );
+  let historyUpdate: SwingHistoryUpdate | undefined;
+  let historyUpdateError: string | undefined;
+
+  try {
+    historyUpdate = await updateSwingRecommendationHistoryFromCurrentPicks();
+  } catch (error) {
+    historyUpdateError = error instanceof Error ? error.message : String(error);
+  }
 
   return {
     category: "swing",
@@ -778,7 +791,10 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
     failureCount: failures,
     items: payload.items,
     executionItems: payload.executionItems,
-    watchItems: payload.watchItems
+    watchItems: payload.watchItems,
+    historyUpdated: Boolean(historyUpdate),
+    historyUpdate,
+    historyUpdateError
   };
 }
 

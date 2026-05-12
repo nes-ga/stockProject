@@ -1,14 +1,14 @@
 {
-  "date": "2026-05-11",
+  "date": "2026-05-12",
   "global": {
-    "score": 3,
-    "state": "RISK_ON"
+    "score": 2,
+    "state": "NEUTRAL"
   },
   "local": {
     "score": 4.5,
     "state": "SELECTIVE"
   },
-  "themeRotationScore": 42.73,
+  "themeRotationScore": 45.18,
   "marketMode": "SELECTIVE",
   "topThemes": [
     "반도체",
@@ -18,7 +18,7 @@
   "bottomThemes": [
     "건설 / 인프라",
     "헬스케어 / 바이오",
-    "소비 / 화장품"
+    "금융"
   ],
-  "updatedAt": "2026-05-11T17:36:48.239+09:00"
+  "updatedAt": "2026-05-12T17:23:51.105+09:00"
 }

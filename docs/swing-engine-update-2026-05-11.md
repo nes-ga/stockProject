@@ -228,6 +228,42 @@ API checks:
 - `POST /analysis/recommendation-universe-scan` for smallcap swing
 - `GET /analysis/recommendation-history/swing`
 
+## 2026-05-12 Follow-up
+
+Recommendation history was extended so that current and closed swing cases carry explicit outcome labels.
+
+New outcome types:
+
+- `target_hit`: fast shooting profit
+- `drift_profit_exit`: slow profit exit after the stock rises out of the buy zone
+- `entry_missed_upside`: no-entry case excluded from return statistics
+- `stop_broken`: stop-loss exit
+- `stale_timeout`: timeout after 20 business days from first execution
+- `closed_unknown`: fallback closed case
+
+History UI changes:
+
+- Current recommendation cards now open a chart modal.
+- The modal reuses `/analysis/realtime-stock-detail` chart data.
+- The chart shows candles, volume, moving averages, average-buy line, and stop line when available.
+- History cards and matrix show the outcome classification.
+
+Data check after regeneration:
+
+- history cases: 97
+- entered cases: 67
+- no-entry cases: 30
+- missing `historyOutcome`: 0
+- penny-stock history cases: 0
+
+Verification:
+
+```bash
+npm.cmd run check
+node --check public\app.js
+npm.cmd run build
+```
+
 Additional validation:
 
 - current recommendation files contain no stocks with `referenceClose <= 1000`

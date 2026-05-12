@@ -204,6 +204,9 @@ export type SmartMoneyPostEntryOutcome = {
     date: string;
   }>;
   averageBuyPrice?: number;
+  latestClose?: number;
+  latestDate?: string;
+  unrealizedReturnPct?: number;
   maxFavorablePrice?: number;
   maxFavorableDate?: string;
   maxFavorableReturnPct?: number;

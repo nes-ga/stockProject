@@ -148,3 +148,4 @@ PM 5:33:38 [tsx] change in ./src\services\recommendationUniverse.ts Restarting..
 [2026-05-11T17:33:43.894+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=2 sectorCount=2 collectedAt="2026-05-11T08:33:43.132Z" refreshIntervalMinutes=5
 [2026-05-11T17:33:43.895+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
 [2026-05-11T17:38:44.262+09:00] INFO newsSignals news-signals:refreshed articleCount=2 signalCount=1 sectorCount=1 collectedAt="2026-05-11T08:38:43.910Z" refreshIntervalMinutes=5
+[2026-05-11T17:43:44.479+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=1 sectorCount=1 collectedAt="2026-05-11T08:43:43.921Z" refreshIntervalMinutes=5

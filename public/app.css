@@ -1328,6 +1328,7 @@ body {
 
 .history-case-list {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
   max-height: 520px;
   overflow: auto;
@@ -1348,8 +1349,78 @@ body {
   background: rgba(37, 99, 235, 0.06);
 }
 
+.history-case-card[data-history-chart-symbol] {
+  cursor: pointer;
+}
+
+.history-case-card[data-history-chart-symbol]:hover,
+.history-case-card[data-history-chart-symbol]:focus-visible {
+  border-color: rgba(37, 99, 235, 0.32);
+  box-shadow: 0 10px 24px rgba(17, 50, 62, 0.08);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .history-case-card.closed {
   border-color: rgba(177, 56, 40, 0.14);
+}
+
+.history-case-card.closed .history-case-main {
+  grid-template-columns: minmax(0, 1fr) minmax(188px, 220px);
+  align-items: center;
+  gap: 8px;
+}
+
+.history-case-card.closed .history-case-copy {
+  gap: 7px;
+}
+
+.history-case-card.closed .history-case-head {
+  align-items: center;
+  gap: 8px;
+}
+
+.history-case-card.closed .history-buy-levels {
+  justify-self: stretch;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  overflow: visible;
+}
+
+.history-case-card.closed .history-buy-level {
+  min-height: 38px;
+  padding: 5px 5px;
+}
+
+.history-case-card.closed .history-buy-level em {
+  font-size: 9px;
+}
+
+.history-case-card.closed .history-buy-level strong {
+  font-size: 12px;
+}
+
+.history-case-card.closed .history-case-metrics {
+  gap: 5px;
+}
+
+.history-case-card.closed .history-case-metrics span {
+  padding: 4px 6px;
+}
+
+.history-case-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+  align-items: center;
+  gap: 12px;
+}
+
+.history-case-copy {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .history-case-head {
@@ -1370,11 +1441,46 @@ body {
   line-height: 1.35;
 }
 
+.history-case-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .history-case-head span,
 .history-case-metrics {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.history-execution-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(96, 118, 128, 0.12);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.history-execution-badge.stage-1 {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+.history-execution-badge.stage-2 {
+  background: rgba(23, 114, 69, 0.13);
+  color: #177245;
+}
+
+.history-execution-badge.stage-3 {
+  background: rgba(216, 76, 63, 0.13);
+  color: #b13828;
 }
 
 .history-case-return {
@@ -1437,8 +1543,139 @@ body {
   background: rgba(238, 251, 245, 0.78);
 }
 
+.history-case-metrics span.history-outcome-chip.profit {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--positive);
+}
+
+.history-case-metrics span.history-outcome-chip.loss {
+  background: rgba(177, 56, 40, 0.12);
+  color: var(--negative);
+}
+
+.history-case-metrics span.history-outcome-chip.excluded {
+  background: rgba(96, 118, 128, 0.12);
+  color: var(--muted);
+}
+
+.history-case-metrics span.history-outcome-chip.active {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+.history-buy-levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-self: center;
+  justify-self: end;
+  width: 100%;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(17, 50, 62, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.history-buy-level {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 1px solid rgba(17, 50, 62, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.history-buy-level em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.history-buy-level strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.history-buy-level.pending {
+  opacity: 0.72;
+}
+
+.history-buy-level.executed {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(244, 249, 255, 0.86);
+}
+
+.history-buy-level.executed.stage-2 {
+  border-color: rgba(23, 114, 69, 0.18);
+  background: rgba(238, 251, 245, 0.78);
+}
+
+.history-buy-level.executed.stage-3 {
+  border-color: rgba(216, 76, 63, 0.18);
+  background: rgba(255, 246, 244, 0.78);
+}
+
 .history-matrix-modal-panel {
   width: min(860px, calc(100vw - 32px));
+}
+
+.history-chart-modal-panel {
+  width: min(100%, 1100px);
+}
+
+.history-chart-modal-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.history-chart-modal-summary article {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(238, 251, 245, 0.78);
+}
+
+.history-chart-modal-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-chart-modal-summary strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.history-chart-modal-summary strong.positive {
+  color: var(--positive);
+}
+
+.history-chart-modal-summary strong.negative {
+  color: var(--negative);
+}
+
+.history-chart-modal-summary strong.neutral {
+  color: var(--neutral);
+}
+
+.history-chart-modal-shell {
+  margin-top: 8px;
+}
+
+.history-chart-modal-container {
+  height: 420px;
 }
 
 .history-matrix-modal-body {
@@ -5160,7 +5397,8 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .history-summary-grid {
+  .history-summary-grid,
+  .history-chart-modal-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5245,7 +5483,8 @@ body {
 
   .market-flow-summary-grid,
   .market-flow-meter-grid,
-  .history-summary-grid {
+  .history-summary-grid,
+  .history-chart-modal-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5343,8 +5582,32 @@ body {
 
   .market-flow-summary-grid,
   .market-flow-meter-grid,
-  .history-summary-grid {
+  .history-summary-grid,
+  .history-chart-modal-summary {
     grid-template-columns: 1fr;
+  }
+
+  .history-buy-levels {
+    justify-self: stretch;
+    grid-template-columns: repeat(3, minmax(86px, 1fr));
+    overflow-x: auto;
+  }
+
+  .history-case-main {
+    grid-template-columns: 1fr;
+  }
+
+  .history-case-card.closed .history-case-main {
+    grid-template-columns: 1fr;
+  }
+
+  .history-case-card.closed .history-buy-levels {
+    grid-template-columns: repeat(3, minmax(86px, 1fr));
+    overflow-x: auto;
+  }
+
+  .history-case-head {
+    align-items: center;
   }
 
   .market-flow-summary-card,
@@ -5537,6 +5800,7 @@ body {
   .theme-detail-modal-panel,
   .index-chart-modal-panel,
   .history-matrix-modal-panel,
+  .history-chart-modal-panel,
   .swing-score-modal-panel {
     width: 100%;
     max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
@@ -5790,6 +6054,7 @@ body {
   .theme-detail-modal-panel,
   .index-chart-modal-panel,
   .history-matrix-modal-panel,
+  .history-chart-modal-panel,
   .swing-score-modal-panel {
     padding: 14px;
     border-radius: 18px;

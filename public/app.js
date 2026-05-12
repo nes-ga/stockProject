@@ -22,6 +22,9 @@ const SWING_LOOKBACK_DAYS = 45;
 const SERVER_RECOMMENDATION_REFRESH_INTERVAL_MS = 60 * 1000;
 const RECOMMENDATION_SCAN_POLL_INTERVAL_MS = 3000;
 const DEFAULT_VISIBLE_TRADING_SESSIONS = 45;
+const CHART_RIGHT_ANCHOR_OFFSET = 0.5;
+const MIN_VISIBLE_TRADING_SESSIONS = 12;
+const WHEEL_ZOOM_STEP = 1.18;
 const DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS = {
   daily: 45,
   weekly: 52,
@@ -481,6 +484,9 @@ let recommendationHistoryPayload = null;
 let recommendationHistoryLoaded = false;
 let recommendationHistoryLoading = false;
 let recommendationHistoryError = "";
+let activeHistoryChartItem = null;
+let historyChartState = null;
+let historyChartLoading = false;
 let stockModalPointerDownOnBackdrop = false;
 let marketEventModalPointerDownOnBackdrop = false;
 let themeDetailModalPointerDownOnBackdrop = false;
@@ -575,6 +581,15 @@ const openHistoryMatrixModalBtn = document.querySelector("#openHistoryMatrixModa
 const historyMatrixModal = document.querySelector("#historyMatrixModal");
 const closeHistoryMatrixModalBtn = document.querySelector("#closeHistoryMatrixModalBtn");
 const historyMatrixModalBody = document.querySelector("#historyMatrixModalBody");
+const historyChartModal = document.querySelector("#historyChartModal");
+const closeHistoryChartModalBtn = document.querySelector("#closeHistoryChartModalBtn");
+const historyChartModalTitle = document.querySelector("#historyChartModalTitle");
+const historyChartModalMeta = document.querySelector("#historyChartModalMeta");
+const historyChartModalSummary = document.querySelector("#historyChartModalSummary");
+const historyChartModalContainer = document.querySelector("#historyChartModalContainer");
+const historyChartModalTooltip = document.querySelector("#historyChartModalTooltip");
+const historyChartModalStartDate = document.querySelector("#historyChartModalStartDate");
+const historyChartModalEndDate = document.querySelector("#historyChartModalEndDate");
 const recommendationHistoryCurrentCases = document.querySelector("#recommendationHistoryCurrentCases");
 const recommendationHistoryClosedCases = document.querySelector("#recommendationHistoryClosedCases");
 const marketEventCalendarBoard = document.querySelector("#marketEventCalendarBoard");
@@ -926,6 +941,7 @@ closeIndexChartModalBtn?.addEventListener("click", closeIndexChartModal);
 closeSwingScoreModalBtn?.addEventListener("click", closeSwingScoreModal);
 openHistoryMatrixModalBtn?.addEventListener("click", openHistoryMatrixModal);
 closeHistoryMatrixModalBtn?.addEventListener("click", closeHistoryMatrixModal);
+closeHistoryChartModalBtn?.addEventListener("click", closeHistoryChartModal);
 closeMarketEventModalBtn?.addEventListener("click", closeMarketEventModal);
 closeThemeDetailModalBtn?.addEventListener("click", closeThemeDetailModal);
 
@@ -1002,6 +1018,41 @@ historyMatrixModal?.addEventListener("click", (event) => {
   }
 });
 
+historyChartModal?.addEventListener("click", (event) => {
+  if (event.target === historyChartModal) {
+    closeHistoryChartModal();
+  }
+});
+
+recommendationHistoryCurrentCases?.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-history-chart-symbol]");
+  if (!trigger) {
+    return;
+  }
+
+  void openHistoryChartModal({
+    symbol: trigger.dataset.historyChartSymbol,
+    profile: trigger.dataset.historyChartProfile
+  });
+});
+
+recommendationHistoryCurrentCases?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  const trigger = event.target.closest("[data-history-chart-symbol]");
+  if (!trigger) {
+    return;
+  }
+
+  event.preventDefault();
+  void openHistoryChartModal({
+    symbol: trigger.dataset.historyChartSymbol,
+    profile: trigger.dataset.historyChartProfile
+  });
+});
+
 marketEventModal?.addEventListener("pointerdown", (event) => {
   marketEventModalPointerDownOnBackdrop = event.target === marketEventModal;
 });
@@ -1064,6 +1115,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && historyMatrixModal && !historyMatrixModal.classList.contains("hidden")) {
     closeHistoryMatrixModal();
+    return;
+  }
+
+  if (event.key === "Escape" && historyChartModal && !historyChartModal.classList.contains("hidden")) {
+    closeHistoryChartModal();
     return;
   }
 
@@ -1725,10 +1781,13 @@ function renderRecommendationHistoryBoard() {
   const pendingEntryCandidates = Array.isArray(payload?.pendingEntryCandidates) ? payload.pendingEntryCandidates : [];
   const currentCases = cases.filter((item) => item.lifecycleStatus === "current");
   const closedCases = cases.filter((item) => item.lifecycleStatus === "closed");
+  const returnStatsCases = cases.filter((item) => getExecutedBuyCountForHistoryItem(item) > 0 && item.historyOutcome?.includeInReturnStats !== false);
   const secondOrMore = cases.filter((item) => item.executedBuyCount >= 2);
-  const profitableCases = cases.filter((item) => (item.unrealizedReturnPct ?? 0) > 0);
+  const profitExitCases = cases.filter((item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit");
   const averageReturn =
-    cases.length > 0 ? cases.reduce((sum, item) => sum + (Number(item.unrealizedReturnPct) || 0), 0) / cases.length : undefined;
+    returnStatsCases.length > 0
+      ? returnStatsCases.reduce((sum, item) => sum + (Number(item.unrealizedReturnPct) || 0), 0) / returnStatsCases.length
+      : undefined;
 
   recommendationHistorySummary.innerHTML = [
     renderHistorySummaryCard("추적 케이스", formatNumber(summary.openedCases ?? cases.length), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
@@ -1740,8 +1799,8 @@ function renderRecommendationHistoryBoard() {
       "체결 평균가 대비",
       averageReturn == null ? "" : averageReturn >= 0 ? "positive" : "negative"
     ),
-    renderHistorySummaryCard("2차 이상", formatNumber(summary.secondBuyReachedCases ?? secondOrMore.length), "오늘 저가 터치 기준", "neutral"),
-    renderHistorySummaryCard("매수 전 제외", formatNumber(summary.pendingEntryCandidateCount ?? pendingEntryCandidates.length), "추천 중 미체결", "")
+    renderHistorySummaryCard("수익 종료", formatNumber(summary.profitExitCases ?? profitExitCases.length), "슈팅/완만 상승 종료", "positive"),
+    renderHistorySummaryCard("매수 전 제외", formatNumber((summary.entryMissedUpsideCases ?? 0) + (summary.pendingEntryCandidateCount ?? pendingEntryCandidates.length)), "미체결 제외/대기", "")
   ].join("");
 
   recommendationHistoryCurrentCases.classList.remove("history-placeholder");
@@ -1765,6 +1824,11 @@ function renderHistorySummaryCard(label, value, description, tone = "") {
   `;
 }
 
+function getExecutedBuyCountForHistoryItem(item) {
+  const count = Number(item?.executedBuyCount ?? item?.historyCase?.executedBuyCount ?? item?.postEntryOutcome?.executedBuyCount);
+  return Number.isFinite(count) ? count : 0;
+}
+
 function openHistoryMatrixModal() {
   renderHistoryMatrixModalBody();
   historyMatrixModal?.classList.remove("hidden");
@@ -1772,6 +1836,249 @@ function openHistoryMatrixModal() {
 
 function closeHistoryMatrixModal() {
   historyMatrixModal?.classList.add("hidden");
+}
+
+function closeHistoryChartModal() {
+  historyChartModal?.classList.add("hidden");
+  activeHistoryChartItem = null;
+  historyChartLoading = false;
+  cleanupHistoryChart();
+}
+
+function cleanupHistoryChart() {
+  if (historyChartState?.resizeObserver) {
+    historyChartState.resizeObserver.disconnect();
+  }
+  if (historyChartState?.chart) {
+    historyChartState.chart.remove();
+  }
+  historyChartState = null;
+  historyChartModalTooltip?.classList.add("hidden");
+}
+
+function findHistoryChartItem(symbol, profile) {
+  if (!symbol) {
+    return null;
+  }
+
+  const payload = recommendationHistoryPayload;
+  const currentCandidates = Array.isArray(payload?.currentCandidates) ? payload.currentCandidates : [];
+  const currentCases = Array.isArray(payload?.cases)
+    ? payload.cases.filter((item) => item.lifecycleStatus === "current")
+    : [];
+  const matchesSymbol = (item) => item?.symbol === symbol || item?.historyCase?.symbol === symbol;
+  const matchesProfile = (item) => !profile || item?.profile === profile || item?.historyCase?.profile === profile;
+
+  return (
+    currentCandidates.find((item) => matchesSymbol(item) && matchesProfile(item)) ??
+    currentCases.find((item) => matchesSymbol(item) && matchesProfile(item)) ??
+    null
+  );
+}
+
+function getHistoryChartDisplayItem(item) {
+  const historyCase = item?.historyCase ?? item;
+  const outcome = item?.postEntryOutcome ?? {};
+  return {
+    key: item?.key ?? historyCase?.id ?? `${historyCase?.name ?? ""}-${historyCase?.symbol ?? ""}`,
+    name: item?.name ?? historyCase?.name,
+    symbol: item?.symbol ?? historyCase?.symbol,
+    profile: item?.profile ?? historyCase?.profile,
+    anchorDate: item?.anchorDate ?? historyCase?.openedDate ?? historyCase?.dataDate,
+    latestMentionDate: item?.latestMentionDate ?? historyCase?.dataDate,
+    bucket: item?.bucket ?? historyCase?.entryBucket,
+    averageBuyPrice: historyCase?.averageBuyPrice ?? outcome.averageBuyPrice,
+    latestClose: historyCase?.latestClose ?? outcome.latestClose,
+    unrealizedReturnPct: historyCase?.unrealizedReturnPct ?? outcome.unrealizedReturnPct,
+    executedBuyCount: historyCase?.executedBuyCount ?? outcome.executedBuyCount,
+    buyPlan: historyCase?.buyPlan
+  };
+}
+
+function renderHistoryChartModalShell(item, options = {}) {
+  const displayItem = getHistoryChartDisplayItem(item);
+  if (historyChartModalTitle) {
+    historyChartModalTitle.textContent = `${displayItem.name ?? "-"} 차트`;
+  }
+  if (historyChartModalMeta) {
+    historyChartModalMeta.textContent = `${displayItem.symbol ?? "-"} / ${displayItem.profile ?? "-"} / ${displayItem.bucket ?? "-"}`;
+  }
+
+  if (historyChartModalSummary) {
+    if (options.error) {
+      historyChartModalSummary.innerHTML = `<div class="history-placeholder">${escapeHtml(options.error)}</div>`;
+    } else if (options.loading) {
+      historyChartModalSummary.innerHTML = `<div class="history-placeholder">차트 데이터를 불러오는 중입니다.</div>`;
+    } else {
+      const returnValue = Number(displayItem.unrealizedReturnPct);
+      const returnClass = Number.isFinite(returnValue) && returnValue > 0 ? "positive" : Number.isFinite(returnValue) && returnValue < 0 ? "negative" : "neutral";
+      historyChartModalSummary.innerHTML = [
+        renderHistoryChartSummaryItem("현재가", formatNumber(displayItem.latestClose), ""),
+        renderHistoryChartSummaryItem("평균 매수가", formatNumber(displayItem.averageBuyPrice), ""),
+        renderHistoryChartSummaryItem("수익률", Number.isFinite(returnValue) ? formatPercent(returnValue) : "-", returnClass),
+        renderHistoryChartSummaryItem("체결 단계", `${formatNumber(displayItem.executedBuyCount ?? 0)}차`, "")
+      ].join("");
+    }
+  }
+
+  if (historyChartModalStartDate) {
+    historyChartModalStartDate.textContent = "-";
+  }
+  if (historyChartModalEndDate) {
+    historyChartModalEndDate.textContent = "-";
+  }
+}
+
+function renderHistoryChartSummaryItem(label, value, tone = "") {
+  return `
+    <article>
+      <span>${escapeHtml(label)}</span>
+      <strong class="${escapeHtml(tone)}">${escapeHtml(value)}</strong>
+    </article>
+  `;
+}
+
+async function openHistoryChartModal(input = {}) {
+  const item = findHistoryChartItem(input.symbol, input.profile);
+  if (!item) {
+    showAppToast({
+      title: "차트 열기 실패",
+      message: "현재 추천 상태에서 해당 종목을 찾지 못했습니다.",
+      tone: "negative"
+    });
+    return;
+  }
+
+  const displayItem = getHistoryChartDisplayItem(item);
+  activeHistoryChartItem = displayItem;
+  historyChartLoading = true;
+  historyChartModal?.classList.remove("hidden");
+  cleanupHistoryChart();
+  renderHistoryChartModalShell(item, { loading: true });
+
+  try {
+    const response = await fetch("/analysis/realtime-stock-detail", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        key: displayItem.key,
+        name: displayItem.name,
+        symbol: displayItem.symbol,
+        anchorDate: displayItem.anchorDate,
+        category: "swing"
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "차트 데이터를 불러오지 못했습니다.");
+    }
+
+    if (activeHistoryChartItem?.symbol !== displayItem.symbol || activeHistoryChartItem?.profile !== displayItem.profile) {
+      return;
+    }
+
+    const latestClose = typeof payload.latestClose === "number" ? payload.latestClose : displayItem.latestClose;
+    const averageBuyPrice = displayItem.averageBuyPrice;
+    const unrealizedReturnPct =
+      typeof averageBuyPrice === "number" && Number.isFinite(averageBuyPrice) && averageBuyPrice !== 0 && typeof latestClose === "number"
+        ? ((latestClose - averageBuyPrice) / averageBuyPrice) * 100
+        : displayItem.unrealizedReturnPct;
+    activeHistoryChartItem = {
+      ...displayItem,
+      latestClose,
+      unrealizedReturnPct
+    };
+    renderHistoryChartModalShell(activeHistoryChartItem);
+    syncHistoryChartModal(payload.chartWindow?.points ?? [], activeHistoryChartItem);
+  } catch (error) {
+    console.error(error);
+    renderHistoryChartModalShell(item, {
+      error: error instanceof Error ? error.message : "차트 데이터를 불러오지 못했습니다."
+    });
+  } finally {
+    historyChartLoading = false;
+  }
+}
+
+function syncHistoryChartModal(points, item) {
+  if (!historyChartModalContainer || !Array.isArray(points) || !points.length) {
+    return;
+  }
+
+  if (!historyChartState) {
+    historyChartState = createMarketWatchChartState(historyChartModalContainer, historyChartModalTooltip);
+  }
+
+  const movingAverageConfig = getMarketWatchMovingAverageConfig("daily");
+  historyChartState.points = points;
+  historyChartState.movingAverageConfig = movingAverageConfig;
+
+  historyChartState.candleSeries.setData(points.map((point) => ({
+    time: point.date,
+    open: point.open ?? point.close,
+    high: point.high ?? point.close,
+    low: point.low ?? point.close,
+    close: point.close
+  })));
+  historyChartState.volumeSeries.setData(points.map((point) => ({
+    time: point.date,
+    value: point.volume ?? 0,
+    color: (point.close ?? 0) >= (point.open ?? point.close ?? 0) ? "rgba(216,76,63,0.34)" : "rgba(47,110,229,0.3)"
+  })));
+
+  for (const [index, series] of historyChartState.movingAverageSeries.entries()) {
+    const config = movingAverageConfig[index];
+    if (!config) {
+      series.setData([]);
+      continue;
+    }
+    series.applyOptions({ color: config.color });
+    series.setData(buildIndexMovingAverage(points, config.period));
+  }
+
+  const priceLines = [];
+  if (typeof item.averageBuyPrice === "number" && Number.isFinite(item.averageBuyPrice) && item.averageBuyPrice > 0) {
+    priceLines.push(
+      historyChartState.candleSeries.createPriceLine({
+        price: item.averageBuyPrice,
+        color: "rgba(202, 138, 4, 0.95)",
+        lineStyle: LineStyle.Dashed,
+        lineWidth: 2,
+        axisLabelVisible: true,
+        title: "평균 매수가"
+      })
+    );
+  }
+  if (typeof item.buyPlan?.stopLossPrice === "number" && Number.isFinite(item.buyPlan.stopLossPrice) && item.buyPlan.stopLossPrice > 0) {
+    priceLines.push(
+      historyChartState.candleSeries.createPriceLine({
+        price: item.buyPlan.stopLossPrice,
+        color: "rgba(185, 28, 28, 0.95)",
+        lineStyle: LineStyle.Dotted,
+        lineWidth: 2,
+        axisLabelVisible: true,
+        title: "손절가"
+      })
+    );
+  }
+
+  for (const priceLine of historyChartState.priceLines ?? []) {
+    historyChartState.candleSeries.removePriceLine(priceLine);
+  }
+  historyChartState.priceLines = priceLines;
+  historyChartState.chart.timeScale().setVisibleLogicalRange({
+    from: Math.max(0, points.length - DEFAULT_VISIBLE_TRADING_SESSIONS) - 1,
+    to: points.length - 1 + CHART_RIGHT_ANCHOR_OFFSET
+  });
+
+  if (historyChartModalStartDate) {
+    historyChartModalStartDate.textContent = points[0]?.date ?? "-";
+  }
+  if (historyChartModalEndDate) {
+    historyChartModalEndDate.textContent = points.at(-1)?.date ?? "-";
+  }
 }
 
 function renderHistoryMatrixModalBody() {
@@ -1822,11 +2129,11 @@ function renderHistoryMatrix(_summary, cases, options = {}) {
   }
 
   const rows = [
-    ["1차만 체결", cases.filter((item) => item.executedBuyCount === 1).length],
-    ["2차까지 체결", cases.filter((item) => item.executedBuyCount >= 2).length],
-    ["3차까지 체결", cases.filter((item) => item.executedBuyCount >= 3).length],
-    ["수익 상태", cases.filter((item) => (item.unrealizedReturnPct ?? 0) > 0).length],
-    ["손실 상태", cases.filter((item) => (item.unrealizedReturnPct ?? 0) < 0).length]
+    ["슈팅 수익", cases.filter((item) => item.historyOutcome?.type === "target_hit").length],
+    ["완만 상승", cases.filter((item) => item.historyOutcome?.type === "drift_profit_exit").length],
+    ["손절 종료", cases.filter((item) => item.historyOutcome?.type === "stop_broken").length],
+    ["시간 종료", cases.filter((item) => item.historyOutcome?.type === "stale_timeout").length],
+    ["매수 전 제외", cases.filter((item) => item.historyOutcome?.type === "entry_missed_upside").length]
   ];
 
   return `
@@ -1876,25 +2183,50 @@ function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
         .map((item) => {
           const historyCase = item.historyCase;
           const hasHistoryCase = Boolean(item.hasHistoryCase && historyCase);
-          const returnValue = Number(historyCase?.unrealizedReturnPct);
+          const liveOutcome = item.postEntryOutcome ?? {};
+          const executedBuyCount = hasHistoryCase ? historyCase?.executedBuyCount : item.postEntryOutcome?.executedBuyCount ?? 0;
+          const executedBuys = hasHistoryCase ? historyCase?.executedBuys : item.postEntryOutcome?.executedBuys;
+          const buyPlan = historyCase?.buyPlan ?? item.buyPlan;
+          const outcome = historyCase?.historyOutcome ?? getActiveHistoryOutcome(executedBuyCount);
+          const returnValue = Number(hasHistoryCase ? historyCase?.unrealizedReturnPct : liveOutcome.unrealizedReturnPct);
+          const averageBuyPrice = hasHistoryCase ? historyCase?.averageBuyPrice : liveOutcome.averageBuyPrice;
+          const latestClose = hasHistoryCase ? historyCase?.latestClose ?? liveOutcome.latestClose : liveOutcome.latestClose;
           const returnClass = Number.isFinite(returnValue) && returnValue > 0 ? "positive" : Number.isFinite(returnValue) && returnValue < 0 ? "negative" : "neutral";
+          const returnBadge = Number.isFinite(returnValue)
+            ? `<span class="history-case-return ${returnClass}">${formatPercent(returnValue)}</span>`
+            : "";
           const bucketLabel = item.sourceBucket === "watch" ? "관찰 후보" : "매수 후보";
           return `
-            <article class="history-case-card current">
-              <div class="history-case-head">
-                <div>
-                  <strong>${escapeHtml(item.name ?? historyCase?.name ?? "-")}</strong>
-                  <span>${escapeHtml(item.symbol ?? historyCase?.symbol ?? "-")} / ${escapeHtml(item.profile ?? historyCase?.profile ?? "-")} / ${escapeHtml(bucketLabel)}</span>
+            <article
+              class="history-case-card current"
+              role="button"
+              tabindex="0"
+              data-history-chart-symbol="${escapeHtml(item.symbol ?? historyCase?.symbol ?? "")}"
+              data-history-chart-profile="${escapeHtml(item.profile ?? historyCase?.profile ?? "")}"
+              aria-label="${escapeHtml(item.name ?? historyCase?.name ?? "-")} 차트 열기"
+            >
+              <div class="history-case-main">
+                <div class="history-case-copy">
+                  <div class="history-case-head">
+                    <div>
+                      <div class="history-case-title-line">
+                        <strong>${escapeHtml(item.name ?? historyCase?.name ?? "-")}</strong>
+                        ${renderHistoryExecutionBadge(executedBuyCount)}
+                      </div>
+                      <span>${escapeHtml(item.symbol ?? historyCase?.symbol ?? "-")} / ${escapeHtml(item.profile ?? historyCase?.profile ?? "-")} / ${escapeHtml(bucketLabel)}</span>
+                    </div>
+                    <div class="history-case-tail">
+                      <span class="history-status-pill current">현재</span>
+                      ${returnBadge}
+                    </div>
+                  </div>
+                  <div class="history-case-metrics">
+                    <span>현재가 ${formatNumber(latestClose)}</span>
+                    <span>평균 ${formatNumber(averageBuyPrice)}</span>
+                    ${renderHistoryOutcomeChip(outcome)}
+                  </div>
                 </div>
-                <span class="history-status-pill current">현재</span>
-              </div>
-              <div class="history-case-metrics">
-                <span>${hasHistoryCase ? `${formatNumber(historyCase.executedBuyCount)}차 체결 가정` : `${formatNumber(item.postEntryOutcome?.executedBuyCount ?? 0)}차 체결 진행`}</span>
-                ${
-                  hasHistoryCase
-                    ? `<span>평균 ${formatNumber(historyCase.averageBuyPrice)}</span><span class="history-case-return ${returnClass}">${formatPercent(returnValue)}</span>`
-                    : `<span>평균 ${formatNumber(item.postEntryOutcome?.averageBuyPrice)}</span>`
-                }
+                ${renderHistoryBuyLevels(buyPlan, executedBuys)}
               </div>
             </article>
           `;
@@ -1918,26 +2250,99 @@ function renderHistoryCaseList(cases, options = {}) {
         .slice(0, limit)
         .map((item) => {
           const returnClass = (item.unrealizedReturnPct ?? 0) > 0 ? "positive" : (item.unrealizedReturnPct ?? 0) < 0 ? "negative" : "neutral";
-          const statusLabel = mode === "closed" ? "종료" : item.lifecycleStatus === "current" ? "현재" : "기록";
+          const outcome = item.historyOutcome ?? getActiveHistoryOutcome(item.executedBuyCount);
+          const statusLabel = mode === "closed" ? outcome.label : item.lifecycleStatus === "current" ? "현재" : "기록";
           const statusClass = mode === "closed" ? "closed" : item.lifecycleStatus === "current" ? "current" : "neutral";
           return `
             <article class="history-case-card ${escapeHtml(statusClass)}">
-              <div class="history-case-head">
-                <div>
-                  <strong>${escapeHtml(item.name ?? "-")}</strong>
-                  <span>${escapeHtml(item.symbol ?? "-")} / ${escapeHtml(item.profile ?? "-")}</span>
+              <div class="history-case-main">
+                <div class="history-case-copy">
+                  <div class="history-case-head">
+                    <div>
+                      <div class="history-case-title-line">
+                        <strong>${escapeHtml(item.name ?? "-")}</strong>
+                        ${renderHistoryExecutionBadge(item.executedBuyCount)}
+                      </div>
+                      <span>${escapeHtml(item.symbol ?? "-")} / ${escapeHtml(item.profile ?? "-")}</span>
+                    </div>
+                    <div class="history-case-tail">
+                      <span class="history-status-pill ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
+                      <span class="history-case-return ${returnClass}">${formatPercent(Number(item.unrealizedReturnPct) || 0)}</span>
+                    </div>
+                  </div>
+                  <div class="history-case-metrics">
+                    <span>현재가 ${formatNumber(item.latestClose)}</span>
+                    <span>평균 ${formatNumber(item.averageBuyPrice)}</span>
+                    ${renderHistoryOutcomeChip(outcome)}
+                  </div>
                 </div>
-                <div class="history-case-tail">
-                  <span class="history-status-pill ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
-                  <span class="history-case-return ${returnClass}">${formatPercent(Number(item.unrealizedReturnPct) || 0)}</span>
-                </div>
-              </div>
-              <div class="history-case-metrics">
-                <span>${formatNumber(item.executedBuyCount)}차 체결</span>
-                <span>평균 ${formatNumber(item.averageBuyPrice)}</span>
-                <span>종가 ${formatNumber(item.latestClose)}</span>
+                ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys)}
               </div>
             </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderHistoryExecutionBadge(executedBuyCount) {
+  const count = Number(executedBuyCount) || 0;
+  if (count <= 0) {
+    return `<span class="history-execution-badge pending">매수 전</span>`;
+  }
+
+  return `<span class="history-execution-badge stage-${Math.min(3, count)}">${formatNumber(count)}차 체결</span>`;
+}
+
+function getActiveHistoryOutcome(executedBuyCount) {
+  return Number(executedBuyCount) > 0
+    ? { label: "진행 중", category: "active", description: "현재 추천 목록에 남아 있습니다." }
+    : { label: "매수 전", category: "active", description: "아직 체결 가정 전입니다." };
+}
+
+function renderHistoryOutcomeChip(outcome) {
+  if (!outcome?.label) {
+    return "";
+  }
+
+  return `<span class="history-outcome-chip ${escapeHtml(outcome.category ?? "neutral")}" title="${escapeHtml(outcome.description ?? "")}">${escapeHtml(outcome.label)}</span>`;
+}
+
+function renderHistoryBuyLevels(buyPlan, executedBuys) {
+  const executedStages = new Set(
+    (Array.isArray(executedBuys) ? executedBuys : [])
+      .map((buy) => Number(buy?.stage))
+      .filter((stage) => Number.isFinite(stage) && stage > 0)
+  );
+  const plannedBuys = buyPlan
+    ? [
+        { stage: 1, price: buyPlan.firstBuyPrice },
+        { stage: 2, price: buyPlan.secondBuyPrice },
+        { stage: 3, price: buyPlan.thirdBuyPrice }
+      ].filter((buy) => Number.isFinite(Number(buy.price)))
+    : [];
+  const fallbackBuys = Array.isArray(executedBuys)
+    ? executedBuys.filter((buy) => Number.isFinite(Number(buy?.price)))
+    : [];
+  const buys = plannedBuys.length ? plannedBuys : fallbackBuys;
+  if (!buys.length) {
+    return "";
+  }
+
+  return `
+    <div class="history-buy-levels">
+      ${[...buys]
+        .sort((left, right) => Number(left.stage ?? 0) - Number(right.stage ?? 0))
+        .map((buy) => {
+          const stage = Number(buy.stage ?? 0);
+          const stageClass = stage >= 1 && stage <= 3 ? `stage-${stage}` : "stage-extra";
+          const executionClass = executedStages.has(stage) ? "executed" : "pending";
+          return `
+            <span class="history-buy-level ${escapeHtml(stageClass)} ${executionClass}">
+              <em>${formatNumber(stage)}차 매수가</em>
+              <strong>${formatNumber(buy.price)}</strong>
+            </span>
           `;
         })
         .join("")}
@@ -8657,6 +9062,9 @@ function cleanupChart() {
   }
   if (activeChart) {
     clearInteractivePriceLines(activeChart);
+    if (activeChart.wheelTarget && activeChart.wheelHandler) {
+      activeChart.wheelTarget.removeEventListener("wheel", activeChart.wheelHandler);
+    }
     activeChart.priceChart.remove();
     activeChart.volumeChart.remove();
     activeChart = null;
@@ -8840,16 +9248,17 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
       borderColor: "rgba(31,26,20,0.12)",
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 8
+      rightOffset: CHART_RIGHT_ANCHOR_OFFSET,
+      rightBarStaysOnScroll: true
     },
     handleScroll: {
-      mouseWheel: true,
+      mouseWheel: false,
       pressedMouseMove: true,
       horzTouchDrag: true,
       vertTouchDrag: true
     },
     handleScale: {
-      mouseWheel: true,
+      mouseWheel: false,
       pinch: true,
       axisPressedMouseMove: true
     }
@@ -8928,6 +9337,9 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
   };
   const showEnvelope = Boolean(options.showEnvelope);
   const envelopeBands = showEnvelope ? buildEnvelopeBands(points) : null;
+  const wheelHandler = (event) => {
+    applyLatestAnchoredWheelZoom(event, priceChart, chartState.points);
+  };
 
   candleSeries.setData(buildInteractiveCandleSeriesData(points));
   volumeSeries.setData(buildInteractiveVolumeSeriesData(points));
@@ -9000,6 +9412,7 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
   });
 
   setDefaultVisibleTradingRange(priceChart, points);
+  stack.addEventListener("wheel", wheelHandler, { passive: false });
 
   resizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0];
@@ -9028,6 +9441,8 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
     anchorDate,
     swingTradeOverlay,
     showEnvelope,
+    wheelTarget: stack,
+    wheelHandler,
     priceLines: []
   };
   applyInteractivePriceLines(activeChart, points, anchorDate, swingTradeOverlay);
@@ -9069,21 +9484,71 @@ function buildEnvelopeBands(points, period = 20, bandPercent = 10) {
 }
 
 function setDefaultVisibleTradingRange(priceChart, points, visibleSessions = DEFAULT_VISIBLE_TRADING_SESSIONS) {
-  const tradingIndexes = points
-    .map((point, index) => ({ point, index }))
-    .filter(({ point }) => !point.isWhitespace && typeof point.close === "number");
+  const tradingIndexes = getTradingLogicalIndexes(points);
 
   if (!tradingIndexes.length) {
     priceChart.timeScale().fitContent();
     return;
   }
 
-  const endIndex = tradingIndexes.at(-1).index;
-  const startIndex = tradingIndexes[Math.max(0, tradingIndexes.length - visibleSessions)].index;
+  const endIndex = tradingIndexes.at(-1);
+  const startIndex = tradingIndexes[Math.max(0, tradingIndexes.length - visibleSessions)];
   priceChart.timeScale().setVisibleLogicalRange({
     from: startIndex - 1,
-    to: endIndex + 0.5
+    to: endIndex + CHART_RIGHT_ANCHOR_OFFSET
   });
+}
+
+function getTradingLogicalIndexes(points) {
+  return points
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => !point.isWhitespace && typeof point.close === "number")
+    .map(({ index }) => index);
+}
+
+function getLatestAnchoredVisibleRange(points, visibleSpan) {
+  const tradingIndexes = getTradingLogicalIndexes(points);
+  if (!tradingIndexes.length) {
+    return null;
+  }
+
+  const latestIndex = tradingIndexes.at(-1);
+  const rightEdge = latestIndex + CHART_RIGHT_ANCHOR_OFFSET;
+  const maxSpan = Math.max(MIN_VISIBLE_TRADING_SESSIONS, rightEdge + 1);
+  const clampedSpan = Math.min(Math.max(visibleSpan, MIN_VISIBLE_TRADING_SESSIONS), maxSpan);
+
+  return {
+    from: Math.max(-1, rightEdge - clampedSpan),
+    to: rightEdge
+  };
+}
+
+function applyLatestAnchoredVisibleSpan(chart, points, visibleSpan) {
+  const range = getLatestAnchoredVisibleRange(points, visibleSpan);
+  if (!range) {
+    chart.timeScale().fitContent();
+    return;
+  }
+
+  chart.timeScale().setVisibleLogicalRange(range);
+}
+
+function applyLatestAnchoredWheelZoom(event, chart, points) {
+  if (!Array.isArray(points) || !points.length || !event.deltaY) {
+    return;
+  }
+
+  event.preventDefault();
+  const currentRange = chart.timeScale().getVisibleLogicalRange?.();
+  const currentSpan =
+    currentRange && Number.isFinite(currentRange.from) && Number.isFinite(currentRange.to)
+      ? currentRange.to - currentRange.from
+      : DEFAULT_VISIBLE_TRADING_SESSIONS;
+  const wheelUnits = Math.min(6, Math.max(1, Math.abs(event.deltaY) / 100));
+  const zoomFactor = WHEEL_ZOOM_STEP ** wheelUnits;
+  const nextSpan = event.deltaY > 0 ? currentSpan * zoomFactor : currentSpan / zoomFactor;
+
+  applyLatestAnchoredVisibleSpan(chart, points, nextSpan);
 }
 
 function getChartSeriesRange(points) {

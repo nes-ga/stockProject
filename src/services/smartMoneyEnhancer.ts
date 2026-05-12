@@ -65,6 +65,25 @@ function average(values: number[]): number | undefined {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
 }
 
+function getStagedBuyWeight(stage: number): number {
+  if (stage >= 3) {
+    return 4;
+  }
+  if (stage === 2) {
+    return 2;
+  }
+  return 1;
+}
+
+function weightedAverageExecutedBuys(executedBuys: SmartMoneyPostEntryOutcome["executedBuys"]): number | undefined {
+  const totalWeight = executedBuys.reduce((sum, buy) => sum + getStagedBuyWeight(buy.stage), 0);
+  if (!totalWeight) {
+    return undefined;
+  }
+
+  return executedBuys.reduce((sum, buy) => sum + buy.price * getStagedBuyWeight(buy.stage), 0) / totalWeight;
+}
+
 function percentChange(current: number, previous?: number): number | undefined {
   if (!previous || previous === 0) {
     return undefined;
@@ -322,7 +341,7 @@ function calculatePostEntryOutcome(
       targetHitStageCount = executedBuys.length;
     }
 
-    const averageBuyPrice = average(executedBuys.map((buy) => buy.price));
+    const averageBuyPrice = weightedAverageExecutedBuys(executedBuys);
     if (averageBuyPrice == null) {
       continue;
     }
@@ -357,21 +376,31 @@ function calculatePostEntryOutcome(
   }
 
   if (!executedBuys.length) {
+    const referencePoint = points[referenceIndex];
     return {
       status: "no_entry",
       executedBuyCount: 0,
-      executedBuys: []
+      executedBuys: [],
+      latestClose: referencePoint?.close == null ? undefined : roundPrice(referencePoint.close, pricingContext),
+      latestDate: referencePoint?.date
     };
   }
 
-  const averageBuyPrice = average(executedBuys.map((buy) => buy.price));
+  const averageBuyPrice = weightedAverageExecutedBuys(executedBuys);
   const targetReturnPct = getTargetReturnPct(executedBuys.length);
+  const referencePoint = points[referenceIndex];
+  const latestClose = referencePoint?.close;
+  const unrealizedReturnPct =
+    averageBuyPrice == null || latestClose == null ? undefined : percentChange(latestClose, averageBuyPrice);
 
   return {
     status: targetHitStatus ?? "active",
     executedBuyCount: executedBuys.length,
     executedBuys,
     averageBuyPrice: averageBuyPrice == null ? undefined : roundPrice(averageBuyPrice, pricingContext),
+    latestClose: latestClose == null ? undefined : roundPrice(latestClose, pricingContext),
+    latestDate: referencePoint?.date,
+    unrealizedReturnPct: unrealizedReturnPct == null ? undefined : roundPercent(unrealizedReturnPct),
     maxFavorablePrice: roundPrice(maxFavorablePrice, pricingContext),
     maxFavorableDate,
     maxFavorableReturnPct: maxFavorableReturnPct == null ? undefined : roundPercent(maxFavorableReturnPct),

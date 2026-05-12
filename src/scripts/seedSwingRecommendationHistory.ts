@@ -46,7 +46,7 @@ type SwingHistoryCase = {
   entryBucket: string;
   status: "active";
   assumption: {
-    executionModel: "equal_weight_staged_buy";
+    executionModel: "weighted_staged_buy";
     trigger: "daily_low_touched_buy_price";
     note: string;
   };
@@ -102,6 +102,7 @@ type SwingHistoryPayload = {
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, "../..");
 const today = process.env.HISTORY_DATE ?? formatDateInSeoul(new Date());
+const SWING_MIN_REFERENCE_PRICE = 1000;
 
 const sourceFiles = [
   { profile: "default" as const, file: "server-swing-picks.json" },
@@ -158,6 +159,21 @@ function round(value: number, digits = 2) {
   return Math.round(value * factor) / factor;
 }
 
+function getStagedBuyWeight(stage: number) {
+  if (stage >= 3) {
+    return 4;
+  }
+  if (stage === 2) {
+    return 2;
+  }
+  return 1;
+}
+
+function weightedAverageExecutedBuys(executedBuys: Array<{ stage: 1 | 2 | 3; price: number }>) {
+  const totalWeight = executedBuys.reduce((sum, buy) => sum + getStagedBuyWeight(buy.stage), 0);
+  return executedBuys.reduce((sum, buy) => sum + buy.price * getStagedBuyWeight(buy.stage), 0) / totalWeight;
+}
+
 function resolveLatestPoint(points: ChartPoint[]) {
   const validPoints = points.filter((point) => point.date <= today && typeof point.close === "number");
   return validPoints.at(-1);
@@ -193,12 +209,16 @@ async function buildCase(profile: "default" | "smallcap", item: SwingPick): Prom
   }
 
   const effectiveLow = latestPoint.low > 0 ? latestPoint.low : latestPoint.close;
+  if (latestPoint.close <= SWING_MIN_REFERENCE_PRICE || buyPlan.firstBuyPrice <= SWING_MIN_REFERENCE_PRICE) {
+    return undefined;
+  }
+
   const executedBuys = resolveExecutedBuys(buyPlan, effectiveLow);
   if (!executedBuys.length) {
     return undefined;
   }
 
-  const averageBuyPrice = executedBuys.reduce((sum, buy) => sum + buy.price, 0) / executedBuys.length;
+  const averageBuyPrice = weightedAverageExecutedBuys(executedBuys);
 
   return {
     id: `swing:${profile}:${item.symbol}:${today}`,
@@ -213,9 +233,9 @@ async function buildCase(profile: "default" | "smallcap", item: SwingPick): Prom
     entryBucket: item.bucket ?? "execution",
     status: "active",
     assumption: {
-      executionModel: "equal_weight_staged_buy",
+      executionModel: "weighted_staged_buy",
       trigger: "daily_low_touched_buy_price",
-      note: "오늘 일봉 저가가 각 분할 매수가를 터치하면 해당 단계가 동일 비중으로 체결된 것으로 가정합니다."
+      note: "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
     },
     buyPlan,
     executedBuyCount: executedBuys.length,
@@ -294,3 +314,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

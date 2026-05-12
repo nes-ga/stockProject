@@ -1,0 +1,22 @@
+[2026-05-12T15:54:33.418+09:00] INFO server listening port=3000
+[2026-05-12T15:54:33.663+09:00] INFO newsSignals news-signals:refreshed articleCount=11 signalCount=1 sectorCount=1 collectedAt="2026-05-12T06:54:33.360Z" refreshIntervalMinutes=5
+[2026-05-12T15:54:33.706+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-05-12T15:59:34.188+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=2 sectorCount=2 collectedAt="2026-05-12T06:59:33.739Z" refreshIntervalMinutes=5
+[2026-05-12T16:04:34.087+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=1 sectorCount=1 collectedAt="2026-05-12T07:04:33.775Z" refreshIntervalMinutes=5
+[2026-05-12T16:09:34.213+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=1 sectorCount=1 collectedAt="2026-05-12T07:09:33.805Z" refreshIntervalMinutes=5
+[2026-05-12T16:14:34.010+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=4 sectorCount=3 collectedAt="2026-05-12T07:14:33.840Z" refreshIntervalMinutes=5
+[2026-05-12T16:19:34.238+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=3 sectorCount=3 collectedAt="2026-05-12T07:19:33.858Z" refreshIntervalMinutes=5
+[2026-05-12T16:24:34.101+09:00] INFO newsSignals news-signals:refreshed articleCount=6 signalCount=2 sectorCount=2 collectedAt="2026-05-12T07:24:33.879Z" refreshIntervalMinutes=5
+[2026-05-12T16:29:34.390+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=2 sectorCount=2 collectedAt="2026-05-12T07:29:33.898Z" refreshIntervalMinutes=5
+[2026-05-12T16:34:36.594+09:00] INFO newsSignals news-signals:refreshed articleCount=4 signalCount=2 sectorCount=2 collectedAt="2026-05-12T07:34:33.916Z" refreshIntervalMinutes=5
+[2026-05-12T16:39:33.953+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-12T07:39:33.934Z" refreshIntervalMinutes=5
+[2026-05-12T16:44:36.725+09:00] INFO newsSignals news-signals:refreshed articleCount=5 signalCount=2 sectorCount=2 collectedAt="2026-05-12T07:44:33.962Z" refreshIntervalMinutes=5
+[2026-05-12T16:49:34.310+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=2 sectorCount=2 collectedAt="2026-05-12T07:49:33.981Z" refreshIntervalMinutes=5
+[2026-05-12T16:54:34.248+09:00] INFO newsSignals news-signals:refreshed articleCount=11 signalCount=1 sectorCount=1 collectedAt="2026-05-12T07:54:33.997Z" refreshIntervalMinutes=5
+[2026-05-12T16:59:34.246+09:00] INFO newsSignals news-signals:refreshed articleCount=7 signalCount=2 sectorCount=1 collectedAt="2026-05-12T07:59:34.009Z" refreshIntervalMinutes=5
+[2026-05-12T17:04:34.241+09:00] INFO newsSignals news-signals:refreshed articleCount=8 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:04:34.032Z" refreshIntervalMinutes=5
+[2026-05-12T17:09:34.363+09:00] INFO newsSignals news-signals:refreshed articleCount=9 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:09:34.041Z" refreshIntervalMinutes=5
+[2026-05-12T17:14:34.422+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:14:34.063Z" refreshIntervalMinutes=5
+[2026-05-12T17:19:34.395+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:19:34.073Z" refreshIntervalMinutes=5
+[2026-05-12T17:24:34.371+09:00] INFO newsSignals news-signals:refreshed articleCount=12 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:24:34.083Z" refreshIntervalMinutes=5
+[2026-05-12T17:29:34.290+09:00] INFO newsSignals news-signals:refreshed articleCount=10 signalCount=3 sectorCount=2 collectedAt="2026-05-12T08:29:34.100Z" refreshIntervalMinutes=5

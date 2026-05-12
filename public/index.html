@@ -600,6 +600,29 @@
       </div>
     </div>
 
+    <div id="historyChartModal" class="modal-backdrop hidden">
+      <div class="modal-panel history-chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyChartModalTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="historyChartModalTitle">추천 차트</h3>
+            <p id="historyChartModalMeta" class="field-help modal-field-help"></p>
+          </div>
+          <button id="closeHistoryChartModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+        <div id="historyChartModalSummary" class="history-chart-modal-summary"></div>
+        <div class="index-watch-chart-shell history-chart-modal-shell">
+          <div class="index-watch-chart-frame">
+            <div id="historyChartModalContainer" class="index-watch-chart history-chart-modal-container"></div>
+            <div id="historyChartModalTooltip" class="chart-tooltip index-watch-tooltip hidden"></div>
+          </div>
+          <div class="index-watch-range">
+            <span id="historyChartModalStartDate">-</span>
+            <span id="historyChartModalEndDate">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="marketEventModal" class="modal-backdrop hidden">
       <div class="modal-panel market-event-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marketEventModalTitle">
         <div class="modal-head">
