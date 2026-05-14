@@ -61,6 +61,8 @@ type SwingHistoryCase = {
   sourceKey?: string;
   openedAt?: string;
   openedDate?: string;
+  closedDate?: string;
+  closedMonth?: string;
   dataDate?: string;
   entryBucket?: string;
   status?: string;
@@ -153,6 +155,25 @@ function getExecutedBuyCount(value: unknown) {
   return typeof count === "number" && Number.isFinite(count) ? count : 0;
 }
 
+function getExecutedBuyStageFromBuys(executedBuys: Array<{ stage?: number }> | undefined) {
+  return Math.max(
+    0,
+    ...(executedBuys ?? [])
+      .map((buy) => Number(buy.stage))
+      .filter((stage) => Number.isFinite(stage) && stage > 0)
+  );
+}
+
+function getExecutedBuyStage(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+
+  const executedBuys = (value as { executedBuys?: Array<{ stage?: number }> }).executedBuys;
+  const stage = getExecutedBuyStageFromBuys(executedBuys);
+  return stage > 0 ? stage : getExecutedBuyCount(value);
+}
+
 function formatDateInSeoul(date: Date) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -172,6 +193,14 @@ function round(value: number, digits = 2) {
   return Math.round(value * factor) / factor;
 }
 
+function formatKrw(value: number) {
+  return `${value.toLocaleString("ko-KR")}원`;
+}
+
+function formatSignedPercentText(value: number) {
+  return `${value > 0 ? "+" : ""}${round(value, 2).toFixed(2)}%`;
+}
+
 function parseDateOnly(value: string | undefined) {
   if (!value) {
     return undefined;
@@ -179,6 +208,20 @@ function parseDateOnly(value: string | undefined) {
 
   const date = new Date(`${value.slice(0, 10)}T00:00:00Z`);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function getValidDateText(value: string | undefined) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+}
+
+function getMonthKey(value: string | undefined) {
+  const validDate = getValidDateText(value);
+  return validDate ? validDate.slice(0, 7) : undefined;
+}
+
+function getMonthLabel(month: string) {
+  const [year, monthText] = month.split("-");
+  return year && monthText ? `${year}년 ${monthText}월` : month;
 }
 
 function countBusinessDaysBetween(startDateText: string | undefined, endDateText: string | undefined) {
@@ -313,6 +356,27 @@ function getWeightedAverageBuyPrice(executedBuys: Array<{ stage?: number; price?
   return round(validBuys.reduce((sum, buy) => sum + buy.price * getStagedBuyWeight(buy.stage), 0) / totalWeight, 2);
 }
 
+function inferExecutedBuysFromLowTouch(
+  buyPlan: SwingHistoryCase["buyPlan"] | undefined,
+  latestLow: number | undefined,
+  executedDate: string | undefined
+): Array<{ stage: number; price: number; date?: string }> {
+  if (!buyPlan || !isFiniteNumber(latestLow)) {
+    return [];
+  }
+
+  return [
+    { stage: 1, price: buyPlan.firstBuyPrice },
+    { stage: 2, price: buyPlan.secondBuyPrice },
+    { stage: 3, price: buyPlan.thirdBuyPrice }
+  ]
+    .filter((buy): buy is { stage: number; price: number } => isFiniteNumber(buy.price) && latestLow <= buy.price)
+    .map((buy) => ({
+      ...buy,
+      date: executedDate
+    }));
+}
+
 function getWeightedBuyAssumption(existing?: SwingHistoryCase["assumption"]) {
   return {
     ...(existing ?? {}),
@@ -330,6 +394,30 @@ function getFirstExecutedBuyDate(historyCase: SwingHistoryCase) {
   return [...(historyCase.executedBuys ?? [])]
     .filter((buy) => isFiniteNumber(buy.stage) && typeof buy.date === "string")
     .sort((left, right) => Number(left.stage) - Number(right.stage))[0]?.date;
+}
+
+function getRecommendationStartDate(historyCase: SwingHistoryCase) {
+  return (
+    getValidDateText(historyCase.initialSnapshot?.anchorDate) ??
+    getValidDateText(historyCase.openedDate) ??
+    getValidDateText(historyCase.dataDate)
+  );
+}
+
+function isDateOnOrAfter(value: string | undefined, startDate: string | undefined) {
+  const validDate = getValidDateText(value);
+  if (!startDate) {
+    return Boolean(validDate);
+  }
+
+  return Boolean(validDate && validDate >= startDate);
+}
+
+function filterExecutedBuysAfterRecommendationStart(
+  executedBuys: Array<{ stage?: number; price?: number; date?: string }> | undefined,
+  recommendationStartDate: string | undefined
+) {
+  return (executedBuys ?? []).filter((buy) => isDateOnOrAfter(buy.date, recommendationStartDate));
 }
 
 function getReturnPct(historyCase: SwingHistoryCase) {
@@ -365,18 +453,22 @@ function buildHistoryOutcome(
 }
 
 function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "current" | "closed"): SwingHistoryOutcome {
-  const executedBuyCount = getExecutedBuyCount(historyCase);
+  const executedBuyCount = getExecutedBuyStage(historyCase);
   const returnPct = getReturnPct(historyCase);
   const firstBuyPrice = historyCase.buyPlan?.firstBuyPrice;
   const stopLossPrice = historyCase.buyPlan?.stopLossPrice;
   const latestClose = historyCase.latestClose;
   const targetReturnPct = getTargetReturnPct(executedBuyCount);
   const businessDaysSinceFirstBuy = countBusinessDaysBetween(getFirstExecutedBuyDate(historyCase), historyCase.dataDate);
+  const returnDescription =
+    isFiniteNumber(returnPct) && isFiniteNumber(historyCase.averageBuyPrice) && isFiniteNumber(latestClose)
+      ? `종료 기준가 ${formatKrw(latestClose)}, 평균 매수가 ${formatKrw(historyCase.averageBuyPrice)} 기준 수익률 ${formatSignedPercentText(returnPct)}입니다.`
+      : "종료 기준 가격 또는 평균 매수가가 부족해 수익률 계산을 보류했습니다.";
 
   if (lifecycleStatus === "current") {
     return executedBuyCount > 0
-      ? buildHistoryOutcome("active_entered", "진행 중", "active", true, "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.")
-      : buildHistoryOutcome("active_no_entry", "매수 전", "active", false, "아직 1차 매수가에 닿지 않아 수익률 통계에서 제외합니다.");
+      ? buildHistoryOutcome("active_entered", "현재", "active", true, "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.")
+      : buildHistoryOutcome("active_no_entry", "현재 후보", "active", false, "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다.");
   }
 
   if (executedBuyCount <= 0) {
@@ -388,14 +480,24 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     ) {
       return buildHistoryOutcome(
         "entry_missed_upside",
-        "매수 전 제외",
+        "미체결 제외",
         "excluded",
         false,
         `1차 매수가 대비 ${SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT}% 이상 위로 이탈해 체결 없는 제외로 분류합니다.`
       );
     }
 
-    return buildHistoryOutcome("entry_missed_upside", "매수 전 제외", "excluded", false, "체결 가정이 없어 수익률 통계에서 제외합니다.");
+    return buildHistoryOutcome("entry_missed_upside", "미체결 제외", "excluded", false, "체결 가정이 없어 수익률 통계에서 제외합니다.");
+  }
+
+  if (historyCase.entryBucket === "watch") {
+    return buildHistoryOutcome(
+      "closed_unknown",
+      "관찰 종료",
+      "neutral",
+      false,
+      `관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. ${returnDescription}`
+    );
   }
 
   if (historyCase.outcomeStatus?.startsWith("target_hit_after") || (isFiniteNumber(returnPct) && returnPct >= targetReturnPct)) {
@@ -404,12 +506,18 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "슈팅 수익",
       "profit",
       true,
-      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다.`
+      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다. ${returnDescription}`
     );
   }
 
   if (isFiniteNumber(stopLossPrice) && isFiniteNumber(latestClose) && latestClose <= stopLossPrice) {
-    return buildHistoryOutcome("stop_broken", "손절 종료", "loss", true, "종가가 손절 기준을 하향 이탈했습니다.");
+    return buildHistoryOutcome(
+      "stop_broken",
+      "손절 종료",
+      "loss",
+      true,
+      `종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하로 내려왔습니다. ${returnDescription}`
+    );
   }
 
   if (
@@ -422,7 +530,7 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "완만 상승 종료",
       "profit",
       true,
-      `슈팅은 아니지만 평균 매수가 대비 ${SWING_DRIFT_PROFIT_RETURN_PCT}% 이상 수익권에서 매수 후보를 이탈했습니다.`
+      `슈팅은 아니지만 평균 매수가 대비 ${SWING_DRIFT_PROFIT_RETURN_PCT}% 이상 수익권에서 매수 후보를 이탈했습니다. ${returnDescription}`
     );
   }
 
@@ -432,27 +540,35 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "시간 종료",
       "neutral",
       true,
-      `첫 체결 후 ${SWING_STALE_TIMEOUT_BUSINESS_DAYS}거래일 이상 목표/손절 없이 후보에서 이탈했습니다.`
+      `첫 체결 후 ${SWING_STALE_TIMEOUT_BUSINESS_DAYS}거래일 이상 목표/손절 없이 후보에서 이탈했습니다. ${returnDescription}`
     );
   }
 
-  return buildHistoryOutcome("closed_unknown", "종료", isFiniteNumber(returnPct) && returnPct < 0 ? "loss" : "neutral", true, "후보 목록에서 이탈해 종료 케이스로 분류합니다.");
+  return buildHistoryOutcome("closed_unknown", "종료", isFiniteNumber(returnPct) && returnPct < 0 ? "loss" : "neutral", true, `후보 목록에서 이탈해 종료 케이스로 분류합니다. ${returnDescription}`);
 }
 
 function normalizeHistoryCaseWeightedBuys(historyCase: SwingHistoryCase): SwingHistoryCase {
-  const averageBuyPrice = getWeightedAverageBuyPrice(historyCase.executedBuys);
+  const recommendationStartDate = getRecommendationStartDate(historyCase);
+  const executedBuys = filterExecutedBuysAfterRecommendationStart(historyCase.executedBuys, recommendationStartDate);
+  const averageBuyPrice = getWeightedAverageBuyPrice(executedBuys);
   const latestClose = historyCase.latestClose;
-  const buyPlan = historyCase.buyPlan ?? parseBuyPlan(historyCase.initialSnapshot?.note, historyCase.executedBuys);
+  const fallbackLatestClose = isFiniteNumber(latestClose) ? latestClose : isFiniteNumber(historyCase.latestLow) ? historyCase.latestLow : undefined;
+  const buyPlan = historyCase.buyPlan ?? parseBuyPlan(historyCase.initialSnapshot?.note, executedBuys);
   const unrealizedReturnPct =
-    isFiniteNumber(averageBuyPrice) && isFiniteNumber(latestClose) && averageBuyPrice !== 0
-      ? round(((latestClose - averageBuyPrice) / averageBuyPrice) * 100)
-      : historyCase.unrealizedReturnPct;
+    isFiniteNumber(averageBuyPrice) && isFiniteNumber(fallbackLatestClose) && averageBuyPrice !== 0
+      ? round(((fallbackLatestClose - averageBuyPrice) / averageBuyPrice) * 100)
+      : executedBuys.length
+        ? historyCase.unrealizedReturnPct
+        : undefined;
 
   return {
     ...historyCase,
     assumption: getWeightedBuyAssumption(historyCase.assumption),
     buyPlan,
-    averageBuyPrice: averageBuyPrice ?? historyCase.averageBuyPrice,
+    executedBuyCount: getExecutedBuyStageFromBuys(executedBuys),
+    executedBuys,
+    averageBuyPrice: averageBuyPrice ?? (executedBuys.length ? historyCase.averageBuyPrice : undefined),
+    latestClose: fallbackLatestClose,
     unrealizedReturnPct
   };
 }
@@ -481,12 +597,15 @@ function getHistoryCaseKey(profile: string | undefined, symbol: string | undefin
   return `${profile ?? ""}:${symbol ?? ""}`;
 }
 
+function isExecutionHistoryCase(historyCase: SwingHistoryCase) {
+  return historyCase.entryBucket !== "watch";
+}
+
 function buildCurrentHistoryCase(
   candidate: SwingCandidate & { profile: "default" | "smallcap"; sourceBucket: "execution" | "watch" },
   existingCase: SwingHistoryCase | undefined,
   now: Date
 ): SwingHistoryCase | undefined {
-  const executedBuyCount = getExecutedBuyCount(candidate.postEntryOutcome);
   if (!candidate.symbol || !candidate.name) {
     return undefined;
   }
@@ -494,20 +613,35 @@ function buildCurrentHistoryCase(
   const asOfDate = formatDateInSeoul(now);
   const openedDate = existingCase?.openedDate ?? asOfDate;
   const openedAt = existingCase?.openedAt ?? now.toISOString();
-  const executedBuys = candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [];
-  const averageBuyPrice = getWeightedAverageBuyPrice(executedBuys) ?? candidate.postEntryOutcome?.averageBuyPrice;
+  const recommendationStartDate = candidate.anchorDate ?? existingCase?.initialSnapshot?.anchorDate ?? openedDate;
+  const sourceExecutedBuys = filterExecutedBuysAfterRecommendationStart(
+    candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [],
+    recommendationStartDate
+  );
   const latestClose = candidate.postEntryOutcome?.latestClose;
-  const buyPlan = parseBuyPlan(candidate.note, executedBuys) ?? existingCase?.buyPlan;
-  if (executedBuyCount <= 0 && !buyPlan) {
+  const buyPlan = parseBuyPlan(candidate.note, sourceExecutedBuys) ?? existingCase?.buyPlan;
+  const dataDate = candidate.postEntryOutcome?.latestDate ?? candidate.latestMentionDate ?? candidate.anchorDate ?? asOfDate;
+  const latestLow = isFiniteNumber(candidate.postEntryOutcome?.maxAdversePrice)
+    ? candidate.postEntryOutcome.maxAdversePrice
+    : existingCase?.latestLow;
+  const inferredExecutedBuys =
+    candidate.sourceBucket === "execution"
+      ? inferExecutedBuysFromLowTouch(buyPlan, latestLow, dataDate)
+      : [];
+  const executedBuys = sourceExecutedBuys.length ? sourceExecutedBuys : inferredExecutedBuys;
+  const averageBuyPrice = getWeightedAverageBuyPrice(executedBuys) ?? (executedBuys.length ? candidate.postEntryOutcome?.averageBuyPrice : undefined);
+  if (executedBuys.length <= 0 && !buyPlan) {
     return undefined;
   }
 
   const unrealizedReturnPct =
     isFiniteNumber(latestClose) && isFiniteNumber(averageBuyPrice) && averageBuyPrice !== 0
       ? round(((latestClose - averageBuyPrice) / averageBuyPrice) * 100)
-      : isFiniteNumber(candidate.postEntryOutcome?.unrealizedReturnPct)
+      : executedBuys.length && isFiniteNumber(candidate.postEntryOutcome?.unrealizedReturnPct)
         ? candidate.postEntryOutcome.unrealizedReturnPct
-        : existingCase?.unrealizedReturnPct;
+        : executedBuys.length
+          ? existingCase?.unrealizedReturnPct
+          : undefined;
 
   return {
     ...existingCase,
@@ -519,18 +653,18 @@ function buildCurrentHistoryCase(
     sourceKey: candidate.key ?? existingCase?.sourceKey ?? `${candidate.name}-${candidate.symbol}`,
     openedAt,
     openedDate,
-    dataDate: candidate.postEntryOutcome?.latestDate ?? candidate.latestMentionDate ?? candidate.anchorDate ?? asOfDate,
+    closedDate: undefined,
+    closedMonth: undefined,
+    dataDate,
     entryBucket: candidate.bucket ?? candidate.sourceBucket,
     status: "active",
     assumption: getWeightedBuyAssumption(existingCase?.assumption),
     outcomeStatus: candidate.postEntryOutcome?.status ?? existingCase?.outcomeStatus,
-    executedBuyCount,
+    executedBuyCount: getExecutedBuyStageFromBuys(executedBuys),
     executedBuys,
     averageBuyPrice: isFiniteNumber(averageBuyPrice) ? averageBuyPrice : existingCase?.averageBuyPrice,
     latestClose: isFiniteNumber(latestClose) ? latestClose : existingCase?.latestClose,
-    latestLow: isFiniteNumber(candidate.postEntryOutcome?.maxAdversePrice)
-      ? candidate.postEntryOutcome.maxAdversePrice
-      : existingCase?.latestLow,
+    latestLow,
     unrealizedReturnPct,
     buyPlan,
     initialSnapshot:
@@ -578,8 +712,8 @@ function buildSwingHistorySummary(
   return {
     scannedExecutionCandidates: currentCandidates.filter((item) => item.sourceBucket === "execution").length,
     openedCases: cases.filter((item) => item.strategy === "swing").length,
-    enteredCases: cases.filter((item) => getExecutedBuyCount(item) > 0).length,
-    noEntryCases: cases.filter((item) => getExecutedBuyCount(item) <= 0).length,
+    enteredCases: cases.filter((item) => getExecutedBuyStage(item) > 0).length,
+    noEntryCases: cases.filter((item) => getExecutedBuyStage(item) <= 0).length,
     targetHitCases: cases.filter((item) => item.historyOutcome?.type === "target_hit").length,
     driftProfitExitCases: cases.filter((item) => item.historyOutcome?.type === "drift_profit_exit").length,
     profitExitCases: cases.filter(
@@ -590,10 +724,74 @@ function buildSwingHistorySummary(
     staleTimeoutCases: cases.filter((item) => item.historyOutcome?.type === "stale_timeout").length,
     defaultCases: cases.filter((item) => item.profile === "default").length,
     smallcapCases: cases.filter((item) => item.profile === "smallcap").length,
-    firstBuyOnlyCases: cases.filter((item) => getExecutedBuyCount(item) === 1).length,
-    secondBuyReachedCases: cases.filter((item) => getExecutedBuyCount(item) >= 2).length,
-    thirdBuyReachedCases: cases.filter((item) => getExecutedBuyCount(item) >= 3).length
+    firstBuyOnlyCases: cases.filter((item) => getExecutedBuyStage(item) === 1).length,
+    secondBuyReachedCases: cases.filter((item) => getExecutedBuyStage(item) >= 2).length,
+    thirdBuyReachedCases: cases.filter((item) => getExecutedBuyStage(item) >= 3).length
   };
+}
+
+function enrichClosedDateFields(
+  historyCase: SwingHistoryCase,
+  lifecycleStatus: "current" | "closed",
+  fallbackClosedDate: string | undefined
+) {
+  if (lifecycleStatus === "current") {
+    return {
+      ...historyCase,
+      status: "active",
+      closedDate: undefined,
+      closedMonth: undefined
+    };
+  }
+
+  const closedDate =
+    getValidDateText(historyCase.closedDate) ??
+    getValidDateText(fallbackClosedDate) ??
+    getValidDateText(historyCase.dataDate) ??
+    getValidDateText(historyCase.openedDate);
+
+  return {
+    ...historyCase,
+    status: "closed",
+    closedDate,
+    closedMonth: getMonthKey(closedDate)
+  };
+}
+
+function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
+  const grouped = new Map<string, SwingHistoryCase[]>();
+
+  for (const historyCase of cases) {
+    const month = historyCase.closedMonth ?? getMonthKey(historyCase.closedDate);
+    if (!month) {
+      continue;
+    }
+    grouped.set(month, [...(grouped.get(month) ?? []), historyCase]);
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([month, monthCases]) => {
+      const returnStatsCases = monthCases.filter(
+        (item) => getExecutedBuyStage(item) > 0 && item.historyOutcome?.includeInReturnStats !== false
+      );
+      const averageReturnPct = returnStatsCases.length
+        ? round(returnStatsCases.reduce((sum, item) => sum + (getReturnPct(item) ?? 0), 0) / returnStatsCases.length)
+        : undefined;
+
+      return {
+        month,
+        label: getMonthLabel(month),
+        closedCaseCount: monthCases.length,
+        enteredCaseCount: monthCases.filter((item) => getExecutedBuyStage(item) > 0).length,
+        noEntryCaseCount: monthCases.filter((item) => getExecutedBuyStage(item) <= 0).length,
+        profitExitCaseCount: monthCases.filter(
+          (item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit"
+        ).length,
+        stopBrokenCaseCount: monthCases.filter((item) => item.historyOutcome?.type === "stop_broken").length,
+        averageReturnPct
+      };
+    });
 }
 
 export async function updateSwingRecommendationHistoryFromCurrentPicks() {
@@ -631,11 +829,22 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
     return String(left.name ?? "").localeCompare(String(right.name ?? ""), "ko");
   });
   const currentCaseKeys = new Set(currentCandidates.map((candidate) => getHistoryCaseKey(candidate.profile, candidate.symbol)));
-  const casesWithOutcome = cases.map((historyCase) => ({
-    ...historyCase,
-    historyOutcome: deriveHistoryOutcome(historyCase, currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed")
-  }));
   const asOfDate = formatDateInSeoul(now);
+  const casesWithOutcome = cases.map((historyCase) => {
+    const lifecycleStatus = currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
+    const caseWithClosedDate = enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
+
+    return {
+      ...caseWithClosedDate,
+      historyOutcome: deriveHistoryOutcome(caseWithClosedDate, lifecycleStatus)
+    };
+  });
+  const currentEnteredRecommendationCount = casesWithOutcome.filter(
+    (historyCase) => currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) && getExecutedBuyStage(historyCase) > 0
+  ).length;
+  const closedCases = casesWithOutcome.filter(
+    (historyCase) => historyCase.status === "closed" && getExecutedBuyStage(historyCase) > 0 && isExecutionHistoryCase(historyCase)
+  );
   const output: SwingHistoryPayload = {
     ...(existingPayload ?? {}),
     schemaVersion: 1,
@@ -649,6 +858,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       includeOnlyTouchedFirstBuy: true
     },
     summary: buildSwingHistorySummary(casesWithOutcome, currentCandidates),
+    closedMonths: buildClosedMonthSummaries(closedCases),
     cases: casesWithOutcome
   };
 
@@ -660,7 +870,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
     caseCount: cases.length,
     upsertedCaseCount,
     currentRecommendationCount: currentCandidates.length,
-    currentEnteredRecommendationCount: currentCandidates.filter((candidate) => getExecutedBuyCount(candidate.postEntryOutcome) > 0).length
+    currentEnteredRecommendationCount
   };
 }
 
@@ -678,13 +888,14 @@ export async function readSwingRecommendationHistory() {
   const enrichedCases = cases.map((historyCase) => {
     const currentRecommendation =
       currentByProfileSymbol.get(getCandidateKey(historyCase.profile, historyCase.symbol)) ??
-      currentBySymbol.get(historyCase.symbol);
+      (historyCase.profile ? undefined : currentBySymbol.get(historyCase.symbol));
     const lifecycleStatus = currentRecommendation ? "current" : "closed";
+    const caseWithClosedDate = enrichClosedDateFields(historyCase, lifecycleStatus, payload.asOfDate as string | undefined);
 
     return {
-      ...historyCase,
+      ...caseWithClosedDate,
       lifecycleStatus,
-      historyOutcome: deriveHistoryOutcome(historyCase, lifecycleStatus),
+      historyOutcome: deriveHistoryOutcome(caseWithClosedDate, lifecycleStatus),
       currentRecommendation: currentRecommendation
         ? {
             key: currentRecommendation.key,
@@ -704,14 +915,18 @@ export async function readSwingRecommendationHistory() {
   const historyCaseByProfileSymbol = new Map(
     enrichedCases.map((historyCase) => [getCandidateKey(historyCase.profile as string | undefined, historyCase.symbol), historyCase])
   );
-  const historyCaseBySymbol = new Map(enrichedCases.map((historyCase) => [historyCase.symbol, historyCase]));
+  const legacyHistoryCaseBySymbol = new Map(
+    enrichedCases
+      .filter((historyCase) => !historyCase.profile)
+      .map((historyCase) => [historyCase.symbol, historyCase])
+  );
   const enrichedCurrentCandidates = currentCandidates.map((candidate) => {
     const historyCase =
       historyCaseByProfileSymbol.get(getCandidateKey(candidate.profile, candidate.symbol)) ??
-      historyCaseBySymbol.get(candidate.symbol);
-    const liveExecutedBuyCount = getExecutedBuyCount(candidate.postEntryOutcome);
-    const historyExecutedBuyCount = getExecutedBuyCount(historyCase);
-    const hasEntryAssumption = historyExecutedBuyCount > 0 || liveExecutedBuyCount > 0;
+      legacyHistoryCaseBySymbol.get(candidate.symbol);
+    const liveExecutedBuyCount = getExecutedBuyStage(candidate.postEntryOutcome);
+    const historyExecutedBuyCount = getExecutedBuyStage(historyCase);
+    const hasEntryAssumption = historyCase ? historyExecutedBuyCount > 0 : liveExecutedBuyCount > 0;
 
     return {
       key: candidate.key,
@@ -733,14 +948,20 @@ export async function readSwingRecommendationHistory() {
   const pendingEntryCandidates = enrichedCurrentCandidates.filter((candidate) => !candidate.hasEntryAssumption);
 
   const currentCaseCount = enrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "current").length;
-  const closedCaseCount = enrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "closed").length;
+  const closedCases = enrichedCases.filter(
+    (historyCase) =>
+      historyCase.lifecycleStatus === "closed" && getExecutedBuyStage(historyCase) > 0 && isExecutionHistoryCase(historyCase)
+  );
+  const closedCaseCount = closedCases.length;
 
   return {
     ...payload,
     cases: enrichedCases,
-    currentCandidates: enteredCurrentCandidates,
+    currentCandidates: enrichedCurrentCandidates,
+    currentEnteredCandidates: enteredCurrentCandidates,
     pendingEntryCandidates,
-    closedCases: enrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "closed"),
+    closedCases,
+    closedMonths: buildClosedMonthSummaries(closedCases),
     summary: {
       ...(payload.summary ?? {}),
       currentRecommendationCount: currentCandidates.length,

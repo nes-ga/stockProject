@@ -31,7 +31,7 @@ import {
 } from "../services/stockAnalysis.js";
 import { getNewsSignalDashboard } from "../services/newsSignals.js";
 import { getOnlinePresenceSnapshot, heartbeatOnlineViewer } from "../services/onlinePresence.js";
-import { readSwingRecommendationHistory } from "../services/recommendationHistory.js";
+import { readSwingRecommendationHistory, updateSwingRecommendationHistoryFromCurrentPicks } from "../services/recommendationHistory.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile } from "../services/swingProfiles.js";
 
@@ -740,11 +740,22 @@ analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
     const profile = resolveSwingEngineProfile(query.profile);
     const input = serverSwingPickBatchSchema.parse(request.body);
     const payload = await writeServerSwingPicks(input, { profile });
+    let historyUpdate: Awaited<ReturnType<typeof updateSwingRecommendationHistoryFromCurrentPicks>> | undefined;
+    let historyUpdateError: string | undefined;
+
+    try {
+      historyUpdate = await updateSwingRecommendationHistoryFromCurrentPicks();
+    } catch (error) {
+      historyUpdateError = error instanceof Error ? error.message : String(error);
+    }
+
     logger.info("server-swing-picks:save:success", {
       profile,
       count: payload.items.length,
       executionCount: payload.executionItems.length,
-      watchCount: payload.watchItems.length
+      watchCount: payload.watchItems.length,
+      historyUpdated: Boolean(historyUpdate),
+      historyUpdateError
     });
     response.json({
       ok: true,
@@ -753,7 +764,10 @@ analysisRoutes.post("/server-swing-picks", async (request, response, next) => {
       watchCount: payload.watchItems.length,
       items: payload.items,
       executionItems: payload.executionItems,
-      watchItems: payload.watchItems
+      watchItems: payload.watchItems,
+      historyUpdated: Boolean(historyUpdate),
+      historyUpdate,
+      historyUpdateError
     });
   } catch (error) {
     logger.error("server-swing-picks:save:failed", toErrorContext(error));

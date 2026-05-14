@@ -244,9 +244,21 @@
           <div class="history-toolbar">
             <div>
               <h3>현재 상태 분리</h3>
-              <p class="field-help">현재 추천 후보는 종료 케이스에서 제외하고 별도 추적합니다.</p>
+              <p class="field-help">현재 추천 후보는 종료 케이스에서 제외하고, 종료된 종목은 종료월 기준으로 조회합니다.</p>
             </div>
-            <button id="openHistoryMatrixModalBtn" class="ghost-button small-button" type="button">교차 검증 매트릭스</button>
+            <div class="history-toolbar-actions">
+              <label class="history-filter-field">
+                <span>종료월</span>
+                <select id="historyClosedMonthSelect" aria-label="종료월 선택">
+                  <option value="all">전체 종료월</option>
+                </select>
+              </label>
+              <label class="history-filter-field">
+                <span>검색</span>
+                <input id="historyClosedSearchInput" type="search" placeholder="종목명 / 코드" autocomplete="off" />
+              </label>
+              <button id="openHistoryMatrixModalBtn" class="ghost-button small-button" type="button">교차 검증 매트릭스</button>
+            </div>
           </div>
 
           <div class="history-layout">

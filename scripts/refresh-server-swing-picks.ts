@@ -1,5 +1,6 @@
 import { analyzeSmartMoneyPatterns } from "../src/services/stockAnalysis.js";
 import { classifySwingCandidate } from "../src/services/recommendationUniverse.js";
+import { updateSwingRecommendationHistoryFromCurrentPicks } from "../src/services/recommendationHistory.js";
 import { readServerSwingPicks, writeServerSwingPicks } from "../src/services/serverSwingPicks.js";
 
 type Pattern = Awaited<ReturnType<typeof analyzeSmartMoneyPatterns>>[number]["pattern"];
@@ -86,9 +87,13 @@ async function main() {
     executionItems,
     watchItems
   });
+  const historyUpdate = await updateSwingRecommendationHistoryFromCurrentPicks();
 
   console.log(
     `Refreshed server swing picks: ${refreshed.length} matched / ${current.length} scanned / ${executionItems.length} execution / ${watchItems.length} watch`
+  );
+  console.log(
+    `Updated swing recommendation history: ${historyUpdate.caseCount} cases / ${historyUpdate.currentRecommendationCount} current candidates / ${historyUpdate.currentEnteredRecommendationCount} entered`
   );
   for (const item of refreshed) {
     console.log(`- ${item.name} (${item.symbol}) :: ${item.note}`);
