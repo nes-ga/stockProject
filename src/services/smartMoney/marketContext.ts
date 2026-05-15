@@ -66,9 +66,22 @@ function deriveSnapshotTrend(snapshot?: MarketWatchSnapshot) {
   } as const;
 }
 
+function buildBenchmarkSeries(snapshot?: MarketWatchSnapshot) {
+  const points = snapshot?.chartSets?.daily?.points ?? [];
+  return points.slice(-260).map((point) => ({
+    date: point.date,
+    open: point.open,
+    high: point.high,
+    low: point.low,
+    close: point.close
+  }));
+}
+
 function buildAutoSmartMoneyMarketContext(items: MarketWatchSnapshot[]): SmartMoneyMarketContext | undefined {
-  const kospi = deriveSnapshotTrend(items.find((item) => item.key === "KOSPI"));
-  const kosdaq = deriveSnapshotTrend(items.find((item) => item.key === "KOSDAQ"));
+  const kospiSnapshot = items.find((item) => item.key === "KOSPI");
+  const kosdaqSnapshot = items.find((item) => item.key === "KOSDAQ");
+  const kospi = deriveSnapshotTrend(kospiSnapshot);
+  const kosdaq = deriveSnapshotTrend(kosdaqSnapshot);
   const usdkrw = deriveSnapshotTrend(items.find((item) => item.key === "USDKRW"));
   const gold = deriveSnapshotTrend(items.find((item) => item.key === "GOLD"));
   const indexHealth = [kospi, kosdaq].filter((item): item is NonNullable<typeof kospi> => Boolean(item));
@@ -115,6 +128,10 @@ function buildAutoSmartMoneyMarketContext(items: MarketWatchSnapshot[]): SmartMo
       changePercent20d: kospi?.change20d,
       aboveSma20: kospi?.aboveSma20,
       aboveSma50: kospi?.aboveSma50
+    },
+    benchmarkSeries: {
+      KOSPI: buildBenchmarkSeries(kospiSnapshot),
+      KOSDAQ: buildBenchmarkSeries(kosdaqSnapshot)
     },
     notes: [
       `Auto market context from KOSPI/KOSDAQ as of ${asOfDate ?? "-"}.`,

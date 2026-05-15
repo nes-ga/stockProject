@@ -266,6 +266,31 @@ npm.cmd run build
 
 Additional validation:
 
+## 2026-05-15 Follow-up
+
+The swing and smallcap swing engines now include the 2026-05-15 structure review.
+
+Main additions:
+
+- Pre-lead base shape filter: the engine checks whether the box before lead-in volume was compressed enough.
+- Market-index adjustment: KOSPI/KOSDAQ shock windows can moderately relax the pre-lead box range limit.
+- Failed post-spike exclusion: short spike-and-collapse shapes are not treated as swing buy candidates.
+- Long pullback until stop: mature pullbacks can remain `execution_probe` while still above the stop.
+- History current candidates now use `executionItems` only.
+- Chart refresh was changed toward chart-only updates to reduce flicker.
+
+Current execution candidates after the update:
+
+- default swing: 9
+- smallcap swing: 3
+- total: 12
+
+Detailed notes:
+
+- [2026-05-15 Work Summary](./work-summary-2026-05-15.md)
+
+Additional validation:
+
 - current recommendation files contain no stocks with `referenceClose <= 1000`
 - `제넥신` is promoted to `execution_probe`
 - `삼륭물산` remains `watch` due to confirmed lower envelope break

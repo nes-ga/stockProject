@@ -251,6 +251,7 @@ export type SmartMoneyMarketContext = {
     aboveSma20?: boolean;
     aboveSma50?: boolean;
   };
+  benchmarkSeries?: Partial<Record<"KOSPI" | "KOSDAQ", Pick<ChartPoint, "date" | "open" | "high" | "low" | "close">[]>>;
   sector?: {
     name?: string;
     strengthScore?: number;

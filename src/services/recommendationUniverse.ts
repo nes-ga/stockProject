@@ -447,6 +447,36 @@ function isEnvelopeWidePullbackCandidate(pattern: SmartMoneyAnalysis["pattern"],
   );
 }
 
+function isLongPullbackUntilStopCandidate(pattern: SmartMoneyAnalysis["pattern"], riskRewardRatio: number) {
+  if (!isBroadSwingReviewEligible(pattern, riskRewardRatio)) {
+    return false;
+  }
+
+  const pullbackSessions = pattern.pullbackSessions ?? pattern.debugInfo.pullbackDays ?? 0;
+  if (pullbackSessions < 8) {
+    return false;
+  }
+
+  if (pattern.envelope?.position === "above_upper") {
+    return false;
+  }
+
+  return isAboveInvalidationLine(pattern);
+}
+
+export function isFailedPostSpikePullbackShape(pattern: SmartMoneyAnalysis["pattern"]) {
+  if (pattern.stage !== "setup" || pattern.setupType !== "support_holding_pullback") {
+    return false;
+  }
+
+  const pullbackSessions = pattern.pullbackSessions ?? pattern.debugInfo.pullbackDays ?? 0;
+  const pullbackDepth = pattern.pullbackMaxDrawdownPercent ?? pattern.debugInfo.pullbackDepthPct ?? 0;
+  const closeVsBreakoutLevel = pattern.referenceCloseVsBreakoutLevelPercent ?? 0;
+  const closeVsBase = pattern.referenceCloseVsBasePercent ?? 0;
+
+  return pullbackSessions <= 8 && pullbackDepth >= 18 && closeVsBreakoutLevel <= -20 && closeVsBase <= -6;
+}
+
 function dedupeStrings<T extends string>(values: T[]) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -462,12 +492,14 @@ function summarizePenaltyFactors(
 export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandidateClassification {
   const pattern = analysis.pattern;
   const riskRewardRatio = pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio ?? 0;
+  const failedPostSpikePullbackShape = isFailedPostSpikePullbackShape(pattern);
   const withinEntryZone = isWithinSwingEntryZone(pattern);
   const setupPullbackReady = pattern.stage !== "setup" || pattern.status === "buy_ready";
   const supportHoldingProbeEligible = isSupportHoldingProbeEligible(pattern, riskRewardRatio);
   const deepPullbackProbeEligible = isDeepPullbackProbeEligible(pattern, riskRewardRatio);
   const broadReviewEligible = isBroadSwingReviewEligible(pattern, riskRewardRatio);
   const envelopeWidePullbackCandidate = isEnvelopeWidePullbackCandidate(pattern, riskRewardRatio);
+  const longPullbackUntilStopCandidate = isLongPullbackUntilStopCandidate(pattern, riskRewardRatio);
   const envelopeLowerBreak = pattern.envelope?.position === "below_lower" && pattern.envelope.lowerBreakSessions >= 2;
   const weakVolumeContraction = pattern.stage === "setup" && (pattern.volumeContractionScore ?? 0) < 60;
   const poorCandleStructure = (pattern.candleQualityScore ?? 100) < 60;
@@ -506,6 +538,28 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     };
   }
 
+  if (failedPostSpikePullbackShape) {
+    return {
+      bucket: "watch",
+      reasons: dedupeStrings([
+        ...(pattern.classificationReasons ?? []),
+        "failed_post_spike_pullback_shape",
+        "not_base_compression_shape",
+        "exclude_from_swing_candidates"
+      ]),
+      tags: dedupeStrings([...(pattern.tags ?? []), "watch_low_quality" as const]),
+      penaltyFactors: summarizePenaltyFactors([
+        ...(pattern.penaltyFactors ?? []),
+        {
+          code: "failed_post_spike_pullback_shape",
+          label: "Failed post-spike pullback shape",
+          impact: 22,
+          reason: "Short-lived spike lost the prior box and fell too deeply to qualify as a base-compression swing shape."
+        }
+      ])
+    };
+  }
+
   if (readyByEngine && !lowQuality) {
     return {
       bucket: "execution_ready",
@@ -515,11 +569,17 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     };
   }
 
-  if ((probeByLocation || probeByDeepPullback) && !envelopeLowerBreak && (!lowScoreUnstableSupport || envelopeWidePullbackCandidate)) {
+  if (
+    (probeByLocation || probeByDeepPullback || longPullbackUntilStopCandidate) &&
+    !envelopeLowerBreak &&
+    (!lowScoreUnstableSupport || envelopeWidePullbackCandidate || longPullbackUntilStopCandidate)
+  ) {
     const probeReasons = dedupeStrings([
       ...(pattern.classificationReasons ?? []),
       probeByDeepPullback ? "deep_pullback_probe" : "",
       probeByDeepPullback ? "above_stop" : "",
+      longPullbackUntilStopCandidate ? "long_pullback_until_stop_probe" : "",
+      longPullbackUntilStopCandidate ? "above_stop" : "",
       isInOrBelowRawSwingEntryZone(pattern) ? "entry_zone_hit" : "",
       envelopeWidePullbackCandidate ? "wide_pullback_candidate" : "",
       envelopeWidePullbackCandidate ? "envelope_lower_hold" : "",
@@ -590,6 +650,10 @@ export function isSwingExecutionEligible(pattern: SmartMoneyAnalysis["pattern"],
 
 function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: SwingCandidateClassification) {
   if (isPennyStockRisk(analysis.pattern)) {
+    return false;
+  }
+
+  if (isFailedPostSpikePullbackShape(analysis.pattern)) {
     return false;
   }
 

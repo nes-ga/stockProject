@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-14T08:39:46.674Z",
-  "asOfDate": "2026-05-14",
+  "generatedAt": "2026-05-15T07:59:33.214Z",
+  "asOfDate": "2026-05-15",
   "scope": {
     "strategy": "swing",
     "profiles": [
@@ -13,27 +13,26 @@
       "data/server-smallcap-swing-picks.json"
     ],
     "includedBuckets": [
-      "executionItems",
-      "watchItems"
+      "executionItems"
     ],
     "includeOnlyTouchedFirstBuy": true
   },
   "summary": {
-    "scannedExecutionCandidates": 21,
-    "openedCases": 117,
+    "scannedExecutionCandidates": 12,
+    "openedCases": 116,
     "enteredCases": 57,
-    "noEntryCases": 60,
+    "noEntryCases": 59,
     "targetHitCases": 0,
     "driftProfitExitCases": 0,
     "profitExitCases": 0,
-    "entryMissedUpsideCases": 22,
+    "entryMissedUpsideCases": 59,
     "stopBrokenCases": 0,
     "staleTimeoutCases": 0,
     "defaultCases": 68,
-    "smallcapCases": 49,
+    "smallcapCases": 48,
     "firstBuyOnlyCases": 11,
     "secondBuyReachedCases": 46,
-    "thirdBuyReachedCases": 25
+    "thirdBuyReachedCases": 27
   },
   "cases": [
     {
@@ -47,7 +46,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -90,91 +89,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
-    },
-    {
-      "id": "swing:smallcap:389260:2026-05-14",
-      "strategy": "swing",
-      "profile": "smallcap",
-      "symbol": "389260",
-      "name": "대명에너지",
-      "sourceKey": "대명에너지-389260",
-      "openedAt": "2026-05-14T06:07:56.450Z",
-      "openedDate": "2026-05-14",
-      "dataDate": "2026-05-14",
-      "entryBucket": "execution_probe",
-      "status": "active",
-      "assumption": {
-        "executionModel": "weighted_staged_buy",
-        "trigger": "daily_low_touched_buy_price",
-        "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "outcomeStatus": "active",
-      "executedBuyCount": 2,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 22074,
-          "date": "2026-05-14"
-        },
-        {
-          "stage": 2,
-          "price": 20581,
-          "date": "2026-05-14"
-        }
-      ],
-      "latestClose": 20750,
-      "latestLow": 20000,
-      "buyPlan": {
-        "firstBuyPrice": 22074,
-        "secondBuyPrice": 20581,
-        "thirdBuyPrice": 19043,
-        "stopLossPrice": 17550
-      },
-      "initialSnapshot": {
-        "anchorDate": "2026-05-14",
-        "latestMentionDate": "2026-05-14",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-03-30 | 급등 피크 2026-04-03 | 눌림 2026-04-06~2026-05-14 | SMA20 22640 | 매수 22074/20581/19043 | ENV20 lower_band 20376/22640/24904 | 손절 17550 | 손절기준 2026-03-11 low | 점수 46",
-        "tags": [
-          "tag_sma20_primary",
-          "tag_alt_anchor_box_support",
-          "tag_volume_turnover_strong",
-          "tag_sma20_slope_negative",
-          "tag_envelope_lower_hold",
-          "tag_support_unstable"
-        ],
-        "reasons": [
-          "matched_setup",
-          "entry_zone_pending",
-          "volume_contraction_ok",
-          "candle_structure_ok",
-          "sma20_slope_negative",
-          "support_holding",
-          "envelope_lower_hold",
-          "risk_reward_ok",
-          "deep_pullback_probe",
-          "above_stop",
-          "entry_zone_hit",
-          "wide_pullback_candidate",
-          "execution_gate_overridden_by_envelope",
-          "unstable_support"
-        ],
-        "source": "server-universe"
-      },
-      "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      },
-      "averageBuyPrice": 21078.67,
-      "unrealizedReturnPct": -1.56
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:006340:2026-05-14",
@@ -187,7 +109,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -231,12 +153,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:006920:2026-05-14",
@@ -249,7 +173,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -299,12 +223,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:396300:2026-05-14",
@@ -317,7 +243,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -360,12 +286,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:125210:2026-05-14",
@@ -378,7 +306,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -424,12 +352,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:372800:2026-05-14",
@@ -442,7 +372,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -492,12 +422,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:237690:2026-05-14",
@@ -510,7 +442,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -554,12 +486,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:032820:2026-05-14",
@@ -572,7 +506,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -624,12 +558,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:095270:2026-05-14",
@@ -642,7 +578,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -690,12 +626,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:191410:2026-05-14",
@@ -708,7 +646,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -757,12 +695,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:103590:2026-05-14",
@@ -775,7 +715,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -817,12 +757,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:221800:2026-05-14",
@@ -835,7 +777,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -890,12 +832,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 14,170원, 평균 매수가 14,930원 기준 수익률 -5.09%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:073010:2026-05-14",
@@ -908,7 +852,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -952,12 +896,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:125020:2026-05-14",
@@ -970,7 +916,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1022,14 +968,16 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 6,510원, 평균 매수가 6,669원 기준 수익률 -2.38%입니다."
       },
       "averageBuyPrice": 6669,
-      "unrealizedReturnPct": -2.38
+      "unrealizedReturnPct": -2.38,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:263750:2026-05-14",
@@ -1042,7 +990,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1097,12 +1045,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "neutral",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 50,600원, 평균 매수가 49,400원 기준 수익률 +2.43%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:389140:2026-05-14",
@@ -1115,7 +1065,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1163,12 +1113,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:347770:2026-05-14",
@@ -1181,7 +1133,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1225,12 +1177,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:130660:2026-05-14",
@@ -1243,7 +1197,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1293,12 +1247,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:061970:2026-05-14",
@@ -1311,7 +1267,7 @@
       "openedDate": "2026-05-14",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -1354,12 +1310,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:214390:2026-05-12",
@@ -1370,19 +1328,19 @@
       "sourceKey": "경보제약-214390",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 2,
-          "price": 6150,
-          "date": "2026-05-12"
+          "price": 6130,
+          "date": "2026-05-15"
         }
       ],
-      "averageBuyPrice": 6150,
-      "latestLow": 6150,
+      "averageBuyPrice": 6130,
+      "latestLow": 6080,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-12",
@@ -1413,18 +1371,18 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 6360,
-      "unrealizedReturnPct": 3.41,
+      "latestClose": 6220,
+      "unrealizedReturnPct": 1.47,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 6530,
-        "secondBuyPrice": 6151,
-        "thirdBuyPrice": 5760,
-        "stopLossPrice": 5380
+        "firstBuyPrice": 6495,
+        "secondBuyPrice": 6137,
+        "thirdBuyPrice": 5768,
+        "stopLossPrice": 5410
       },
       "outcomeStatus": "active",
       "historyOutcome": {
@@ -1446,7 +1404,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -1501,12 +1459,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,405원, 평균 매수가 3,465원 기준 수익률 -1.73%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:282720:2026-05-12",
@@ -1519,7 +1479,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 12530,
@@ -1567,14 +1527,16 @@
         "stopLossPrice": 12530
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
       "outcomeStatus": "active",
-      "latestClose": 12850
+      "latestClose": 12850,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:187790:2026-05-12",
@@ -1649,7 +1611,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 10200,
@@ -1702,12 +1664,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:117580:2026-05-12",
@@ -1720,7 +1684,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -1776,12 +1740,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 8,280원, 평균 매수가 8,300원 기준 수익률 -0.24%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:078600:2026-05-12",
@@ -1794,7 +1760,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 138000,
@@ -1836,13 +1802,15 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "latestClose": 156100
+      "latestClose": 156100,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:088130:2026-05-12",
@@ -1855,7 +1823,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 1,
       "executedBuys": [
         {
@@ -1911,12 +1879,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 10,250원, 평균 매수가 10,150원 기준 수익률 +0.99%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:376900:2026-05-12",
@@ -1998,7 +1968,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 2,
       "executedBuys": [
         {
@@ -2052,12 +2022,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 1,553원, 평균 매수가 1,679원 기준 수익률 -7.50%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:086820:2026-05-12",
@@ -2070,7 +2042,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -2128,14 +2100,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 9,380원, 평균 매수가 9,903.33원 기준 수익률 -5.28%입니다."
       },
       "unrealizedReturnPct": -5.28,
-      "latestClose": 9380
+      "latestClose": 9380,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:038460:2026-05-12",
@@ -2148,7 +2122,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -2202,14 +2176,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,580원, 평균 매수가 3,685원 기준 수익률 -2.85%입니다."
       },
       "unrealizedReturnPct": -2.85,
-      "latestClose": 3580
+      "latestClose": 3580,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:424760:2026-05-12",
@@ -2222,7 +2198,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -2265,13 +2241,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "latestClose": 1887
+      "latestClose": 1887,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:026940:2026-05-12",
@@ -2284,7 +2262,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -2327,12 +2305,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:369370:2026-05-12",
@@ -2345,7 +2325,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -2407,12 +2387,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 1,024원, 평균 매수가 1,058.33원 기준 수익률 -3.24%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:090460:2026-05-12",
@@ -2617,23 +2599,23 @@
       "sourceKey": "삼륭물산-014970",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
-          "stage": 1,
-          "price": 7102,
-          "date": "2026-05-14"
+          "stage": 2,
+          "price": 6670,
+          "date": "2026-05-11"
         },
         {
-          "stage": 2,
-          "price": 6722,
-          "date": "2026-05-14"
+          "stage": 3,
+          "price": 6300,
+          "date": "2026-05-15"
         }
       ],
-      "latestLow": 6510,
+      "latestLow": 6300,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-12",
@@ -2664,16 +2646,16 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 6590,
+      "latestClose": 6370,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 7102,
-        "secondBuyPrice": 6722,
-        "thirdBuyPrice": 6330,
+        "firstBuyPrice": 7030,
+        "secondBuyPrice": 6670,
+        "thirdBuyPrice": 6300,
         "stopLossPrice": 5950
       },
       "outcomeStatus": "active",
@@ -2684,8 +2666,8 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 6848.67,
-      "unrealizedReturnPct": -3.78
+      "averageBuyPrice": 6423.33,
+      "unrealizedReturnPct": -0.83
     },
     {
       "id": "swing:default:091580:2026-05-12",
@@ -2698,7 +2680,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 1,
       "executedBuys": [
         {
@@ -2751,14 +2733,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 24,400원, 평균 매수가 25,499원 기준 수익률 -4.31%입니다."
       },
       "averageBuyPrice": 25499,
-      "unrealizedReturnPct": -4.31
+      "unrealizedReturnPct": -4.31,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:042940:2026-05-12",
@@ -2771,7 +2755,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 2,
       "executedBuys": [
         {
@@ -2829,12 +2813,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 9,340원, 평균 매수가 9,510원 기준 수익률 -1.79%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:046890:2026-05-12",
@@ -2908,7 +2894,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -2948,13 +2934,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 8070
+      "latestClose": 8070,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:222080:2026-05-12",
@@ -2965,7 +2953,7 @@
       "sourceKey": "씨아이에스-222080",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -2977,19 +2965,19 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 15310,
+          "price": 15370,
           "date": "2026-05-12"
         },
         {
           "stage": 2,
-          "price": 14040,
+          "price": 14080,
           "date": "2026-05-14"
         }
       ],
       "buyPlan": {
-        "firstBuyPrice": 15313,
-        "secondBuyPrice": 14045,
-        "thirdBuyPrice": 12738,
+        "firstBuyPrice": 15370,
+        "secondBuyPrice": 14080,
+        "thirdBuyPrice": 12750,
         "stopLossPrice": 11470
       },
       "initialSnapshot": {
@@ -3027,11 +3015,11 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 14463.33,
-      "unrealizedReturnPct": 0.81,
+      "averageBuyPrice": 14510,
+      "unrealizedReturnPct": -6.48,
       "outcomeStatus": "active",
-      "latestClose": 14580,
-      "latestLow": 14000
+      "latestClose": 13570,
+      "latestLow": 13570
     },
     {
       "id": "swing:smallcap:200350:2026-05-12",
@@ -3122,7 +3110,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3163,13 +3151,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 3765
+      "latestClose": 3765,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:038680:2026-05-12",
@@ -3246,7 +3236,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3299,17 +3289,19 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 10,060원, 평균 매수가 10,210원 기준 수익률 -1.47%입니다."
       },
       "averageBuyPrice": 10210,
       "unrealizedReturnPct": -1.47,
       "outcomeStatus": "active",
       "latestClose": 10060,
-      "latestLow": 9960
+      "latestLow": 9960,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:088800:2026-05-12",
@@ -3322,7 +3314,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3366,12 +3358,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:172670:2026-05-12",
@@ -3384,7 +3378,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3426,13 +3420,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 19340
+      "latestClose": 19340,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:080520:2026-05-12",
@@ -3445,7 +3441,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 1,
       "executedBuys": [
         {
@@ -3497,15 +3493,17 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 3,960원, 평균 매수가 4,209원 기준 수익률 -5.92%입니다."
       },
       "latestClose": 3960,
       "averageBuyPrice": 4209,
-      "unrealizedReturnPct": -5.92
+      "unrealizedReturnPct": -5.92,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:039830:2026-05-12",
@@ -3518,7 +3516,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3557,13 +3555,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 16860
+      "latestClose": 16860,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:049480:2026-05-12",
@@ -3576,7 +3576,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -3631,17 +3631,19 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 2,810원, 평균 매수가 2,875원 기준 수익률 -2.26%입니다."
       },
       "averageBuyPrice": 2875,
       "unrealizedReturnPct": -2.26,
       "outcomeStatus": "active",
       "latestClose": 2810,
-      "latestLow": 2750
+      "latestLow": 2750,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:209640:2026-05-12",
@@ -3718,7 +3720,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -3772,14 +3774,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "neutral",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 11,210원, 평균 매수가 11,120원 기준 수익률 +0.81%입니다."
       },
       "unrealizedReturnPct": 0.81,
-      "latestClose": 11210
+      "latestClose": 11210,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:018000:2026-05-12",
@@ -3792,7 +3796,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -3848,12 +3852,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 1,083원, 평균 매수가 1,121원 기준 수익률 -3.39%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:083640:2026-05-12",
@@ -3942,7 +3948,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -3998,12 +4004,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,260원, 평균 매수가 3,315원 기준 수익률 -1.66%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:418550:2026-05-12",
@@ -4014,19 +4022,24 @@
       "sourceKey": "제이오-418550",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
-      "executedBuyCount": 1,
+      "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 11280,
+          "price": 11340,
           "date": "2026-05-08"
+        },
+        {
+          "stage": 2,
+          "price": 10020,
+          "date": "2026-05-15"
         }
       ],
-      "averageBuyPrice": 11280,
-      "latestLow": 10200,
+      "averageBuyPrice": 10460,
+      "latestLow": 9900,
       "initialSnapshot": {
         "anchorDate": "2026-04-30",
         "latestMentionDate": "2026-05-12",
@@ -4055,17 +4068,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 10580,
-      "unrealizedReturnPct": -6.21,
+      "latestClose": 10150,
+      "unrealizedReturnPct": -2.96,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 11283,
-        "secondBuyPrice": 9978,
-        "thirdBuyPrice": 8634,
+        "firstBuyPrice": 11349,
+        "secondBuyPrice": 10022,
+        "thirdBuyPrice": 8656,
         "stopLossPrice": 7330
       },
       "outcomeStatus": "active",
@@ -4088,7 +4101,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -4128,13 +4141,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 15700
+      "latestClose": 15700,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:082270:2026-05-12",
@@ -4214,7 +4229,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -4270,12 +4285,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,865원, 평균 매수가 4,155원 기준 수익률 -6.98%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:053050:2026-05-12",
@@ -4288,7 +4305,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -4344,12 +4361,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 2,320원, 평균 매수가 2,355원 기준 수익률 -1.49%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:261780:2026-05-12",
@@ -4432,7 +4451,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -4488,14 +4507,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 1,195원, 평균 매수가 1,186원 기준 수익률 +0.76%입니다."
       },
       "unrealizedReturnPct": 0.76,
-      "latestClose": 1195
+      "latestClose": 1195,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:360350:2026-05-12",
@@ -4508,7 +4529,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 2,
       "executedBuys": [
         {
@@ -4561,14 +4582,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 12,030원, 평균 매수가 12,710원 기준 수익률 -5.35%입니다."
       },
       "unrealizedReturnPct": -5.35,
-      "latestClose": 12030
+      "latestClose": 12030,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:115180:2026-05-12",
@@ -4581,7 +4604,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -4641,12 +4664,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 29,700원, 평균 매수가 31,200원 기준 수익률 -4.81%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:405100:2026-05-12",
@@ -4659,7 +4684,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -4702,12 +4727,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:011280:2026-05-12",
@@ -4718,18 +4745,18 @@
       "sourceKey": "태림포장-011280",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 3,
-          "price": 1887,
+          "price": 1882,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 1887,
+      "averageBuyPrice": 1882,
       "latestLow": 1843,
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -4765,17 +4792,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 1907,
-      "unrealizedReturnPct": 1.06,
+      "latestClose": 1878,
+      "unrealizedReturnPct": -0.21,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 2020,
-        "secondBuyPrice": 1955,
-        "thirdBuyPrice": 1888,
+        "firstBuyPrice": 2004,
+        "secondBuyPrice": 1944,
+        "thirdBuyPrice": 1883,
         "stopLossPrice": 1823
       },
       "outcomeStatus": "active",
@@ -4798,7 +4825,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -4856,14 +4883,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 15,400원, 평균 매수가 15,533.33원 기준 수익률 -0.86%입니다."
       },
       "unrealizedReturnPct": -0.86,
-      "latestClose": 15400
+      "latestClose": 15400,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:187660:2026-05-12",
@@ -4876,7 +4905,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 8300,
@@ -4926,12 +4955,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:331380:2026-05-12",
@@ -4944,7 +4975,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -5000,14 +5031,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 2,025원, 평균 매수가 1,997원 기준 수익률 +1.40%입니다."
       },
       "unrealizedReturnPct": 1.4,
-      "latestClose": 2025
+      "latestClose": 2025,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:147760:2026-05-12",
@@ -5080,20 +5113,26 @@
       "sourceKey": "필에너지-378340",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-12",
-      "entryBucket": "watch",
-      "status": "closed",
+      "dataDate": "2026-05-15",
+      "entryBucket": "execution_probe",
+      "status": "active",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
-      "executedBuyCount": 0,
-      "executedBuys": [],
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 18845,
+          "date": "2026-05-15"
+        }
+      ],
       "buyPlan": {
-        "firstBuyPrice": 18440,
-        "secondBuyPrice": 16690,
-        "thirdBuyPrice": 14890,
+        "firstBuyPrice": 18845,
+        "secondBuyPrice": 16966,
+        "thirdBuyPrice": 15029,
         "stopLossPrice": 13150
       },
       "initialSnapshot": {
@@ -5126,14 +5165,17 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "entry_missed_upside",
-        "label": "미체결 제외",
-        "category": "excluded",
-        "includeInReturnStats": false,
-        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+        "type": "active_entered",
+        "label": "현재",
+        "category": "active",
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "closedDate": "2026-05-14",
-      "closedMonth": "2026-05"
+      "averageBuyPrice": 18845,
+      "latestClose": 17310,
+      "unrealizedReturnPct": -8.15,
+      "outcomeStatus": "active",
+      "latestLow": 17090
     },
     {
       "id": "swing:smallcap:106190:2026-05-12",
@@ -5146,7 +5188,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -5201,14 +5243,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 16,180원, 평균 매수가 15,730원 기준 수익률 +2.86%입니다."
       },
       "unrealizedReturnPct": 2.86,
-      "latestClose": 16180
+      "latestClose": 16180,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:025770:2026-05-12",
@@ -5221,7 +5265,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 10130,
@@ -5269,12 +5313,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:042520:2026-05-12",
@@ -5357,7 +5403,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -5417,12 +5463,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,500원, 평균 매수가 3,505원 기준 수익률 -0.14%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:058450:2026-05-12",
@@ -5499,7 +5547,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -5552,14 +5600,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "neutral",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 115,300원, 평균 매수가 111,900원 기준 수익률 +3.04%입니다."
       },
       "unrealizedReturnPct": 3.04,
-      "latestClose": 115300
+      "latestClose": 115300,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:084990:2026-05-12",
@@ -5572,7 +5622,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -5617,12 +5667,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:000540:2026-05-12",
@@ -5633,18 +5685,18 @@
       "sourceKey": "흥국화재-000540",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 3,
-          "price": 3990,
+          "price": 3985,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 3990,
+      "averageBuyPrice": 3985,
       "latestLow": 3865,
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -5675,17 +5727,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 4190,
-      "unrealizedReturnPct": 5.01,
+      "latestClose": 4005,
+      "unrealizedReturnPct": 0.5,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4258,
-        "secondBuyPrice": 4128,
-        "thirdBuyPrice": 3995,
+        "firstBuyPrice": 4240,
+        "secondBuyPrice": 4115,
+        "thirdBuyPrice": 3985,
         "stopLossPrice": 3865
       },
       "outcomeStatus": "active",
@@ -5708,7 +5760,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 3,
       "executedBuys": [
         {
@@ -5766,12 +5818,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 5,940원, 평균 매수가 6,150원 기준 수익률 -3.41%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:079810:2026-05-12",
@@ -5784,7 +5838,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 2,
       "executedBuys": [
         {
@@ -5842,12 +5896,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 5,620원, 평균 매수가 5,570원 기준 수익률 +0.90%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:456040:2026-05-12",
@@ -5860,7 +5916,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -5904,13 +5960,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "1차 매수가 대비 7% 이상 위로 이탈해 체결 없는 제외로 분류합니다."
       },
-      "latestClose": 137400
+      "latestClose": 137400,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:004060:2026-05-12",
@@ -5989,7 +6047,7 @@
       "sourceKey": "SK증권-001510",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -6002,14 +6060,14 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 4420,
+          "price": 4440,
           "date": "2026-05-14"
         }
       ],
       "buyPlan": {
-        "firstBuyPrice": 4421,
-        "secondBuyPrice": 4079,
-        "thirdBuyPrice": 3727,
+        "firstBuyPrice": 4446,
+        "secondBuyPrice": 4096,
+        "thirdBuyPrice": 3735,
         "stopLossPrice": 3385
       },
       "initialSnapshot": {
@@ -6045,10 +6103,10 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 4420,
-      "unrealizedReturnPct": -0.11,
-      "latestClose": 4415,
-      "latestLow": 4330
+      "averageBuyPrice": 4440,
+      "unrealizedReturnPct": -6.42,
+      "latestClose": 4155,
+      "latestLow": 4120
     },
     {
       "id": "swing:default:077970:2026-05-12",
@@ -6061,7 +6119,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 1,
       "executedBuys": [
         {
@@ -6112,12 +6170,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 47,800원, 평균 매수가 51,100원 기준 수익률 -6.46%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:020400:2026-05-11",
@@ -6130,7 +6190,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6173,13 +6233,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "outcomeStatus": "active"
+      "outcomeStatus": "active",
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:317120:2026-05-11",
@@ -6190,7 +6252,7 @@
       "sourceKey": "라닉스-317120",
       "openedAt": "2026-05-11T05:49:39.907Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -6199,23 +6261,23 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 2526,
-        "secondBuyPrice": 2286,
-        "thirdBuyPrice": 2040,
+        "firstBuyPrice": 2512,
+        "secondBuyPrice": 2277,
+        "thirdBuyPrice": 2035,
         "stopLossPrice": 1800
       },
       "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 2,
-          "price": 2285,
+          "price": 2275,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 2285,
+      "averageBuyPrice": 2275,
       "latestClose": 2420,
       "latestLow": 2245,
-      "unrealizedReturnPct": 5.91,
+      "unrealizedReturnPct": 6.37,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
         "latestMentionDate": "2026-05-11",
@@ -6461,7 +6523,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6505,12 +6567,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:004440:2026-05-11",
@@ -6523,7 +6587,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6573,12 +6637,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 6,460원, 평균 매수가 6,710원 기준 수익률 -3.73%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:294630:2026-05-11",
@@ -6591,7 +6657,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6633,13 +6699,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "outcomeStatus": "active"
+      "outcomeStatus": "active",
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:108860:2026-05-11",
@@ -6652,7 +6720,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6704,12 +6772,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 11,730원, 평균 매수가 11,790원 기준 수익률 -0.51%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:336370:2026-05-11",
@@ -6722,7 +6792,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6763,12 +6833,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:020710:2026-05-11",
@@ -6779,7 +6851,7 @@
       "sourceKey": "시공테크-020710",
       "openedAt": "2026-05-11T05:49:40.116Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -6788,23 +6860,23 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4846,
-        "secondBuyPrice": 4498,
-        "thirdBuyPrice": 4138,
-        "stopLossPrice": 3790
+        "firstBuyPrice": 4836,
+        "secondBuyPrice": 4493,
+        "thirdBuyPrice": 4139,
+        "stopLossPrice": 3795
       },
       "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 2,
-          "price": 4495,
+          "price": 4490,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 4495,
-      "latestClose": 4495,
-      "latestLow": 4400,
-      "unrealizedReturnPct": 0,
+      "averageBuyPrice": 4490,
+      "latestClose": 4400,
+      "latestLow": 4290,
+      "unrealizedReturnPct": -2,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
         "latestMentionDate": "2026-05-11",
@@ -6975,7 +7047,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7022,14 +7094,16 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 1,774원, 평균 매수가 1,792원 기준 수익률 -1.00%입니다."
       },
       "averageBuyPrice": 1792,
-      "unrealizedReturnPct": -1
+      "unrealizedReturnPct": -1,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:158430:2026-05-11",
@@ -7042,7 +7116,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7093,12 +7167,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 7,610원, 평균 매수가 7,340원 기준 수익률 +3.68%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:321820:2026-05-11",
@@ -7182,7 +7258,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7236,14 +7312,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 1,937원, 평균 매수가 1,950원 기준 수익률 -0.67%입니다."
       },
       "averageBuyPrice": 1950,
-      "unrealizedReturnPct": -0.67
+      "unrealizedReturnPct": -0.67,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:347860:2026-05-11",
@@ -7256,7 +7334,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7305,12 +7383,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 2,170원, 평균 매수가 2,225원 기준 수익률 -2.47%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:088800:2026-05-11",
@@ -7580,7 +7660,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7620,12 +7700,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:131760:2026-05-11",
@@ -7638,7 +7720,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7683,12 +7765,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:010820:2026-05-11",
@@ -7701,7 +7785,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7750,14 +7834,16 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 12,230원, 평균 매수가 13,338원 기준 수익률 -8.31%입니다."
       },
       "averageBuyPrice": 13338,
-      "unrealizedReturnPct": -8.31
+      "unrealizedReturnPct": -8.31,
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:208710:2026-05-11",
@@ -7830,7 +7916,7 @@
       "openedDate": "2026-05-11",
       "dataDate": "2026-05-14",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7883,12 +7969,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
-      }
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 4,535원, 평균 매수가 4,545원 기준 수익률 -0.22%입니다."
+      },
+      "closedDate": "2026-05-15",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:225530:2026-05-11",
@@ -7899,8 +7987,8 @@
       "sourceKey": "HC보광산업-225530",
       "openedAt": "2026-05-11T05:49:40.294Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-15",
+      "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -7908,23 +7996,28 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 3480,
-        "secondBuyPrice": 3205,
-        "thirdBuyPrice": 2920,
+        "firstBuyPrice": 3441,
+        "secondBuyPrice": 3180,
+        "thirdBuyPrice": 2911,
         "stopLossPrice": 2650
       },
       "executedBuyCount": 3,
       "executedBuys": [
         {
+          "stage": 2,
+          "price": 3180,
+          "date": "2026-05-11"
+        },
+        {
           "stage": 3,
-          "price": 2920,
+          "price": 2910,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 2920,
-      "latestClose": 3005,
+      "averageBuyPrice": 3000,
+      "latestClose": 3215,
       "latestLow": 2865,
-      "unrealizedReturnPct": 2.91,
+      "unrealizedReturnPct": 7.17,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
         "latestMentionDate": "2026-05-11",
@@ -7971,7 +8064,7 @@
       "sourceKey": "SK오션플랜트-100090",
       "openedAt": "2026-05-11T05:49:40.176Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-15",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -7980,23 +8073,28 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 22179,
-        "secondBuyPrice": 20783,
-        "thirdBuyPrice": 19346,
-        "stopLossPrice": 17950
+        "firstBuyPrice": 21996,
+        "secondBuyPrice": 20721,
+        "thirdBuyPrice": 19406,
+        "stopLossPrice": 18130
       },
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 2,
-          "price": 20750,
+          "price": 20700,
           "date": "2026-05-12"
+        },
+        {
+          "stage": 3,
+          "price": 19400,
+          "date": "2026-05-15"
         }
       ],
-      "averageBuyPrice": 20750,
-      "latestClose": 20650,
-      "latestLow": 19960,
-      "unrealizedReturnPct": -0.48,
+      "averageBuyPrice": 19833.33,
+      "latestClose": 19310,
+      "latestLow": 19110,
+      "unrealizedReturnPct": -2.64,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
         "latestMentionDate": "2026-05-11",
@@ -8031,5 +8129,16 @@
       }
     }
   ],
-  "closedMonths": []
+  "closedMonths": [
+    {
+      "month": "2026-05",
+      "label": "2026년 05월",
+      "closedCaseCount": 10,
+      "enteredCaseCount": 10,
+      "noEntryCaseCount": 0,
+      "profitExitCaseCount": 0,
+      "stopBrokenCaseCount": 0,
+      "averageReturnPct": -1.72
+    }
+  ]
 }

@@ -4536,6 +4536,21 @@ function buildIndexMovingAverage(points, period) {
   return result;
 }
 
+function buildMarketWatchChartSignature(points, timeframe, movingAverageConfig) {
+  return JSON.stringify({
+    timeframe,
+    movingAveragePeriods: movingAverageConfig.map((config) => config.period),
+    points: points.map((point) => [
+      point.date,
+      point.open,
+      point.high,
+      point.low,
+      point.close,
+      point.volume
+    ])
+  });
+}
+
 function createMarketWatchChartState(container, tooltip) {
   const chart = createChart(container, {
     width: container.clientWidth || 640,
@@ -4749,6 +4764,11 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchChartState.viewportKey = viewportKey;
   marketWatchChartState.movingAverageConfig = movingAverageConfig;
 
+  const dataSignature = buildMarketWatchChartSignature(points, timeframe, movingAverageConfig);
+  if (previousViewportKey === viewportKey && marketWatchChartState.dataSignature === dataSignature) {
+    return;
+  }
+
   const candleSeriesData = points.map((point) => ({
     time: point.date,
     open: point.open ?? point.close,
@@ -4795,6 +4815,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   } else {
     setDefaultMarketWatchVisibleRange(marketWatchChartState.chart, chartPointCount, timeframe);
   }
+  marketWatchChartState.dataSignature = dataSignature;
 }
 
 function setDefaultMarketWatchVisibleRange(chart, pointCount, timeframe) {
@@ -5640,14 +5661,34 @@ function getStockSnapshotRefreshInterval() {
     : LONG_TERM_STOCK_SNAPSHOT_REFRESH_INTERVAL_MS;
 }
 
-function renderStockRealtimeLine(item) {
+function getStockRealtimeLineSignature(item) {
   const snapshot = realtimeStockSnapshots.get(getRealtimeSnapshotKey(item));
   if (snapshot?.error) {
-    return `<span class="stock-card-live-row muted">${escapeHtml(snapshot.error)}</span>`;
+    return `error:${snapshot.error}`;
   }
 
   if (typeof snapshot?.latestClose !== "number") {
-    return `<span class="stock-card-live-row muted">실시간 시세 대기</span>`;
+    return "pending";
+  }
+
+  return JSON.stringify([
+    snapshot.latestClose,
+    snapshot.changePercent ?? null,
+    snapshot.changeAmount ?? null,
+    snapshot.latestDate ?? ""
+  ]);
+}
+
+function renderStockRealtimeLine(item) {
+  const liveKey = escapeHtml(getRealtimeSnapshotKey(item));
+  const liveSignature = escapeHtml(getStockRealtimeLineSignature(item));
+  const snapshot = realtimeStockSnapshots.get(getRealtimeSnapshotKey(item));
+  if (snapshot?.error) {
+    return `<span class="stock-card-live-row muted" data-live-stock-key="${liveKey}" data-live-stock-signature="${liveSignature}">${escapeHtml(snapshot.error)}</span>`;
+  }
+
+  if (typeof snapshot?.latestClose !== "number") {
+    return `<span class="stock-card-live-row muted" data-live-stock-key="${liveKey}" data-live-stock-signature="${liveSignature}">실시간 시세 대기</span>`;
   }
 
   const trendClass =
@@ -5659,12 +5700,31 @@ function renderStockRealtimeLine(item) {
   const latestDateText = snapshot.latestDate ? `${escapeHtml(snapshot.latestDate)} 기준` : "실시간";
 
   return `
-    <span class="stock-card-live-row ${trendClass}">
+    <span class="stock-card-live-row ${trendClass}" data-live-stock-key="${liveKey}" data-live-stock-signature="${liveSignature}">
       <span class="stock-card-live-price">${formatNumber(snapshot.latestClose)}원</span>
       <span class="stock-card-live-change">${changeText}</span>
       <span class="stock-card-live-stamp">${latestDateText}</span>
     </span>
   `;
+}
+
+function updateRealtimeSnapshotRows() {
+  if (!stockSelector) {
+    return;
+  }
+
+  const itemByKey = new Map(getPagedItems().map((item) => [getRealtimeSnapshotKey(item), item]));
+  for (const row of stockSelector.querySelectorAll("[data-live-stock-key]")) {
+    const item = itemByKey.get(row.dataset.liveStockKey);
+    if (!item) {
+      continue;
+    }
+
+    const nextSignature = getStockRealtimeLineSignature(item);
+    if (row.dataset.liveStockSignature !== nextSignature) {
+      row.outerHTML = renderStockRealtimeLine(item).trim();
+    }
+  }
 }
 
 function maybePrefetchVisibleRealtimeSnapshots() {
@@ -5719,7 +5779,11 @@ async function loadRealtimeStockSnapshots(options = {}) {
       items.map((item) => [item.key ?? item.symbol, item])
     );
     lastVisibleStockSnapshotSignature = getVisibleStockSnapshotSignature();
-    renderSelector();
+    if (options.background) {
+      updateRealtimeSnapshotRows();
+    } else {
+      renderSelector();
+    }
   } catch (error) {
     console.error(error);
     if (!options.background) {
@@ -7483,7 +7547,9 @@ async function refreshCurrentAnalysisRealtime(options = {}) {
     }
 
     currentAnalysis = applyRealtimeDetailToAnalysis(currentAnalysis, payload);
-    updateCurrentAnalysisDom(currentAnalysis, payload.fetchedAt);
+    if (!options.chartOnly) {
+      updateCurrentAnalysisDom(currentAnalysis, payload.fetchedAt);
+    }
     updateInteractiveChartData(
       currentAnalysis.chartSets[currentAnalysis.activeTimeframe],
       currentAnalysis.tradingAnchorDate,
@@ -7506,7 +7572,7 @@ function startActiveAnalysisAutoRefresh() {
   }
 
   activeAnalysisRefreshTimer = window.setInterval(() => {
-    void refreshCurrentAnalysisRealtime({ background: true });
+    void refreshCurrentAnalysisRealtime({ background: true, chartOnly: true });
   }, ACTIVE_ANALYSIS_REFRESH_INTERVAL_MS);
 }
 
@@ -9396,6 +9462,76 @@ function buildInteractiveVolumeSeriesData(points) {
   );
 }
 
+function buildInteractiveChartSignature(points, anchorDate, swingTradeOverlay = null, showEnvelope = false) {
+  return JSON.stringify({
+    anchorDate,
+    showEnvelope,
+    buyPrices: swingTradeOverlay?.buyPrices ?? [],
+    stopPrice: swingTradeOverlay?.stopPrice ?? null,
+    points: points.map((point) => [
+      point.time,
+      point.open,
+      point.high,
+      point.low,
+      point.close,
+      point.value,
+      Boolean(point.isWhitespace),
+      Boolean(point.isHalted)
+    ])
+  });
+}
+
+function buildInteractiveOverlaySignature(anchorDate, swingTradeOverlay = null, showEnvelope = false) {
+  return JSON.stringify({
+    anchorDate,
+    showEnvelope,
+    buyPrices: swingTradeOverlay?.buyPrices ?? [],
+    stopPrice: swingTradeOverlay?.stopPrice ?? null
+  });
+}
+
+function areInteractiveChartPointsEqual(left, right) {
+  return (
+    left?.time === right?.time &&
+    left?.open === right?.open &&
+    left?.high === right?.high &&
+    left?.low === right?.low &&
+    left?.close === right?.close &&
+    left?.value === right?.value &&
+    Boolean(left?.isWhitespace) === Boolean(right?.isWhitespace) &&
+    Boolean(left?.isHalted) === Boolean(right?.isHalted)
+  );
+}
+
+function canPatchLatestInteractivePoint(previousPoints, nextPoints) {
+  if (!Array.isArray(previousPoints) || !Array.isArray(nextPoints) || previousPoints.length !== nextPoints.length || nextPoints.length === 0) {
+    return false;
+  }
+
+  for (let index = 0; index < nextPoints.length - 1; index += 1) {
+    if (!areInteractiveChartPointsEqual(previousPoints[index], nextPoints[index])) {
+      return false;
+    }
+  }
+
+  return previousPoints.at(-1)?.time === nextPoints.at(-1)?.time;
+}
+
+function updateLatestSeriesPoint(series, previousData, nextData) {
+  const nextPoint = nextData.at(-1);
+  if (!nextPoint) {
+    series.setData(nextData);
+    return;
+  }
+
+  if (previousData.length === nextData.length && previousData.at(-1)?.time === nextPoint.time) {
+    series.update(nextPoint);
+    return;
+  }
+
+  series.setData(nextData);
+}
+
 function clearInteractivePriceLines(chartEntry) {
   if (!chartEntry?.priceLines?.length) {
     chartEntry.priceLines = [];
@@ -9434,7 +9570,7 @@ function applyInteractivePriceLines(chartEntry, points, anchorDate, swingTradeOv
   const hasTradeOverlay = buyPrices.length > 0 || (typeof swingTradeOverlay?.stopPrice === "number" && swingTradeOverlay.stopPrice > 0);
   const anchorPoint = resolveInteractiveAnchorPoint(points, anchorDate);
 
-  if (!hasTradeOverlay && anchorPoint?.close != null) {
+  if (!chartEntry.showEnvelope && !hasTradeOverlay && anchorPoint?.close != null) {
     chartEntry.priceLines.push(
       chartEntry.candleSeries.createPriceLine({
         price: anchorPoint.close,
@@ -9474,6 +9610,20 @@ function applyInteractivePriceLines(chartEntry, points, anchorDate, swingTradeOv
   }
 }
 
+function getInteractiveTimeScaleOptions(isSwingChart) {
+  return {
+    borderColor: "rgba(31,26,20,0.12)",
+    borderVisible: !isSwingChart,
+    visible: !isSwingChart,
+    timeVisible: true,
+    secondsVisible: false,
+    rightOffset: CHART_RIGHT_ANCHOR_OFFSET,
+    rightBarStaysOnScroll: true,
+    ticksVisible: !isSwingChart,
+    tickMarkFormatter: isSwingChart ? () => "" : undefined
+  };
+}
+
 function updateInteractiveChartData(points, anchorDate, swingTradeOverlay = null, options = {}) {
   if (!activeChart) {
     mountInteractiveChart(points, anchorDate, swingTradeOverlay, options);
@@ -9481,10 +9631,50 @@ function updateInteractiveChartData(points, anchorDate, swingTradeOverlay = null
   }
 
   const showEnvelope = Boolean(options.showEnvelope ?? activeChart.showEnvelope);
+  const dataSignature = buildInteractiveChartSignature(points, anchorDate, swingTradeOverlay, showEnvelope);
+  const overlaySignature = buildInteractiveOverlaySignature(anchorDate, swingTradeOverlay, showEnvelope);
+  const previousPoints = activeChart.chartState.points;
+  if (activeChart.showEnvelope !== showEnvelope) {
+    const timeScaleOptions = getInteractiveTimeScaleOptions(showEnvelope);
+    activeChart.priceChart.applyOptions({ timeScale: timeScaleOptions });
+    activeChart.volumeChart.applyOptions({ timeScale: timeScaleOptions });
+  }
   activeChart.chartState.points = points;
   activeChart.anchorDate = anchorDate;
   activeChart.swingTradeOverlay = swingTradeOverlay;
   activeChart.showEnvelope = showEnvelope;
+
+  if (!options.resetVisibleRange && activeChart.dataSignature === dataSignature) {
+    return;
+  }
+
+  if (
+    !options.resetVisibleRange &&
+    activeChart.overlaySignature === overlaySignature &&
+    canPatchLatestInteractivePoint(previousPoints, points)
+  ) {
+    updateLatestSeriesPoint(
+      activeChart.candleSeries,
+      buildInteractiveCandleSeriesData(previousPoints),
+      buildInteractiveCandleSeriesData(points)
+    );
+    updateLatestSeriesPoint(
+      activeChart.volumeSeries,
+      buildInteractiveVolumeSeriesData(previousPoints),
+      buildInteractiveVolumeSeriesData(points)
+    );
+    updateLatestSeriesPoint(activeChart.ma5Series, buildMovingAverage(previousPoints, 5), buildMovingAverage(points, 5));
+    updateLatestSeriesPoint(activeChart.ma20Series, buildMovingAverage(previousPoints, 20), buildMovingAverage(points, 20));
+    updateLatestSeriesPoint(activeChart.ma60Series, buildMovingAverage(previousPoints, 60), buildMovingAverage(points, 60));
+    updateLatestSeriesPoint(activeChart.ma120Series, buildMovingAverage(previousPoints, 120), buildMovingAverage(points, 120));
+    const previousEnvelopeBands = showEnvelope ? buildEnvelopeBands(previousPoints) : null;
+    const envelopeBands = showEnvelope ? buildEnvelopeBands(points) : null;
+    updateLatestSeriesPoint(activeChart.envelopeUpperSeries, previousEnvelopeBands?.upper ?? [], envelopeBands?.upper ?? []);
+    updateLatestSeriesPoint(activeChart.envelopeLowerSeries, previousEnvelopeBands?.lower ?? [], envelopeBands?.lower ?? []);
+    activeChart.dataSignature = dataSignature;
+    return;
+  }
+
   activeChart.candleSeries.setData(buildInteractiveCandleSeriesData(points));
   activeChart.volumeSeries.setData(buildInteractiveVolumeSeriesData(points));
   activeChart.ma5Series.setData(buildMovingAverage(points, 5));
@@ -9499,6 +9689,8 @@ function updateInteractiveChartData(points, anchorDate, swingTradeOverlay = null
   if (options.resetVisibleRange) {
     setDefaultVisibleTradingRange(activeChart.priceChart, points);
   }
+  activeChart.dataSignature = dataSignature;
+  activeChart.overlaySignature = overlaySignature;
 }
 
 function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, options = {}) {
@@ -9512,6 +9704,7 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
 
   cleanupChart();
 
+  const isSwingChart = Boolean(options.showEnvelope);
   const commonChartOptions = {
     width: stack.clientWidth || 840,
     layout: {
@@ -9536,13 +9729,7 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
     rightPriceScale: {
       borderColor: "rgba(31,26,20,0.12)"
     },
-    timeScale: {
-      borderColor: "rgba(31,26,20,0.12)",
-      timeVisible: true,
-      secondsVisible: false,
-      rightOffset: CHART_RIGHT_ANCHOR_OFFSET,
-      rightBarStaysOnScroll: true
-    },
+    timeScale: getInteractiveTimeScaleOptions(isSwingChart),
     handleScroll: {
       mouseWheel: false,
       pressedMouseMove: true,
@@ -9634,7 +9821,7 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
   const chartState = {
     points
   };
-  const showEnvelope = Boolean(options.showEnvelope);
+  const showEnvelope = isSwingChart;
   const envelopeBands = showEnvelope ? buildEnvelopeBands(points) : null;
   const wheelHandler = (event) => {
     applyLatestAnchoredWheelZoom(event, priceChart, chartState.points);
@@ -9745,7 +9932,9 @@ function mountInteractiveChart(points, anchorDate, swingTradeOverlay = null, opt
     showEnvelope,
     wheelTarget: stack,
     wheelHandler,
-    priceLines: []
+    priceLines: [],
+    dataSignature: buildInteractiveChartSignature(points, anchorDate, swingTradeOverlay, showEnvelope),
+    overlaySignature: buildInteractiveOverlaySignature(anchorDate, swingTradeOverlay, showEnvelope)
   };
   applyInteractivePriceLines(activeChart, points, anchorDate, swingTradeOverlay);
 }

@@ -93,6 +93,22 @@ type StopLossReference = {
   type: SmartMoneyStopLossReferenceType;
 };
 
+type PreLeadBaseShape = {
+  compressed: boolean;
+  rangePercent: number;
+  trendPercent: number;
+  volatileSessions: number;
+  rangeLimitPercent?: number;
+  benchmarkRangePercent?: number;
+  benchmarkMaxDailyMovePercent?: number;
+  reason?: string;
+};
+
+const PRE_LEAD_BASE_RANGE_LIMIT_PERCENT = 35;
+const PRE_LEAD_MARKET_SHOCK_RANGE_PERCENT = 20;
+const PRE_LEAD_MARKET_SHOCK_DAILY_MOVE_PERCENT = 8;
+const PRE_LEAD_MARKET_RANGE_LIMIT_BONUS_CAP = 8;
+
 function getLowestPointReference(points: ChartPoint[], startIndex: number, endIndex: number): StopLossReference | undefined {
   if (startIndex > endIndex || endIndex < 0 || !points.length) {
     return undefined;
@@ -131,6 +147,154 @@ function getLowestPointReference(points: ChartPoint[], startIndex: number, endIn
     date: [...closeCandidates].reverse().find((item) => item.value === price)?.date,
     type: "close_fallback"
   };
+}
+
+function getPointRangePercent(points: Array<Pick<ChartPoint, "high" | "low" | "close">>) {
+  const highs = points.map((point) => point.high ?? point.close).filter((value) => value > 0);
+  const lows = points.map((point) => point.low ?? point.close).filter((value) => value > 0);
+  if (!highs.length || !lows.length) {
+    return 0;
+  }
+
+  return percentChange(Math.max(...highs), Math.min(...lows)) ?? 0;
+}
+
+function getMaxDailyMovePercent(points: Array<Pick<ChartPoint, "close">>) {
+  let maxMove = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const move = Math.abs(percentChange(points[index].close, points[index - 1].close) ?? 0);
+    maxMove = Math.max(maxMove, move);
+  }
+  return maxMove;
+}
+
+function getPreLeadMarketVolatilityAdjustment(
+  basePoints: ChartPoint[],
+  marketContext?: SmartMoneyAppliedMarketContext
+) {
+  const startDate = basePoints[0]?.date;
+  const endDate = basePoints.at(-1)?.date;
+  const benchmarkSeries = marketContext?.benchmarkSeries;
+  if (!startDate || !endDate || !benchmarkSeries) {
+    return {
+      rangeLimitPercent: PRE_LEAD_BASE_RANGE_LIMIT_PERCENT,
+      benchmarkRangePercent: 0,
+      benchmarkMaxDailyMovePercent: 0
+    };
+  }
+
+  const benchmarkWindows = Object.values(benchmarkSeries)
+    .filter((points): points is NonNullable<typeof points> => Array.isArray(points))
+    .map((points) => points.filter((point) => point.date >= startDate && point.date <= endDate))
+    .filter((points) => points.length >= 5);
+  const benchmarkRangePercent = Math.max(0, ...benchmarkWindows.map(getPointRangePercent));
+  const benchmarkMaxDailyMovePercent = Math.max(0, ...benchmarkWindows.map(getMaxDailyMovePercent));
+  const marketShock =
+    benchmarkRangePercent >= PRE_LEAD_MARKET_SHOCK_RANGE_PERCENT ||
+    benchmarkMaxDailyMovePercent >= PRE_LEAD_MARKET_SHOCK_DAILY_MOVE_PERCENT;
+  const rangeBonus = marketShock
+    ? Math.min(
+        PRE_LEAD_MARKET_RANGE_LIMIT_BONUS_CAP,
+        Math.max(0, (benchmarkRangePercent - 15) * 0.35) +
+          (benchmarkMaxDailyMovePercent >= PRE_LEAD_MARKET_SHOCK_DAILY_MOVE_PERCENT ? 2 : 0)
+      )
+    : 0;
+
+  return {
+    rangeLimitPercent: PRE_LEAD_BASE_RANGE_LIMIT_PERCENT + rangeBonus,
+    benchmarkRangePercent,
+    benchmarkMaxDailyMovePercent
+  };
+}
+
+function assessPreLeadBaseShape(
+  points: ChartPoint[],
+  leadInIndex: number,
+  lookbackSessions: number,
+  marketContext?: SmartMoneyAppliedMarketContext
+): PreLeadBaseShape {
+  const basePoints = points.slice(Math.max(0, leadInIndex - lookbackSessions), leadInIndex);
+  if (basePoints.length < 8) {
+    return {
+      compressed: true,
+      rangePercent: 0,
+      trendPercent: 0,
+      volatileSessions: 0,
+      rangeLimitPercent: PRE_LEAD_BASE_RANGE_LIMIT_PERCENT
+    };
+  }
+
+  const high = Math.max(...basePoints.map((point) => getPointHigh(point)));
+  const lows = basePoints.map((point) => getPointLow(point)).filter((value) => value > 0);
+  const low = lows.length ? Math.min(...lows) : 0;
+  const firstClose = basePoints[0]?.close;
+  const lastClose = basePoints.at(-1)?.close;
+  const rangePercent = low > 0 ? percentChange(high, low) ?? 0 : 0;
+  const trendPercent = firstClose && lastClose ? percentChange(lastClose, firstClose) ?? 0 : 0;
+  const volatileSessions = basePoints.reduce((count, point, index) => {
+    const previousClose = basePoints[index - 1]?.close;
+    const intradayRange = percentChange(getPointHigh(point), getPointLow(point)) ?? 0;
+    const closeChange = previousClose ? Math.abs(percentChange(point.close, previousClose) ?? 0) : 0;
+    return count + (intradayRange >= 18 || closeChange >= 12 ? 1 : 0);
+  }, 0);
+  const marketAdjustment = getPreLeadMarketVolatilityAdjustment(basePoints, marketContext);
+
+  if (rangePercent > marketAdjustment.rangeLimitPercent) {
+    return {
+      compressed: false,
+      rangePercent,
+      trendPercent,
+      volatileSessions,
+      rangeLimitPercent: marketAdjustment.rangeLimitPercent,
+      benchmarkRangePercent: marketAdjustment.benchmarkRangePercent,
+      benchmarkMaxDailyMovePercent: marketAdjustment.benchmarkMaxDailyMovePercent,
+      reason: `Pre-lead base range was ${rangePercent.toFixed(1)}%, above the market-adjusted compression limit ${marketAdjustment.rangeLimitPercent.toFixed(1)}%.`
+    };
+  }
+
+  if (trendPercent < -18) {
+    return {
+      compressed: false,
+      rangePercent,
+      trendPercent,
+      volatileSessions,
+      rangeLimitPercent: marketAdjustment.rangeLimitPercent,
+      benchmarkRangePercent: marketAdjustment.benchmarkRangePercent,
+      benchmarkMaxDailyMovePercent: marketAdjustment.benchmarkMaxDailyMovePercent,
+      reason: `Pre-lead base trend was ${trendPercent.toFixed(1)}%, so the base was still falling.`
+    };
+  }
+
+  if (volatileSessions >= 3) {
+    return {
+      compressed: false,
+      rangePercent,
+      trendPercent,
+      volatileSessions,
+      rangeLimitPercent: marketAdjustment.rangeLimitPercent,
+      benchmarkRangePercent: marketAdjustment.benchmarkRangePercent,
+      benchmarkMaxDailyMovePercent: marketAdjustment.benchmarkMaxDailyMovePercent,
+      reason: `Pre-lead base had ${volatileSessions} volatile sessions, so it was not a quiet base.`
+    };
+  }
+
+  return {
+    compressed: true,
+    rangePercent,
+    trendPercent,
+    volatileSessions,
+    rangeLimitPercent: marketAdjustment.rangeLimitPercent,
+    benchmarkRangePercent: marketAdjustment.benchmarkRangePercent,
+    benchmarkMaxDailyMovePercent: marketAdjustment.benchmarkMaxDailyMovePercent
+  };
+}
+
+function pickHigherStopLossReference(current: StopLossReference, structural?: StopLossReference): StopLossReference {
+  if (!structural || structural.price <= current.price) {
+    return current;
+  }
+
+  return structural;
 }
 
 function buildEmptyMatch(referenceDate: string, windowPoints: ChartPoint[], lookbackWindowDays?: number): SmartMoneyPatternMatch {
@@ -1726,6 +1890,19 @@ export function evaluateSmartMoneyPattern(
           rejected.push(...setupPullback.rejectReasons.map((reason) => createRejectReason("setup", lookbackWindowDays, reason, leadInPoint.date, surgePeakPoint.date)));
           continue;
         }
+        const preLeadBaseShape = assessPreLeadBaseShape(points, leadInIndex, filters.breakoutLookbackDays, market.appliedContext);
+        if (!preLeadBaseShape.compressed) {
+          rejected.push(
+            createRejectReason(
+              "setup",
+              lookbackWindowDays,
+              preLeadBaseShape.reason ?? "Pre-lead base was not compressed enough for a base-building swing setup.",
+              leadInPoint.date,
+              surgePeakPoint.date
+            )
+          );
+          continue;
+        }
 
         const referenceCloseVsBasePercent = percentChange(referencePoint.close, preLeadBaseClose);
         const referenceCloseVsPeakPercent = percentChange(referencePoint.close, surgePeakPoint.close);
@@ -1748,7 +1925,7 @@ export function evaluateSmartMoneyPattern(
           referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
           filters
         });
-        const stopLossReference =
+        const rawStopLossReference =
           visibleStopLossReference && visibleStopLossReference.price > 0
             ? visibleStopLossReference
             : {
@@ -1756,6 +1933,11 @@ export function evaluateSmartMoneyPattern(
                 date: setupPullback.pullbackLowDate,
                 type: setupPullback.pullbackLowType ?? "close_fallback"
               };
+        const anchorStructureStopReference =
+          setupPullbackPoints.length > filters.maxPullbackSessions
+            ? getLowestPointReference(points, Math.max(0, leadInIndex - filters.breakoutLookbackDays), leadInIndex)
+            : undefined;
+        const stopLossReference = pickHigherStopLossReference(rawStopLossReference, anchorStructureStopReference);
         const pullbackBuyPlan =
           pullbackBuyEligible
             ? resolvePullbackBuyPlan({

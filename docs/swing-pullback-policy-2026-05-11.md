@@ -72,3 +72,15 @@ Recommendation-history statistics now exclude cases that have not reached the fi
 - Entered cases: at least one staged buy was touched.
 - Pending cases: recommended, but no first-buy execution assumption yet.
 - Win-rate and return calculations should use entered cases only.
+
+## 2026-05-15 Update
+
+The long-pullback rule is now reflected in final candidate classification.
+
+- A mature pullback can become `execution_probe` through `long_pullback_until_stop_probe`.
+- The candidate must still be above the invalidation/stop line.
+- The candidate must not be overheated above the upper SMA20 envelope.
+- Pullback age alone is still not an exclusion reason.
+- Confirmed stop break, structural failure, or a failed post-spike shape can still remove or demote the candidate.
+
+This keeps cases such as 제이오, 씨아이에스, SK오션플랜트, and 삼륭물산 aligned with the intended rule: after a valid swing candidate appears, a long pullback remains valid until the stop is broken.

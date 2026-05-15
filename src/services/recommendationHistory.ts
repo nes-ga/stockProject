@@ -601,6 +601,10 @@ function isExecutionHistoryCase(historyCase: SwingHistoryCase) {
   return historyCase.entryBucket !== "watch";
 }
 
+function isActionableSwingCandidate(candidate: SwingCandidate) {
+  return candidate.bucket !== "watch";
+}
+
 function buildCurrentHistoryCase(
   candidate: SwingCandidate & { profile: "default" | "smallcap"; sourceBucket: "execution" | "watch" },
   existingCase: SwingHistoryCase | undefined,
@@ -686,23 +690,17 @@ async function readCurrentSwingCandidates() {
   for (const source of swingSourceFiles) {
     const payload = await readJsonFile<SwingPickPayload>(path.join(projectRoot, "data", source.file));
     const executionItems = payload.executionItems ?? [];
-    const watchItems = payload.watchItems ?? [];
 
     candidates.push(
       ...executionItems.map((item) => ({
         ...item,
         profile: source.profile,
         sourceBucket: "execution" as const
-      })),
-      ...watchItems.map((item) => ({
-        ...item,
-        profile: source.profile,
-        sourceBucket: "watch" as const
       }))
     );
   }
 
-  return candidates.filter((item) => item.symbol && !isPennyStockCandidate(item));
+  return candidates.filter((item) => item.symbol && isActionableSwingCandidate(item) && !isPennyStockCandidate(item));
 }
 
 function buildSwingHistorySummary(
@@ -798,7 +796,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
   const now = new Date();
   const existingPayload = await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath);
   const existingCases = Array.isArray(existingPayload?.cases)
-    ? existingPayload.cases.map(normalizeHistoryCaseWeightedBuys).filter((historyCase) => !isPennyStockHistoryCase(historyCase))
+    ? existingPayload.cases
+        .map(normalizeHistoryCaseWeightedBuys)
+        .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
   const currentCandidates = await readCurrentSwingCandidates();
   const existingCaseByKey = new Map(
@@ -854,7 +854,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       strategy: "swing",
       profiles: ["default", "smallcap"],
       sourceFiles: swingSourceFiles.map((source) => `data/${source.file}`),
-      includedBuckets: ["executionItems", "watchItems"],
+      includedBuckets: ["executionItems"],
       includeOnlyTouchedFirstBuy: true
     },
     summary: buildSwingHistorySummary(casesWithOutcome, currentCandidates),
@@ -877,7 +877,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
 export async function readSwingRecommendationHistory() {
   const payload = await readJsonFile<SwingHistoryPayload>(swingHistoryPath);
   const cases = Array.isArray(payload.cases)
-    ? payload.cases.map(normalizeHistoryCaseWeightedBuys).filter((historyCase) => !isPennyStockHistoryCase(historyCase))
+    ? payload.cases
+        .map(normalizeHistoryCaseWeightedBuys)
+        .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
   const currentCandidates = await readCurrentSwingCandidates();
   const currentByProfileSymbol = new Map(
