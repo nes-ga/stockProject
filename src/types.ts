@@ -1113,6 +1113,7 @@ export type LongTermScanLabel =
   | "leader correction watch"
   | "deep value review"
   | "base-forming candidate"
+  | "contrarian accumulation candidate"
   | "needs more stabilization";
 
 export type LongTermCandidateGroup = "buy candidate" | "watch candidate";
@@ -1133,6 +1134,7 @@ export type LongTermScoreBreakdown = {
   stabilizationScore: number;
   financialScore: number;
   volumeProfileScore?: number;
+  higherTimeframeScore?: number;
   durabilityScore?: number;
 };
 
@@ -1156,6 +1158,26 @@ export type LongTermBaseStructure = {
   baseDurationDays: number;
   timeSinceLastMajorLow: number;
   isStabilizing: boolean;
+};
+
+export type LongTermHigherTimeframeStructure = {
+  score: number;
+  weeklyTrendScore: number;
+  monthlyCycleScore: number;
+  weeklyMa20?: number;
+  weeklyMa40?: number;
+  weeklyMa20Slope?: number;
+  weeklyMa40Slope?: number;
+  weeklyPriceVsMa40Pct?: number;
+  weeklyDrawdownPct?: number;
+  weeklyWeeksSinceLow?: number;
+  monthlyMa12?: number;
+  monthlyMa24?: number;
+  monthlyMa12Slope?: number;
+  monthlyMa24Slope?: number;
+  monthlyPriceVsMa24Pct?: number;
+  monthlyDrawdownPct?: number;
+  monthlyMonthsSinceLow?: number;
 };
 
 export type LongTermLiquiditySnapshot = {
@@ -1209,7 +1231,8 @@ export type LongTermWatchTag =
   | "watch_leader_correction"
   | "watch_trend_not_confirmed"
   | "watch_financial_repair"
-  | "watch_secondary_recovery";
+  | "watch_secondary_recovery"
+  | "buy_contrarian_accumulation";
 
 export type LongTermScanCandidate = {
   symbol: string;
@@ -1225,6 +1248,7 @@ export type LongTermScanCandidate = {
   scores: LongTermScoreBreakdown;
   structure: LongTermStructureSnapshot;
   baseStructure: LongTermBaseStructure;
+  higherTimeframe?: LongTermHigherTimeframeStructure;
   liquidity: LongTermLiquiditySnapshot;
   financials?: LongTermFinancialSnapshot;
   fundamentals?: LongTermFinancialSnapshot;
@@ -1249,8 +1273,14 @@ export type LongTermScanFilters = {
   longBaseRewardStartDays: number;
   longBaseRewardFullDays: number;
   vShapePenaltyPeakDays: number;
+  minimumHistorySessions: number;
   minimumTradableTurnover20: number;
   minimumTradableTurnover60: number;
+  minimumAdHocTradableTurnover60: number;
+  minimumAdHocTurnoverRank: number;
+  minimumAdHocSectorPeerCount: number;
+  minimumAdHocSectorTurnoverRank: number;
+  minimumAdHocLeaderScore: number;
   minimumDrawdownPct: number;
   strongDrawdownPct: number;
   deepDrawdownPct: number;

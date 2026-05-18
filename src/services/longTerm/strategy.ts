@@ -44,7 +44,7 @@ function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">,
       scores.stabilizationScore * filters.stabilizationWeight +
       scores.financialScore * filters.financialWeight
   );
-  return baseScore + (scores.volumeProfileScore ?? 0);
+  return baseScore + (scores.volumeProfileScore ?? 0) + (scores.higherTimeframeScore ?? 0);
 }
 
 function isStructurallyBroken(metrics: LongTermMetricSnapshot, filters: LongTermScanFilters) {
@@ -54,6 +54,10 @@ function isStructurallyBroken(metrics: LongTermMetricSnapshot, filters: LongTerm
     (metrics.structure.priceVsMA240Pct ?? 0) <= -filters.farBelowMa240Pct &&
     metrics.baseStructure.daysSinceLastLowBreak <= filters.lowBreakPenaltyDays
   );
+}
+
+function hasSufficientLongTermHistory(entry: LongTermRankedEntry, filters: LongTermScanFilters) {
+  return (entry.chartPoints?.length ?? 0) >= filters.minimumHistorySessions;
 }
 
 export function qualifiesLongTermSecondaryRecovery(
@@ -102,6 +106,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
       })
     : undefined;
   const volumeProfileScore = longTermVolumeProfile?.score ?? 0;
+  const higherTimeframeScore = entry.metrics.higherTimeframe?.score ?? 0;
 
   const partialScores = {
     leaderScore,
@@ -111,6 +116,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     stabilizationScore,
     financialScore,
     volumeProfileScore,
+    higherTimeframeScore,
     durabilityScore: financialScore
   };
 
@@ -122,13 +128,14 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
   const secondaryRecovery = qualifiesLongTermSecondaryRecovery(entry, filters, scores);
   const classificationOptions = {
     allowBuy: !secondaryRecovery,
-    secondaryRecovery
+    secondaryRecovery,
+    isCurated: entry.seedSource === "curated"
   };
-  const label = classifyLongTermLabel(scores, entry.metrics, entry.financialEvaluation.snapshot);
+  const baseLabel = classifyLongTermLabel(scores, entry.metrics, entry.financialEvaluation.snapshot);
   const candidateGroup = classifyLongTermCandidateGroup(
     scores,
     entry.metrics,
-    label,
+    baseLabel,
     filters,
     entry.financialEvaluation.snapshot,
     classificationOptions
@@ -136,11 +143,14 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
   const explainability = buildLongTermExplainability(
     scores,
     entry.metrics,
-    label,
+    baseLabel,
     filters,
     entry.financialEvaluation.snapshot,
     classificationOptions
   );
+  const label = explainability.tags.includes("buy_contrarian_accumulation")
+    ? "contrarian accumulation candidate"
+    : baseLabel;
 
   return {
     symbol: entry.seed.symbol,
@@ -156,6 +166,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     scores,
     structure: entry.metrics.structure,
     baseStructure: entry.metrics.baseStructure,
+    higherTimeframe: entry.metrics.higherTimeframe,
     liquidity: entry.metrics.liquidity,
     financials: entry.financialEvaluation.snapshot,
     fundamentals: entry.financialEvaluation.snapshot,
@@ -181,10 +192,15 @@ export function resolveLongTermFilterReasons(
   candidate?: LongTermScanCandidate
 ): string[] {
   const reasons: string[] = [];
-  const isSecondaryRecovery = candidate?.tags.includes("watch_secondary_recovery") ?? false;
 
   if (entry.market === "ETF" || entry.market === "ETN") {
     reasons.push("ETF/ETN is out of scope for the long-term leader engine.");
+  }
+
+  if (!hasSufficientLongTermHistory(entry, filters)) {
+    reasons.push(
+      `Trading history is too short for the long-term engine (${entry.chartPoints?.length ?? 0}/${filters.minimumHistorySessions} sessions).`
+    );
   }
 
   if (!hasMeaningfulCorrection(entry.metrics, filters)) {
@@ -203,7 +219,7 @@ export function resolveLongTermFilterReasons(
     reasons.push(...entry.financialEvaluation.hardExclusionReasons);
   }
 
-  if (candidate && entry.seedSource === "ad_hoc" && candidate.scores.leaderScore < 55 && !isSecondaryRecovery) {
+  if (candidate && entry.seedSource === "ad_hoc" && candidate.scores.leaderScore < filters.minimumAdHocLeaderScore) {
     reasons.push("Representative status is too weak for the curated long-term framework.");
   }
 

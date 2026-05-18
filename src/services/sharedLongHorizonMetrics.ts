@@ -1,6 +1,7 @@
 import type {
   ChartPoint,
   LongTermBaseStructure,
+  LongTermHigherTimeframeStructure,
   LongTermLiquiditySnapshot,
   LongTermScanFilters,
   LongTermStructureSnapshot
@@ -72,12 +73,52 @@ function sliceRecent(points: ChartPoint[], count: number): ChartPoint[] {
   return points.slice(Math.max(0, points.length - count));
 }
 
+function getWeekKey(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function getMonthKey(dateText: string) {
+  return dateText.slice(0, 7);
+}
+
+function aggregatePoints(points: ChartPoint[], keyFn: (date: string) => string): ChartPoint[] {
+  const buckets = new Map<string, ChartPoint>();
+
+  for (const point of points) {
+    const key = keyFn(point.date);
+    const existing = buckets.get(key);
+    if (!existing) {
+      buckets.set(key, { ...point });
+      continue;
+    }
+
+    existing.date = point.date;
+    existing.high = Math.max(getPointHigh(existing), getPointHigh(point));
+    existing.low = Math.min(getPointLow(existing), getPointLow(point));
+    existing.close = point.close;
+    existing.volume = (existing.volume ?? 0) + (point.volume ?? 0);
+  }
+
+  return [...buckets.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function findHighest(points: ChartPoint[]): number | undefined {
   return points.length ? Math.max(...points.map((point) => getPointHigh(point))) : undefined;
 }
 
 function findLowest(points: ChartPoint[]): number | undefined {
   return points.length ? Math.min(...points.map((point) => getPointLow(point))) : undefined;
+}
+
+function resolvePeriodsSinceRecentLow(points: ChartPoint[], window: number): number | undefined {
+  const recent = sliceRecent(points, window);
+  const lowIndex = findLowestIndex(recent);
+  return lowIndex == null ? undefined : recent.length - 1 - lowIndex;
 }
 
 type PivotLow = {
@@ -97,6 +138,7 @@ export type LongTermMetricSnapshot = {
   drawdownPct?: number;
   structure: LongTermStructureSnapshot;
   baseStructure: LongTermBaseStructure;
+  higherTimeframe?: LongTermHigherTimeframeStructure;
   liquidity: LongTermLiquiditySnapshot;
   baseDurationDays: number;
   recentVolumeRatio?: number;
@@ -366,6 +408,184 @@ function calculateAccumulationSignal(points: ChartPoint[], majorLowIndex: number
   return clamp(Math.round(score), 0, 100);
 }
 
+function scoreWeeklyStructure(points: ChartPoint[]) {
+  if (points.length < 40) {
+    return {
+      score: 0,
+      ma20: undefined as number | undefined,
+      ma40: undefined as number | undefined,
+      ma20Slope: undefined as number | undefined,
+      ma40Slope: undefined as number | undefined,
+      priceVsMa40Pct: undefined as number | undefined,
+      drawdownPct: undefined as number | undefined,
+      periodsSinceLow: undefined as number | undefined
+    };
+  }
+
+  const lastIndex = points.length - 1;
+  const price = points[lastIndex].close;
+  const ma20 = getMovingAverageAt(points, lastIndex, 20);
+  const ma40 = getMovingAverageAt(points, lastIndex, 40);
+  const ma20Past = getMovingAverageAt(points, lastIndex - 8, 20);
+  const ma40Past = getMovingAverageAt(points, lastIndex - 8, 40);
+  const ma20Slope = ma20 != null && ma20Past != null ? percentChange(ma20, ma20Past) : undefined;
+  const ma40Slope = ma40 != null && ma40Past != null ? percentChange(ma40, ma40Past) : undefined;
+  const priceVsMa40Pct = ma40 != null ? percentChange(price, ma40) : undefined;
+  const drawdownPct = percentChange(price, findHighest(sliceRecent(points, 104)));
+  const periodsSinceLow = resolvePeriodsSinceRecentLow(points, 52);
+  let score = 50;
+
+  if ((ma40Slope ?? 0) >= 1) {
+    score += 16;
+  } else if ((ma40Slope ?? 0) >= -0.5) {
+    score += 8;
+  } else {
+    score -= 12;
+  }
+
+  if ((ma20Slope ?? 0) >= 1) {
+    score += 12;
+  } else if ((ma20Slope ?? 0) < -2) {
+    score -= 10;
+  }
+
+  if ((priceVsMa40Pct ?? -100) >= -8 && (priceVsMa40Pct ?? 100) <= 12) {
+    score += 12;
+  } else if ((priceVsMa40Pct ?? 0) < -20) {
+    score -= 12;
+  } else if ((priceVsMa40Pct ?? 0) > 25) {
+    score -= 8;
+  }
+
+  if (Math.abs(drawdownPct ?? 0) >= 25) {
+    score += 8;
+  }
+
+  if ((periodsSinceLow ?? 0) >= 4) {
+    score += 8;
+  } else if ((periodsSinceLow ?? 0) <= 1) {
+    score -= 8;
+  }
+
+  return {
+    score: clamp(Math.round(score), 0, 100),
+    ma20,
+    ma40,
+    ma20Slope,
+    ma40Slope,
+    priceVsMa40Pct,
+    drawdownPct,
+    periodsSinceLow
+  };
+}
+
+function scoreMonthlyStructure(points: ChartPoint[]) {
+  if (points.length < 24) {
+    return {
+      score: 0,
+      ma12: undefined as number | undefined,
+      ma24: undefined as number | undefined,
+      ma12Slope: undefined as number | undefined,
+      ma24Slope: undefined as number | undefined,
+      priceVsMa24Pct: undefined as number | undefined,
+      drawdownPct: undefined as number | undefined,
+      periodsSinceLow: undefined as number | undefined
+    };
+  }
+
+  const lastIndex = points.length - 1;
+  const price = points[lastIndex].close;
+  const ma12 = getMovingAverageAt(points, lastIndex, 12);
+  const ma24 = getMovingAverageAt(points, lastIndex, 24);
+  const ma12Past = getMovingAverageAt(points, lastIndex - 3, 12);
+  const ma24Past = getMovingAverageAt(points, lastIndex - 3, 24);
+  const ma12Slope = ma12 != null && ma12Past != null ? percentChange(ma12, ma12Past) : undefined;
+  const ma24Slope = ma24 != null && ma24Past != null ? percentChange(ma24, ma24Past) : undefined;
+  const priceVsMa24Pct = ma24 != null ? percentChange(price, ma24) : undefined;
+  const drawdownPct = percentChange(price, findHighest(sliceRecent(points, 60)));
+  const periodsSinceLow = resolvePeriodsSinceRecentLow(points, 36);
+  let score = 50;
+
+  if ((ma24Slope ?? 0) >= 0.5) {
+    score += 14;
+  } else if ((ma24Slope ?? 0) >= -1) {
+    score += 6;
+  } else {
+    score -= 12;
+  }
+
+  if ((ma12Slope ?? 0) >= 1) {
+    score += 12;
+  } else if ((ma12Slope ?? 0) < -3) {
+    score -= 10;
+  }
+
+  if ((priceVsMa24Pct ?? -100) >= -15 && (priceVsMa24Pct ?? 100) <= 18) {
+    score += 12;
+  } else if ((priceVsMa24Pct ?? 0) < -30) {
+    score -= 12;
+  } else if ((priceVsMa24Pct ?? 0) > 35) {
+    score -= 8;
+  }
+
+  if (Math.abs(drawdownPct ?? 0) >= 30) {
+    score += 10;
+  }
+
+  if ((periodsSinceLow ?? 0) >= 2) {
+    score += 8;
+  } else if ((periodsSinceLow ?? 0) === 0) {
+    score -= 8;
+  }
+
+  return {
+    score: clamp(Math.round(score), 0, 100),
+    ma12,
+    ma24,
+    ma12Slope,
+    ma24Slope,
+    priceVsMa24Pct,
+    drawdownPct,
+    periodsSinceLow
+  };
+}
+
+function evaluateHigherTimeframeStructure(points: ChartPoint[]): LongTermHigherTimeframeStructure | undefined {
+  const weekly = aggregatePoints(points, getWeekKey);
+  const monthly = aggregatePoints(points, getMonthKey);
+  if (weekly.length < 40 && monthly.length < 24) {
+    return undefined;
+  }
+
+  const weeklyStructure = scoreWeeklyStructure(weekly);
+  const monthlyStructure = scoreMonthlyStructure(monthly);
+  const averageScore =
+    monthly.length >= 24
+      ? Math.round(weeklyStructure.score * 0.55 + monthlyStructure.score * 0.45)
+      : weeklyStructure.score;
+  const score = clamp(Math.round((averageScore - 50) * 0.45), -15, 18);
+
+  return {
+    score,
+    weeklyTrendScore: weeklyStructure.score,
+    monthlyCycleScore: monthlyStructure.score,
+    weeklyMa20: roundMetric(weeklyStructure.ma20, 2),
+    weeklyMa40: roundMetric(weeklyStructure.ma40, 2),
+    weeklyMa20Slope: roundMetric(weeklyStructure.ma20Slope, 2),
+    weeklyMa40Slope: roundMetric(weeklyStructure.ma40Slope, 2),
+    weeklyPriceVsMa40Pct: roundMetric(weeklyStructure.priceVsMa40Pct, 2),
+    weeklyDrawdownPct: roundMetric(weeklyStructure.drawdownPct, 2),
+    weeklyWeeksSinceLow: weeklyStructure.periodsSinceLow,
+    monthlyMa12: roundMetric(monthlyStructure.ma12, 2),
+    monthlyMa24: roundMetric(monthlyStructure.ma24, 2),
+    monthlyMa12Slope: roundMetric(monthlyStructure.ma12Slope, 2),
+    monthlyMa24Slope: roundMetric(monthlyStructure.ma24Slope, 2),
+    monthlyPriceVsMa24Pct: roundMetric(monthlyStructure.priceVsMa24Pct, 2),
+    monthlyDrawdownPct: roundMetric(monthlyStructure.drawdownPct, 2),
+    monthlyMonthsSinceLow: monthlyStructure.periodsSinceLow
+  };
+}
+
 export function evaluateLongTermMetrics(points: ChartPoint[], filters: LongTermScanFilters): LongTermMetricSnapshot {
   const latestPoint = points.at(-1);
   if (!latestPoint) {
@@ -421,6 +641,7 @@ export function evaluateLongTermMetrics(points: ChartPoint[], filters: LongTermS
   const avgTurnover60 = averageDefined(sliceRecent(points, 60).map((point) => (point.volume != null ? point.close * point.volume : undefined)));
   const volumeConsistency = computeVolumeConsistency(sliceRecent(points, 60));
   const accumulationSignal = calculateAccumulationSignal(points, majorLowIndexInWindow == null ? undefined : points.length - majorLowWindow.length + majorLowIndexInWindow);
+  const higherTimeframe = evaluateHigherTimeframeStructure(points);
   const drawdown52wPct = percentChange(price, findHighest(points52w));
   const drawdown2yPct = percentChange(price, findHighest(points2y));
   const drawdown5yPct = percentChange(price, findHighest(points5y));
@@ -455,6 +676,7 @@ export function evaluateLongTermMetrics(points: ChartPoint[], filters: LongTermS
       timeSinceLastMajorLow,
       isStabilizing
     },
+    higherTimeframe,
     liquidity: {
       avgTurnover20: roundMetric(avgTurnover20, 0),
       avgTurnover60: roundMetric(avgTurnover60, 0),

@@ -2532,6 +2532,14 @@ function renderHistoryCaseList(cases, options = {}) {
           const statusClass = mode === "closed" ? "closed" : item.lifecycleStatus === "current" ? "current" : "neutral";
           const openedDate = item.openedDate ?? item.initialSnapshot?.anchorDate;
           const closedDate = item.closedDate ?? item.dataDate;
+          const metricsHtml = `
+            <div class="history-case-metrics">
+              <span>현재가 ${formatNumber(item.latestClose)}</span>
+              <span>평균 ${formatNumber(item.averageBuyPrice)}</span>
+              ${mode === "closed" ? `<span>추천 ${escapeHtml(openedDate ?? "-")} / 종료 ${escapeHtml(closedDate ?? "-")}</span>` : ""}
+              ${renderHistoryOutcomeChip(outcome)}
+            </div>
+          `;
           return `
             <article
               class="history-case-card ${escapeHtml(statusClass)}"
@@ -2556,15 +2564,11 @@ function renderHistoryCaseList(cases, options = {}) {
                       ${Number.isFinite(returnValue) ? `<span class="history-case-return ${returnClass}">${formatPercent(returnValue)}</span>` : ""}
                     </div>
                   </div>
-                  <div class="history-case-metrics">
-                    <span>현재가 ${formatNumber(item.latestClose)}</span>
-                    <span>평균 ${formatNumber(item.averageBuyPrice)}</span>
-                    ${mode === "closed" ? `<span>추천 ${escapeHtml(openedDate ?? "-")}</span><span>종료 ${escapeHtml(closedDate ?? "-")}</span>` : ""}
-                    ${renderHistoryOutcomeChip(outcome)}
-                  </div>
-                  ${mode === "closed" && outcome?.description ? `<p class="history-case-reason">${escapeHtml(outcome.description)}</p>` : ""}
+                  ${mode === "closed" ? "" : metricsHtml}
                 </div>
                 ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys)}
+                ${mode === "closed" ? metricsHtml : ""}
+                ${mode === "closed" && outcome?.description ? `<p class="history-case-reason">${escapeHtml(outcome.description)}</p>` : ""}
               </div>
             </article>
           `;
@@ -6825,7 +6829,7 @@ function getEngineDisplayLabel(category) {
 }
 
 function getEnginePanelTitle(category) {
-  return isDividendCategory(category) ? "배당 엔진 진단" : "중장기 엔진 진단";
+  return isDividendCategory(category) ? "배당 지표" : "중장기 지표";
 }
 
 function getEngineBucketLabel(category, group) {
@@ -7355,11 +7359,7 @@ async function runAnalysisForRecommendation(item) {
         `${item.name} 분석이 완료되었습니다. 최근 ${SWING_LOOKBACK_DAYS}거래일 기준 ${currentAnalysis.swingAssessment.label} 상태입니다.`
       );
     } else if (item.category !== "swing" && currentAnalysis.longTermReview) {
-      const assessment = getLongTermReviewAssessment(currentAnalysis.longTermReview, item.category ?? DEFAULT_CATEGORY);
-      const passText = currentAnalysis.longTermReview.enginePass ? "엔진 통과" : "엔진 관찰/제외";
-      showSummary(
-        `${item.name} 분석이 완료되었습니다. ${getCategoryDisplayLabel(item.category ?? DEFAULT_CATEGORY)} 탭 종목이며, ${getEngineDisplayLabel(item.category ?? DEFAULT_CATEGORY)} 기준 ${assessment.groupLabel} / ${passText} 상태입니다.`
-      );
+      showSummary(`${item.name} 분석이 완료되었습니다.`);
     } else {
       showSummary(`${item.name} 분석이 완료되었습니다. 확대/축소, 드래그 이동, 툴팁을 지원합니다.`);
     }
@@ -7803,6 +7803,8 @@ function formatLongTermLabel(label) {
       return "깊은 조정 재검토";
     case "base-forming candidate":
       return "베이스 형성 후보";
+    case "contrarian accumulation candidate":
+      return "역발상 매집 후보";
     case "needs more stabilization":
       return "안정화 더 필요";
     case "dividend_income_core":
@@ -7845,6 +7847,7 @@ const REVIEW_REASON_LABELS = {
   leader_correction_still_early: "대표주 조정 초기 구간",
   label_deep_value_review: "깊은 조정 재검토 구간",
   label_needs_more_stabilization: "안정화 추가 필요",
+  "contrarian accumulation candidate": "역발상 매집 후보",
   totalScore_low: "총점 기준 미달",
   trend_not_constructive: "추세 구조 미완성",
   price_outside_review_range: "검토 가격 범위 이탈",
@@ -8028,6 +8031,11 @@ function extractLongTermKeywords(note, bucket = DEFAULT_LONG_TERM_BUCKET) {
 
     if (normalized.includes("베이스 형성 후보") || normalized.includes("base-forming candidate")) {
       pushKeyword("베이스 형성");
+      continue;
+    }
+
+    if (normalized.includes("역발상 매집 후보") || normalized.includes("contrarian accumulation candidate")) {
+      pushKeyword("역발상 매집");
       continue;
     }
 
@@ -8418,7 +8426,6 @@ function renderLongTermVolumeProfilePanel(profile) {
       <div class="swing-pattern-head">
         <div>
           <h4>중장기 매물대 분석</h4>
-          <div class="swing-pattern-copy">${escapeHtml(profile.summary ?? representative?.comment ?? "")}</div>
         </div>
         <span class="stock-pattern-pill ${profile.score > 12 ? "complete" : profile.score < -10 ? "caution" : "watch"}">${formatSignedDecimal(profile.score)}점</span>
       </div>
@@ -8468,7 +8475,6 @@ function renderLongTermVolumeProfilePanel(profile) {
           <span class="metric-value">${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
         </div>
       </div>
-      <div class="swing-pattern-copy">중장기 매물대는 구조와 보유 품질 확인용이며 단독 매수 신호가 아닙니다.</div>
     </section>
   `;
 }
@@ -8480,20 +8486,9 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
 
   const assessment = getLongTermReviewAssessment(review, category);
   const candidate = review.candidate;
-  const filterReasonChips = renderReviewReasonChips(review.filterReasons);
-  const sourceLabel =
-    review.seedSource === "curated"
-      ? `${getEngineDisplayLabel(category)} 시드`
-      : review.seedSource
-        ? "수동 추가 평가"
-        : `${getEngineDisplayLabel(category)} 리뷰`;
   const engineLabel = getEngineDisplayLabel(category);
   const candidateGroupLabel = candidate ? getEngineBucketLabel(category, candidate.candidateGroup) : "-";
   const dividendHistoryPanel = buildDividendHistoryPanel(item);
-  const tagChips = renderReviewReasonChips(candidate?.tags);
-  const strengthChips = renderReviewReasonChips(candidate?.strengths);
-  const weaknessChips = renderReviewReasonChips(candidate?.weaknesses);
-  const failureChips = renderReviewReasonChips(candidate?.failureReasons);
   const metricGrid = candidate
     ? category === DIVIDEND_CATEGORY
       ? `
@@ -8663,62 +8658,11 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
       <div class="swing-pattern-head">
         <div>
           <h4>${escapeHtml(getEnginePanelTitle(category))}</h4>
-          <div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>
         </div>
         <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
       </div>
-      <div class="swing-pattern-copy">${escapeHtml(assessment.statusLabel)} / ${escapeHtml(assessment.action)} / ${escapeHtml(sourceLabel)}</div>
       ${metricGrid}
       ${dividendHistoryPanel}
-      ${
-        filterReasonChips
-          ? `
-            <div class="swing-reason-list">
-              ${filterReasonChips}
-            </div>
-          `
-          : ""
-      }
-      ${
-        tagChips
-          ? `
-            <div class="swing-pattern-copy">관찰 태그</div>
-            <div class="swing-reason-list">
-              ${tagChips}
-            </div>
-          `
-          : ""
-      }
-      ${
-        failureChips
-          ? `
-            <div class="swing-pattern-copy">제외 사유</div>
-            <div class="swing-reason-list">
-              ${failureChips}
-            </div>
-          `
-          : ""
-      }
-      ${
-        strengthChips
-          ? `
-            <div class="swing-pattern-copy">특징</div>
-            <div class="swing-reason-list">
-              ${strengthChips}
-            </div>
-          `
-          : ""
-      }
-      ${
-        weaknessChips
-          ? `
-            <div class="swing-pattern-copy">유의점</div>
-            <div class="swing-reason-list">
-              ${weaknessChips}
-            </div>
-          `
-          : ""
-      }
     </section>
   `;
 }
@@ -8726,16 +8670,6 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
 function renderCard(item) {
   const returnClass =
     item.returnSinceAnchor > 0 ? "positive" : item.returnSinceAnchor < 0 ? "negative" : "neutral";
-  const longTermAssessment =
-    item.category !== "swing" && item.longTermReview
-      ? getLongTermReviewAssessment(item.longTermReview, item.category ?? DEFAULT_CATEGORY)
-      : null;
-  const longTermInsightNote = item.category === "swing" ? "" : item.longTermInsightNote ?? item.note;
-  const longTermNoteSummary =
-    item.category === "swing" ? "" : formatLongTermSummary(longTermInsightNote, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
-  const categoryLabel = getCategoryDisplayLabel(item.category ?? DEFAULT_CATEGORY);
-  const nonSwingBucketLabel =
-    item.category === "swing" ? "" : getNonSwingBucketLabel(item.category ?? DEFAULT_CATEGORY, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
   const dividendInfoLine = buildDividendInfoLine(item);
 
   return `
@@ -8747,23 +8681,12 @@ function renderCard(item) {
             ${escapeHtml(item.symbol)} / 기준일 ${escapeHtml(item.anchorDate)} / 실제 거래일 ${escapeHtml(item.tradingAnchorDate)}
           </div>
           <div class="meta-line" data-live-sync-line>실시간 시세 동기화 대기</div>
-          ${
-            item.category === "swing"
-              ? ""
-              : `<div class="meta-line">${escapeHtml(categoryLabel)} 탭 종목${nonSwingBucketLabel ? ` / ${escapeHtml(nonSwingBucketLabel)}` : ""}</div>`
-          }
           ${dividendInfoLine ? `<div class="meta-line">${escapeHtml(dividendInfoLine)}</div>` : ""}
           ${
             item.swingAssessment
               ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
               : ""
           }
-          ${
-            longTermAssessment
-              ? `<div class="meta-line">${escapeHtml(getEngineDisplayLabel(item.category ?? DEFAULT_CATEGORY))} ${escapeHtml(longTermAssessment.groupLabel)} / ${escapeHtml(longTermAssessment.statusLabel)}</div>`
-              : ""
-          }
-          ${longTermNoteSummary ? `<div class="meta-line">${escapeHtml(longTermNoteSummary)}</div>` : longTermInsightNote ? `<div class="meta-line">${escapeHtml(longTermInsightNote)}</div>` : ""}
         </div>
         <div class="return-pill ${returnClass}" data-live-return-pill>
           ${formatPercent(item.returnSinceAnchor)}

@@ -1,0 +1,7 @@
+[2026-05-18T16:21:13.763+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="삼성전자" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.766+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="SK하이닉스" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.768+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="한화오션" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.770+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="LG에너지솔루션" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.771+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="셀트리온" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.772+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="카카오" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"
+[2026-05-18T16:21:13.772+09:00] WARN newsSignals news-signals:company-fetch-failed companyName="HMM" errorName="TypeError" errorMessage="fetch failed" errorStack="TypeError: fetch failed"

@@ -72,6 +72,8 @@ function formatLongTermNoteLabel(label: LongTermUniverseCandidate["label"]) {
       return "깊은 조정 재검토";
     case "base-forming candidate":
       return "베이스 형성 후보";
+    case "contrarian accumulation candidate":
+      return "하락 누적 분할 후보";
     case "needs more stabilization":
       return "안정화 더 필요";
     default:

@@ -1475,7 +1475,7 @@ body {
 
 .history-case-card.closed .history-case-main {
   grid-template-columns: minmax(0, 1fr) minmax(188px, 220px);
-  align-items: center;
+  align-items: start;
   gap: 8px;
 }
 
@@ -1490,6 +1490,7 @@ body {
 
 .history-case-card.closed .history-buy-levels {
   justify-self: stretch;
+  align-self: start;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
@@ -1510,11 +1511,16 @@ body {
 }
 
 .history-case-card.closed .history-case-metrics {
+  grid-column: 1 / -1;
+  flex-wrap: nowrap;
   gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 1px;
 }
 
 .history-case-card.closed .history-case-metrics span {
   padding: 4px 6px;
+  white-space: nowrap;
 }
 
 .history-case-main {
@@ -1650,6 +1656,11 @@ body {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.5;
+}
+
+.history-case-card.closed .history-case-reason {
+  grid-column: 1 / -1;
+  padding-top: 2px;
 }
 
 .history-case-metrics span {
@@ -3398,10 +3409,10 @@ body {
   flex: 0 0 auto;
   margin-top: 1px;
   border-radius: 999px;
-  padding: 5px 8px;
+  padding: 4px 7px;
   background: rgba(42, 96, 173, 0.1);
   color: #2f5fa3;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 1.2;
   white-space: nowrap;
@@ -3479,12 +3490,12 @@ body {
 
 .stock-selector {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .stock-selector-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .recommendation-subsection {
@@ -3638,9 +3649,9 @@ body {
   width: 100%;
   text-align: left;
   border: 1px solid rgba(78, 58, 32, 0.12);
-  border-radius: 18px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.74);
-  padding: 12px;
+  padding: 9px 10px;
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
@@ -3649,7 +3660,7 @@ body {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .stock-card-select {
@@ -3681,18 +3692,18 @@ body {
 .stock-card-name {
   display: block;
   font-weight: 800;
-  font-size: 16px;
-  line-height: 1.35;
+  font-size: 15px;
+  line-height: 1.25;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
 .stock-card-meta {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.35;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
@@ -3701,10 +3712,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.45;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--neutral);
 }
 
@@ -3722,7 +3733,7 @@ body {
 }
 
 .stock-card-live-price {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--text);
 }
@@ -3748,21 +3759,21 @@ body {
 .stock-card-keywords {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .stock-card-keyword {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 5px 10px;
+  min-height: 20px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: rgba(96, 118, 128, 0.1);
   color: var(--neutral);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .stock-card-keyword.buy {

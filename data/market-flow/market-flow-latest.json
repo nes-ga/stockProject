@@ -1,15 +1,15 @@
 {
-  "date": "2026-05-14",
+  "date": "2026-05-18",
   "global": {
     "score": 2,
     "state": "NEUTRAL"
   },
   "local": {
-    "score": 6,
-    "state": "STRONG"
+    "score": 3,
+    "state": "SELECTIVE"
   },
-  "themeRotationScore": 44.45,
-  "marketMode": "NEUTRAL",
+  "themeRotationScore": 33.36,
+  "marketMode": "SELECTIVE",
   "topThemes": [
     "반도체",
     "2차전지",
@@ -17,8 +17,8 @@
   ],
   "bottomThemes": [
     "건설 / 인프라",
-    "금융",
-    "철강 / 화학"
+    "철강 / 화학",
+    "소비 / 화장품"
   ],
-  "updatedAt": "2026-05-14T17:42:06.055+09:00"
+  "updatedAt": "2026-05-18T17:24:18.729+09:00"
 }

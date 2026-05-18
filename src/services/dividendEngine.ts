@@ -9,6 +9,7 @@ import type {
 import { fetchFundamentals } from "./fundamentals.js";
 import { resolveDividendScanFilters } from "./dividend/config.js";
 import { buildDividendCandidate, resolveDividendFilterReasons, type DividendRankedEntry } from "./dividend/strategy.js";
+import { resolveLongTermScanFilters } from "./longTerm/config.js";
 import { evaluateLongTermFinancials } from "./longTerm/fundamentalScore.js";
 import { fetchLongTermChart } from "./longTerm/marketData.js";
 import { evaluateLongTermMetrics } from "./longTerm/metrics.js";
@@ -34,37 +35,11 @@ async function loadDividendEntry(options: {
   fetchFundamentals?: boolean;
 }): Promise<DividendRankedEntry> {
   const points = await fetchLongTermChart(options.symbol, options.filters.historySessions);
-  const metrics = evaluateLongTermMetrics(points, {
+  const metrics = evaluateLongTermMetrics(points, resolveLongTermScanFilters({
     historySessions: options.filters.historySessions,
-    recentBaseWindow: 60,
-    slopeLookbackSessions: 20,
-    higherLowLookbackWindow: 80,
-    higherLowPivotSpan: 3,
-    majorLowLookbackWindow: 120,
-    minimumBaseDays: 15,
-    longBaseRewardStartDays: 60,
-    longBaseRewardFullDays: 120,
-    vShapePenaltyPeakDays: 35,
     minimumTradableTurnover20: options.filters.minimumTradableTurnover20,
-    minimumTradableTurnover60: options.filters.minimumTradableTurnover60,
-    minimumDrawdownPct: 25,
-    strongDrawdownPct: 35,
-    deepDrawdownPct: 45,
-    longCycleSupplementDrawdownPct: 40,
-    longCycleRecoveryThresholdPct: 5,
-    nearHighPenaltyPct: 10,
-    overextendedVsMa120Pct: 15,
-    farBelowMa240Pct: 25,
-    lowBreakPenaltyDays: 12,
-    coolingVolumeRatioThreshold: 0.85,
-    higherLowQualityBuyFloor: 55,
-    leaderWeight: 0.25,
-    correctionWeight: 0.2,
-    trendWeight: 0.15,
-    liquidityWeight: 0.1,
-    stabilizationWeight: 0.15,
-    financialWeight: 0.15
-  });
+    minimumTradableTurnover60: options.filters.minimumTradableTurnover60
+  }));
   const fundamentals =
     options.fetchFundamentals === false ? undefined : enrichFundamentalsWithDividendYields(options.fundamentals ?? (await fetchFundamentals(options.symbol)), points);
   const financialEvaluation = evaluateLongTermFinancials(fundamentals, {

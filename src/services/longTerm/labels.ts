@@ -11,6 +11,7 @@ import type {
 type LongTermClassificationOptions = {
   allowBuy?: boolean;
   secondaryRecovery?: boolean;
+  isCurated?: boolean;
 };
 
 export type LongTermBuyReadiness = {
@@ -144,12 +145,32 @@ export function evaluateLongTermBuyReadiness(
   const stableEnough = scores.stabilizationScore >= 55;
   const higherLowQualityReady = higherLowQualityScore >= filters.higherLowQualityBuyFloor;
   const longBaseReady = baseDurationDays >= Math.max(filters.minimumBaseDays * 2, 30);
+  const strongCorrectionReady = Math.abs(metrics.drawdownPct ?? 0) >= filters.strongDrawdownPct;
   const financiallyAcceptable =
     scores.financialScore >= 55 &&
     financials?.earningsState !== "persistent_loss" &&
     financials?.financialMomentum !== "deteriorating" &&
     financials?.debtState !== "dangerous";
   const scoreQualified = scores.totalScore >= 70;
+  const higherTimeframeSupport =
+    (metrics.higherTimeframe?.score ?? 0) >= 10 ||
+    ((metrics.higherTimeframe?.weeklyTrendScore ?? 0) >= 70 && (metrics.higherTimeframe?.monthlyCycleScore ?? 0) >= 65);
+  const contrarianAccumulationBuy =
+    options?.isCurated === true &&
+    strongCorrectionReady &&
+    scoreQualified &&
+    scores.leaderScore >= 80 &&
+    scores.financialScore >= 70 &&
+    scores.liquidityScore >= 60 &&
+    scores.trendScore >= 55 &&
+    financiallyAcceptable &&
+    higherTimeframeSupport &&
+    hasConstructiveBase &&
+    higherLowQualityReady &&
+    longBaseReady &&
+    priceVsMa120Pct >= -18 &&
+    priceVsMa120Pct <= 8 &&
+    (metrics.baseStructure.distanceFromLowPct ?? 100) <= 8;
 
   if (label === "deep value review") {
     failureReasons.push("label_deep_value_review");
@@ -163,6 +184,11 @@ export function evaluateLongTermBuyReadiness(
 
   if (!scoreQualified) {
     failureReasons.push("totalScore_low");
+  }
+
+  if (!strongCorrectionReady) {
+    failureReasons.push("correction_not_deep_enough_for_buy");
+    watchTags.add("watch_leader_correction");
   }
 
   if (!constructiveTrend) {
@@ -210,11 +236,19 @@ export function evaluateLongTermBuyReadiness(
     watchTags.add("watch_secondary_recovery");
   }
 
-  const canBuy = (options?.allowBuy ?? true) && failureReasons.length === 0;
+  const contrarianAllowedFailures = new Set([
+    "label_needs_more_stabilization",
+    "price_outside_review_range",
+    "recent_low_break_fresh",
+    "stabilizationScore_low"
+  ]);
+  const contrarianFailureOnly = failureReasons.every((reason) => contrarianAllowedFailures.has(reason));
+  const isContrarianBuy = contrarianAccumulationBuy && contrarianFailureOnly;
+  const canBuy = (options?.allowBuy ?? true) && (failureReasons.length === 0 || isContrarianBuy);
   return {
     canBuy,
-    failureReasons: [...new Set(failureReasons)],
-    tags: canBuy ? [] : [...watchTags]
+    failureReasons: canBuy ? [] : [...new Set(failureReasons)],
+    tags: canBuy ? (isContrarianBuy ? ["buy_contrarian_accumulation"] : []) : [...watchTags]
   };
 }
 
@@ -242,6 +276,7 @@ export function buildLongTermExplainability(
   const readiness = evaluateLongTermBuyReadiness(scores, metrics, label, filters, financials, options);
   const strengths = new Set<string>();
   const weaknesses = new Set<string>();
+  const isContrarianBuy = readiness.tags.includes("buy_contrarian_accumulation");
 
   if (scores.correctionScore >= 78 || Math.abs(metrics.drawdownPct ?? 0) >= filters.strongDrawdownPct) {
     strengths.add("deep_correction");
@@ -257,6 +292,12 @@ export function buildLongTermExplainability(
   }
   if ((metrics.structure.ma120Slope ?? 0) >= 0.5 || scores.trendScore >= 60) {
     strengths.add("trend_improving");
+  }
+  if ((metrics.higherTimeframe?.weeklyTrendScore ?? 0) >= 65 || (metrics.higherTimeframe?.monthlyCycleScore ?? 0) >= 65) {
+    strengths.add("higher_timeframe_support");
+  }
+  if (isContrarianBuy) {
+    strengths.add("contrarian_accumulation_buy");
   }
   if (
     scores.financialScore >= 60 &&
@@ -280,6 +321,9 @@ export function buildLongTermExplainability(
   }
   if (scores.trendScore < 55 || (metrics.structure.ma120Slope ?? 0) < -0.5 || (metrics.structure.ma240Slope ?? 0) < -0.5) {
     weaknesses.add("trend_not_confirmed");
+  }
+  if ((metrics.higherTimeframe?.score ?? 0) < -5) {
+    weaknesses.add("higher_timeframe_weak");
   }
   if ((metrics.structure.priceVsMA120Pct ?? 0) > Math.min(10, filters.overextendedVsMa120Pct - 5)) {
     weaknesses.add("price_extended");
@@ -356,6 +400,9 @@ export function buildLongTermReasonSummary(
   )}`;
   const accumulationText =
     metrics.liquidity.accumulationSignal != null ? `accumulation ${Math.round(metrics.liquidity.accumulationSignal)}` : undefined;
+  const higherTimeframeText = metrics.higherTimeframe
+    ? `weekly ${metrics.higherTimeframe.weeklyTrendScore} / monthly ${metrics.higherTimeframe.monthlyCycleScore}`
+    : undefined;
 
   return [
     drawdownText,
@@ -364,6 +411,7 @@ export function buildLongTermReasonSummary(
     stabilizationText,
     timeText,
     accumulationText,
+    higherTimeframeText,
     penalties.length ? `penalty: ${penalties.join(", ")}` : undefined
   ]
     .filter(Boolean)

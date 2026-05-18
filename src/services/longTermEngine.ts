@@ -24,7 +24,7 @@ import { getStockUniverse } from "./stockUniverse.js";
 const logger = createLogger("longTermEngine");
 const UNIVERSE_SCAN_CHUNK_SIZE = 8;
 
-function passesUniverseLeaderProxy(entry: LongTermRankedEntry) {
+function passesUniverseLeaderProxy(entry: LongTermRankedEntry, filters: LongTermScanFilters) {
   if (entry.seedSource === "curated") {
     return true;
   }
@@ -33,15 +33,15 @@ function passesUniverseLeaderProxy(entry: LongTermRankedEntry) {
     return false;
   }
 
-  if ((entry.metrics.liquidity.avgTurnover60 ?? 0) < 8_000_000_000) {
+  if ((entry.metrics.liquidity.avgTurnover60 ?? 0) < filters.minimumAdHocTradableTurnover60) {
     return false;
   }
 
-  if ((entry.turnoverRank ?? Number.POSITIVE_INFINITY) <= 120) {
-    return true;
-  }
-
-  return (entry.sectorPeerCount ?? 0) >= 3 && (entry.sectorTurnoverRank ?? Number.POSITIVE_INFINITY) <= 2;
+  return (
+    (entry.turnoverRank ?? Number.POSITIVE_INFINITY) <= filters.minimumAdHocTurnoverRank &&
+    (entry.sectorPeerCount ?? 0) >= filters.minimumAdHocSectorPeerCount &&
+    (entry.sectorTurnoverRank ?? Number.POSITIVE_INFINITY) <= filters.minimumAdHocSectorTurnoverRank
+  );
 }
 
 function resolveLongTermSeed(symbol: string, name?: string): {
@@ -313,17 +313,16 @@ export async function scanLongTermUniverse(options?: {
   const prelimEntries = ranked.filter((item) => {
     const candidate = buildLongTermCandidate(item, filters);
     const filterReasons = resolveLongTermFilterReasons(item, filters, candidate);
-    const secondaryRecovery = candidate.tags.includes("watch_secondary_recovery");
 
     if (filterReasons.length > 0) {
       return false;
     }
 
-    if (!passesUniverseLeaderProxy(item) && !secondaryRecovery) {
+    if (!passesUniverseLeaderProxy(item, filters)) {
       return false;
     }
 
-    if (candidate.scores.leaderScore < 58 && !secondaryRecovery) {
+    if (item.seedSource === "ad_hoc" && candidate.scores.leaderScore < filters.minimumAdHocLeaderScore) {
       return false;
     }
 
@@ -342,16 +341,15 @@ export async function scanLongTermUniverse(options?: {
     }))
     .filter(({ item, candidate }) => {
       const filterReasons = resolveLongTermFilterReasons(item, filters, candidate);
-      const secondaryRecovery = candidate.tags.includes("watch_secondary_recovery");
       if (filterReasons.length > 0) {
         return false;
       }
 
-      if (!passesUniverseLeaderProxy(item) && !secondaryRecovery) {
+      if (!passesUniverseLeaderProxy(item, filters)) {
         return false;
       }
 
-      if (candidate.scores.leaderScore < 58 && !secondaryRecovery) {
+      if (item.seedSource === "ad_hoc" && candidate.scores.leaderScore < filters.minimumAdHocLeaderScore) {
         return false;
       }
 
