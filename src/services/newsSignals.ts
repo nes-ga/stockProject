@@ -9,6 +9,9 @@ import type {
   NewsSignalSectorSummary,
   NewsSignalSentiment
 } from "../types.js";
+import { getCorporateAliasCandidates } from "./corporateAliases.js";
+import { readServerLongTermPicks } from "./serverLongTermPicks.js";
+import { readServerSwingPickPayload } from "./serverSwingPicks.js";
 
 type CompanyReference = {
   companyName: string;
@@ -16,6 +19,8 @@ type CompanyReference = {
   sector: string;
   aliases: string[];
   searchQueries?: string[];
+  source?: "representative" | "swingCandidate" | "longTermCandidate";
+  bucket?: string;
 };
 
 type EventMatch = {
@@ -59,6 +64,9 @@ const NEWS_LOOKBACK_HOURS = 36;
 const NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
 const NAVER_NEWS_DISPLAY_COUNT = 10;
 const NAVER_REQUEST_TIMEOUT_MS = 8_000;
+const MAX_DYNAMIC_COMPANY_REFERENCES = 50;
+const NEWS_TARGET_FETCH_CONCURRENCY = 1;
+const NEWS_TARGET_FETCH_DELAY_MS = 350;
 
 const companyDictionary: CompanyReference[] = [
   {
@@ -112,17 +120,106 @@ const companyDictionary: CompanyReference[] = [
   }
 ];
 
+
+function appendCompanyReference(targets: Map<string, CompanyReference>, item: CompanyReference) {
+  const ticker = item.ticker.trim();
+  const companyName = item.companyName.trim();
+  if (!ticker || !companyName || targets.has(ticker)) {
+    return;
+  }
+
+  const aliasCandidates = [
+    ...item.aliases,
+    ...getCorporateAliasCandidates({
+      code: ticker,
+      name: companyName,
+      aliases: item.aliases
+    })
+  ];
+  const aliases = [...new Set(aliasCandidates.map((alias) => alias.trim()).filter(Boolean))];
+
+  targets.set(ticker, {
+    ...item,
+    companyName,
+    ticker,
+    aliases,
+    searchQueries: item.searchQueries?.length ? item.searchQueries : [companyName]
+  });
+}
+
+async function buildDynamicCompanyDictionary(): Promise<CompanyReference[]> {
+  const targets = new Map<string, CompanyReference>();
+
+  for (const company of companyDictionary) {
+    appendCompanyReference(targets, {
+      ...company,
+      source: "representative",
+      bucket: company.bucket ?? "representative"
+    });
+  }
+
+  try {
+    const [defaultSwing, smallcapSwing, longTermItems] = await Promise.all([
+      readServerSwingPickPayload("default"),
+      readServerSwingPickPayload("smallcap"),
+      readServerLongTermPicks()
+    ]);
+
+    // Keep news targets broad enough for active ideas, but avoid swing watchItems for now.
+    // Watch buckets are useful for charts, yet too noisy as Naver search targets.
+    for (const item of defaultSwing.executionItems) {
+      appendCompanyReference(targets, {
+        companyName: item.name,
+        ticker: item.symbol,
+        sector: "스윙 후보",
+        aliases: [item.name],
+        searchQueries: [item.name],
+        source: "swingCandidate",
+        bucket: item.bucket ?? "execution"
+      });
+    }
+
+    for (const item of smallcapSwing.executionItems) {
+      appendCompanyReference(targets, {
+        companyName: item.name,
+        ticker: item.symbol,
+        sector: "소형 스윙 후보",
+        aliases: [item.name],
+        searchQueries: [item.name],
+        source: "swingCandidate",
+        bucket: item.bucket ?? "execution"
+      });
+    }
+
+    for (const item of longTermItems) {
+      appendCompanyReference(targets, {
+        companyName: item.name,
+        ticker: item.symbol,
+        sector: "중장기 후보",
+        aliases: [item.name],
+        searchQueries: [item.name],
+        source: "longTermCandidate",
+        bucket: item.longTermBucket ?? "watch"
+      });
+    }
+  } catch (error) {
+    logger.warn("news-signals:dynamic-targets-failed", toErrorContext(error));
+  }
+
+  return [...targets.values()].slice(0, MAX_DYNAMIC_COMPANY_REFERENCES);
+}
+
 const highSeverityRiskKeywords = ["횡령", "배임", "감사의견 거절", "거래정지", "불성실공시", "상장폐지"];
 const mediumSeverityRiskKeywords = ["유상증자", "전환사채", "cb", "bw", "신주인수권부사채", "불성실공시법인"];
 
 const eventKeywordRules: Array<{ eventType: Exclude<NewsEventType, "RISK">; keywords: string[] }> = [
   {
     eventType: "CONTRACT",
-    keywords: ["수주", "공급계약", "계약 체결", "납품", "공급", "수주 계약"]
+    keywords: ["수주", "공급계약", "계약 체결", "납품", "수주 계약"]
   },
   {
     eventType: "EARNINGS",
-    keywords: ["실적", "영업이익", "매출", "잠정", "순이익", "적자", "실적 발표"]
+    keywords: ["실적", "영업이익", "매출", "잠정실적", "순이익", "적자", "실적 발표"]
   },
   {
     eventType: "M&A",
@@ -183,14 +280,16 @@ async function refreshNewsSignalDashboard(): Promise<NewsSignalDashboardPayload>
   const collectedAt = new Date().toISOString();
 
   try {
-    const items = await collectNewsMetadata();
-    const payload = buildNewsSignalDashboardPayload(items, collectedAt);
+    const companyReferences = await buildDynamicCompanyDictionary();
+    const items = await collectNewsMetadata(companyReferences);
+    const payload = buildNewsSignalDashboardPayload(items, collectedAt, companyReferences);
     newsSignalCache = payload;
 
     logger.info("news-signals:refreshed", {
       articleCount: payload.articleCount,
       signalCount: payload.signalCount,
       sectorCount: payload.sectors.length,
+      targetCount: companyReferences.length,
       collectedAt,
       refreshIntervalMinutes: NEWS_SIGNAL_REFRESH_INTERVAL_MINUTES
     });
@@ -209,7 +308,48 @@ async function refreshNewsSignalDashboard(): Promise<NewsSignalDashboardPayload>
   }
 }
 
-async function collectNewsMetadata(): Promise<NewsMetadata[]> {
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+async function fetchCompanyNewsWithConcurrency(
+  companyReferences: CompanyReference[]
+): Promise<Array<PromiseSettledResult<NewsMetadata[]>>> {
+  const results: Array<PromiseSettledResult<NewsMetadata[]> | undefined> = new Array(companyReferences.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < companyReferences.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await fetchCompanyNews(companyReferences[index])
+        };
+      } catch (reason) {
+        results[index] = {
+          status: "rejected",
+          reason
+        };
+      }
+
+      if (nextIndex < companyReferences.length) {
+        await delay(NEWS_TARGET_FETCH_DELAY_MS);
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(NEWS_TARGET_FETCH_CONCURRENCY, companyReferences.length) }, () => worker())
+  );
+
+  return results.filter((result): result is PromiseSettledResult<NewsMetadata[]> => Boolean(result));
+}
+
+async function collectNewsMetadata(companyReferences: CompanyReference[]): Promise<NewsMetadata[]> {
   if (!config.naverSearchClientId || !config.naverSearchClientSecret) {
     if (!hasLoggedMissingCredentials) {
       hasLoggedMissingCredentials = true;
@@ -222,7 +362,7 @@ async function collectNewsMetadata(): Promise<NewsMetadata[]> {
     return [];
   }
 
-  const settledResults = await Promise.allSettled(companyDictionary.map((company) => fetchCompanyNews(company)));
+  const settledResults = await fetchCompanyNewsWithConcurrency(companyReferences);
   const articles: NewsMetadata[] = [];
 
   settledResults.forEach((result, index) => {
@@ -232,7 +372,7 @@ async function collectNewsMetadata(): Promise<NewsMetadata[]> {
     }
 
     logger.warn("news-signals:company-fetch-failed", {
-      companyName: companyDictionary[index]?.companyName,
+      companyName: companyReferences[index]?.companyName,
       ...toErrorContext(result.reason)
     });
   });
@@ -368,8 +508,12 @@ function dedupeNewsItems(items: NewsMetadata[]): NewsMetadata[] {
   return result;
 }
 
-function buildNewsSignalDashboardPayload(items: NewsMetadata[], collectedAt: string): NewsSignalDashboardPayload {
-  const signals = buildNewsSignals(items);
+function buildNewsSignalDashboardPayload(
+  items: NewsMetadata[],
+  collectedAt: string,
+  companyReferences: CompanyReference[] = companyDictionary
+): NewsSignalDashboardPayload {
+  const signals = buildNewsSignals(items, companyReferences);
   const sectors = buildSectorSummaries(signals);
 
   return {
@@ -395,9 +539,12 @@ function createEmptyNewsSignalDashboardPayload(collectedAt: string): NewsSignalD
   };
 }
 
-export function buildNewsSignals(items: NewsMetadata[]): NewsSignalCard[] {
+export function buildNewsSignals(
+  items: NewsMetadata[],
+  companyReferences: CompanyReference[] = companyDictionary
+): NewsSignalCard[] {
   const enrichedItems = items
-    .map(enrichNewsItem)
+    .map((item) => enrichNewsItem(item, companyReferences))
     .filter((item): item is EnrichedNews => item != null);
 
   const buckets = new Map<string, EnrichedNews[]>();
@@ -451,8 +598,8 @@ export function buildNewsSignals(items: NewsMetadata[]): NewsSignalCard[] {
   });
 }
 
-function enrichNewsItem(item: NewsMetadata): EnrichedNews | null {
-  const company = resolveCompanyFromTitle(item.title);
+function enrichNewsItem(item: NewsMetadata, companyReferences: CompanyReference[]): EnrichedNews | null {
+  const company = resolveCompanyFromTitle(item.title, companyReferences);
   const event = resolveEventFromTitle(item.title);
   const publishedAtMs = Date.parse(item.publishedAt);
 
@@ -472,11 +619,11 @@ function enrichNewsItem(item: NewsMetadata): EnrichedNews | null {
   };
 }
 
-function resolveCompanyFromTitle(title: string): CompanyReference | null {
+function resolveCompanyFromTitle(title: string, companyReferences: CompanyReference[] = companyDictionary): CompanyReference | null {
   const normalizedTitle = title.toLowerCase();
 
   return (
-    [...companyDictionary]
+    [...companyReferences]
       .sort((left, right) => longestAliasLength(right) - longestAliasLength(left))
       .find((company) => company.aliases.some((alias) => normalizedTitle.includes(alias.toLowerCase()))) ?? null
   );

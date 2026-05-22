@@ -17,6 +17,8 @@
 - [스마트머니 유지보수 가이드](./smart-money-maintenance.md): 스윙 엔진, bucket, actionable 기준, 매물대 반영 원칙
 - [중장기 엔진 설계](./long-term-engine-design.md): 장기 후보 선정 철학과 점수 구조
 - [차트 이슈 조사](./chart-investigation-2026-04-30.md): 비거래일/공휴일 공백과 `open=0` 해석
+- [Discord 알림 히스토리 기준](./discord-alert-history-policy-2026-05-22.md): 실제 발송 알림의 JSONL 메타데이터 저장 기준
+- [뉴스 시그널 대상 기준](./news-signal-policy-2026-05-22.md): 대표종목 + 현재 후보 기반 뉴스 감지 대상 확장 기준
 
 ## 작업 기록
 
@@ -37,3 +39,5 @@
 ## Recent Work
 
 - [2026-05-15 스윙 엔진/후보 정리](./work-summary-2026-05-15.md)
+- [2026-05-22 Discord 알림 히스토리 기준](./discord-alert-history-policy-2026-05-22.md)
+- [2026-05-22 뉴스 시그널 대상 기준](./news-signal-policy-2026-05-22.md)

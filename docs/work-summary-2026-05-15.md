@@ -196,6 +196,16 @@
 - 현재 실행 후보: 12개
 - 현재 체결 가정 후보: 12개
 
+### 2026-05-22 History Policy Correction
+
+The previous note said swing history should treat only `executionItems` as current. That policy was corrected.
+
+- `watchItems` now count as current for existing or entered swing history cases.
+- Moving from `execution_ready`/`execution_probe` down to `watch` is a downgrade, not a close.
+- A case closes only when a real close condition is reached, such as stop break, target/exit classification, timeout, or complete removal from the swing universe.
+- New watch-only names are not opened as history cases unless they already have an entry assumption.
+- `삼륭물산` is the reference case: it moved to `watch` because of lower-envelope/support quality deterioration, but it remains active because the stop was not broken.
+
 ### Chart Refresh
 
 차트 깜빡임을 줄이기 위해 전체 화면 갱신 대신 차트 중심으로 갱신하도록 조정했다.

@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchQuoteAndChart } from "./stockAnalysis.js";
+import type { ChartPoint } from "../types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, "../..");
@@ -11,6 +13,7 @@ const SWING_DEEP_ENTRY_TARGET_RETURN_PCT = 8;
 const SWING_DRIFT_PROFIT_RETURN_PCT = 5;
 const SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT = 7;
 const SWING_STALE_TIMEOUT_BUSINESS_DAYS = 20;
+const CLOSED_CASE_MARKET_REFRESH_SESSIONS = 80;
 const swingSourceFiles = [
   { profile: "default", file: "server-swing-picks.json" },
   { profile: "smallcap", file: "server-smallcap-swing-picks.json" }
@@ -82,6 +85,12 @@ type SwingHistoryCase = {
   latestClose?: number;
   latestLow?: number;
   unrealizedReturnPct?: number;
+  maxFavorablePrice?: number;
+  maxFavorableDate?: string;
+  maxFavorableReturnPct?: number;
+  maxAdversePrice?: number;
+  maxAdverseDate?: string;
+  maxAdverseReturnPct?: number;
   outcomeStatus?: string;
   historyOutcome?: SwingHistoryOutcome;
   buyPlan?: {
@@ -436,6 +445,84 @@ function getReturnPct(historyCase: SwingHistoryCase) {
   return undefined;
 }
 
+function calculateReturnPct(latestClose: number, averageBuyPrice: unknown) {
+  if (!isFiniteNumber(averageBuyPrice) || averageBuyPrice === 0) {
+    return undefined;
+  }
+
+  return round(((latestClose - averageBuyPrice) / averageBuyPrice) * 100);
+}
+
+function getMaxFavorableReturnPct(historyCase: SwingHistoryCase) {
+  return isFiniteNumber(historyCase.maxFavorableReturnPct) ? historyCase.maxFavorableReturnPct : undefined;
+}
+
+function getPointHigh(point: ChartPoint) {
+  return isFiniteNumber(point.high) && point.high > 0 ? point.high : point.close;
+}
+
+function getPointLow(point: ChartPoint) {
+  return isFiniteNumber(point.low) && point.low > 0 ? point.low : point.close;
+}
+
+function getMarketRefreshStartDate(historyCase: SwingHistoryCase) {
+  return getFirstExecutedBuyDate(historyCase) ?? getValidDateText(historyCase.openedDate) ?? getRecommendationStartDate(historyCase);
+}
+
+function getMarketRefreshEndDate(historyCase: SwingHistoryCase, asOfDate: string) {
+  if (historyCase.status === "closed") {
+    return getValidDateText(historyCase.closedDate) ?? getValidDateText(historyCase.dataDate) ?? asOfDate;
+  }
+
+  return asOfDate;
+}
+
+function sliceCaseMarketWindow(points: ChartPoint[], historyCase: SwingHistoryCase, asOfDate: string) {
+  const startDate = getMarketRefreshStartDate(historyCase);
+  const endDate = getMarketRefreshEndDate(historyCase, asOfDate);
+  return points.filter((point) => (!startDate || point.date >= startDate) && point.date <= endDate);
+}
+
+function summarizeCaseMarketPath(points: ChartPoint[], historyCase: SwingHistoryCase, asOfDate: string) {
+  const scopedPoints = sliceCaseMarketWindow(points, historyCase, asOfDate);
+  const latestPoint = scopedPoints.at(-1);
+  const averageBuyPrice = historyCase.averageBuyPrice;
+  let maxFavorablePoint: ChartPoint | undefined;
+  let maxFavorablePrice: number | undefined;
+  let maxAdversePoint: ChartPoint | undefined;
+  let maxAdversePrice: number | undefined;
+
+  for (const point of scopedPoints) {
+    const high = getPointHigh(point);
+    if (!isFiniteNumber(maxFavorablePrice) || high > maxFavorablePrice) {
+      maxFavorablePrice = high;
+      maxFavorablePoint = point;
+    }
+
+    const low = getPointLow(point);
+    if (!isFiniteNumber(maxAdversePrice) || low < maxAdversePrice) {
+      maxAdversePrice = low;
+      maxAdversePoint = point;
+    }
+  }
+
+  return {
+    latestPoint,
+    maxFavorablePrice,
+    maxFavorableDate: maxFavorablePoint?.date,
+    maxFavorableReturnPct:
+      isFiniteNumber(maxFavorablePrice) && isFiniteNumber(averageBuyPrice) && averageBuyPrice !== 0
+        ? calculateReturnPct(maxFavorablePrice, averageBuyPrice)
+        : undefined,
+    maxAdversePrice,
+    maxAdverseDate: maxAdversePoint?.date,
+    maxAdverseReturnPct:
+      isFiniteNumber(maxAdversePrice) && isFiniteNumber(averageBuyPrice) && averageBuyPrice !== 0
+        ? calculateReturnPct(maxAdversePrice, averageBuyPrice)
+        : undefined
+  };
+}
+
 function buildHistoryOutcome(
   type: SwingHistoryOutcomeType,
   label: string,
@@ -459,7 +546,12 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
   const stopLossPrice = historyCase.buyPlan?.stopLossPrice;
   const latestClose = historyCase.latestClose;
   const targetReturnPct = getTargetReturnPct(executedBuyCount);
+  const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
   const businessDaysSinceFirstBuy = countBusinessDaysBetween(getFirstExecutedBuyDate(historyCase), historyCase.dataDate);
+  const maxFavorableDescription =
+    isFiniteNumber(maxFavorableReturnPct) && isFiniteNumber(historyCase.maxFavorablePrice)
+      ? ` 기간 중 최고가 ${formatKrw(historyCase.maxFavorablePrice)} 기준 최대 수익률 ${formatSignedPercentText(maxFavorableReturnPct)}입니다.`
+      : "";
   const returnDescription =
     isFiniteNumber(returnPct) && isFiniteNumber(historyCase.averageBuyPrice) && isFiniteNumber(latestClose)
       ? `종료 기준가 ${formatKrw(latestClose)}, 평균 매수가 ${formatKrw(historyCase.averageBuyPrice)} 기준 수익률 ${formatSignedPercentText(returnPct)}입니다.`
@@ -500,13 +592,19 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     );
   }
 
-  if (historyCase.outcomeStatus?.startsWith("target_hit_after") || (isFiniteNumber(returnPct) && returnPct >= targetReturnPct)) {
+  if (
+    historyCase.outcomeStatus?.startsWith("target_hit_after") ||
+    // Target hits are based on the post-entry high path, not only the closing price.
+    // A setup can finish as a profit even if the final close settles near the entry.
+    (isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct) ||
+    (isFiniteNumber(returnPct) && returnPct >= targetReturnPct)
+  ) {
     return buildHistoryOutcome(
       "target_hit",
       "슈팅 수익",
       "profit",
       true,
-      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다. ${returnDescription}`
+      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다.${maxFavorableDescription} ${returnDescription}`
     );
   }
 
@@ -690,17 +788,32 @@ async function readCurrentSwingCandidates() {
   for (const source of swingSourceFiles) {
     const payload = await readJsonFile<SwingPickPayload>(path.join(projectRoot, "data", source.file));
     const executionItems = payload.executionItems ?? [];
+    const watchItems = payload.watchItems ?? [];
 
     candidates.push(
       ...executionItems.map((item) => ({
         ...item,
         profile: source.profile,
         sourceBucket: "execution" as const
+      })),
+      ...watchItems.map((item) => ({
+        ...item,
+        profile: source.profile,
+        sourceBucket: "watch" as const
       }))
     );
   }
 
-  return candidates.filter((item) => item.symbol && isActionableSwingCandidate(item) && !isPennyStockCandidate(item));
+  return candidates.filter((item) => item.symbol && !isPennyStockCandidate(item));
+}
+
+function shouldUpsertCurrentHistoryCase(
+  candidate: SwingCandidate & { sourceBucket: "execution" | "watch" },
+  existingCase: SwingHistoryCase | undefined
+) {
+  // A downgrade from execution to watch is still a live swing case.
+  // Keep existing/entered watch cases active until the stop or another real close condition is hit.
+  return candidate.sourceBucket === "execution" || Boolean(existingCase) || getExecutedBuyStage(candidate.postEntryOutcome) > 0;
 }
 
 function buildSwingHistorySummary(
@@ -754,6 +867,54 @@ function enrichClosedDateFields(
     closedDate,
     closedMonth: getMonthKey(closedDate)
   };
+}
+
+function shouldRefreshMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
+  const entered = getExecutedBuyStage(historyCase) > 0;
+  const closedEntered = historyCase.status === "closed" && entered;
+  const activeEntered = historyCase.status === "active" && entered;
+  return Boolean(historyCase.symbol && (closedEntered || activeEntered));
+}
+
+async function refreshCaseMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
+  if (!shouldRefreshMarketPrice(historyCase, asOfDate)) {
+    return historyCase;
+  }
+
+  const symbol = historyCase.symbol;
+  if (!symbol) {
+    return historyCase;
+  }
+
+  try {
+    const { points } = await fetchQuoteAndChart(symbol, {
+      naverCount: CLOSED_CASE_MARKET_REFRESH_SESSIONS
+    });
+    const marketPath = summarizeCaseMarketPath(points, historyCase, asOfDate);
+    const latestPoint = marketPath.latestPoint;
+    if (!latestPoint || !isFiniteNumber(latestPoint.close)) {
+      return historyCase;
+    }
+
+    return {
+      ...historyCase,
+      dataDate: latestPoint.date ?? historyCase.dataDate,
+      latestClose: latestPoint.close,
+      unrealizedReturnPct: calculateReturnPct(latestPoint.close, historyCase.averageBuyPrice),
+      maxFavorablePrice: marketPath.maxFavorablePrice,
+      maxFavorableDate: marketPath.maxFavorableDate,
+      maxFavorableReturnPct: marketPath.maxFavorableReturnPct,
+      maxAdversePrice: marketPath.maxAdversePrice,
+      maxAdverseDate: marketPath.maxAdverseDate,
+      maxAdverseReturnPct: marketPath.maxAdverseReturnPct
+    };
+  } catch {
+    return historyCase;
+  }
+}
+
+async function refreshCaseMarketPrices(cases: SwingHistoryCase[], asOfDate: string) {
+  return Promise.all(cases.map((historyCase) => refreshCaseMarketPrice(historyCase, asOfDate)));
 }
 
 function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
@@ -811,7 +972,12 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
 
   for (const candidate of currentCandidates) {
     const key = getHistoryCaseKey(candidate.profile, candidate.symbol);
-    const nextCase = buildCurrentHistoryCase(candidate, existingCaseByKey.get(key), now);
+    const existingCase = existingCaseByKey.get(key);
+    if (!shouldUpsertCurrentHistoryCase(candidate, existingCase)) {
+      continue;
+    }
+
+    const nextCase = buildCurrentHistoryCase(candidate, existingCase, now);
     if (!nextCase) {
       continue;
     }
@@ -830,13 +996,17 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
   });
   const currentCaseKeys = new Set(currentCandidates.map((candidate) => getHistoryCaseKey(candidate.profile, candidate.symbol)));
   const asOfDate = formatDateInSeoul(now);
-  const casesWithOutcome = cases.map((historyCase) => {
+  const casesWithClosedDate = cases.map((historyCase) => {
     const lifecycleStatus = currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
-    const caseWithClosedDate = enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
+    return enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
+  });
+  const casesWithLatestMarketPrice = await refreshCaseMarketPrices(casesWithClosedDate, asOfDate);
+  const casesWithOutcome = casesWithLatestMarketPrice.map((historyCase) => {
+    const lifecycleStatus = currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
 
     return {
-      ...caseWithClosedDate,
-      historyOutcome: deriveHistoryOutcome(caseWithClosedDate, lifecycleStatus)
+      ...historyCase,
+      historyOutcome: deriveHistoryOutcome(historyCase, lifecycleStatus)
     };
   });
   const currentEnteredRecommendationCount = casesWithOutcome.filter(
@@ -854,7 +1024,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       strategy: "swing",
       profiles: ["default", "smallcap"],
       sourceFiles: swingSourceFiles.map((source) => `data/${source.file}`),
-      includedBuckets: ["executionItems"],
+      includedBuckets: ["executionItems", "watchItems"],
       includeOnlyTouchedFirstBuy: true
     },
     summary: buildSwingHistorySummary(casesWithOutcome, currentCandidates),

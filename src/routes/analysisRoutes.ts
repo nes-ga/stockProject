@@ -9,6 +9,10 @@ import {
   buildSmartMoneyPatternDiscordMessages,
   sendDiscordMessages
 } from "../services/discord.js";
+import {
+  appendDiscordAlertHistoryRecords,
+  type DiscordAlertHistoryRecordInput
+} from "../services/discordAlertHistory.js";
 import { analyzeKoreanMovers } from "../services/koreanMovers.js";
 import { getMarketEventCalendarPayload, searchMarketEventCalendar } from "../services/marketEventCalendar.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
@@ -17,7 +21,8 @@ import { classifySwingCandidate, scanRecommendationUniverse } from "../services/
 import {
   diffAndRememberDividendUniverseAlerts,
   diffAndRememberLongTermUniverseAlerts,
-  diffAndRememberSwingUniverseAlerts
+  diffAndRememberSwingUniverseAlerts,
+  type RecommendationUniverseAlertDiff
 } from "../services/recommendationUniverseAlerts.js";
 import { getDividendEtfRecommendations } from "../services/dividendEtfService.js";
 import { readServerDividendPicks, writeServerDividendPicks } from "../services/serverDividendPicks.js";
@@ -375,6 +380,289 @@ const moversDiscordSchema = z.object({
   mention: z.string().min(1).max(200).optional()
 });
 
+
+type RecommendationPatternHistoryAnalysis = Awaited<ReturnType<typeof analyzeRecommendationPatterns>>[number];
+type SmartMoneyPatternHistoryAnalysis = Awaited<ReturnType<typeof analyzeSmartMoneyPatterns>>[number];
+type KoreanMoverHistoryAnalysis = Awaited<ReturnType<typeof analyzeKoreanMovers>>[number];
+
+type UniverseAlertHistoryItem = {
+  symbol?: string;
+  name?: string;
+  key?: string;
+  bucket?: string;
+  longTermBucket?: string;
+  anchorDate?: string;
+  latestMentionDate?: string;
+  note?: string;
+  reasons?: string[];
+  tags?: string[];
+  penaltyFactors?: unknown;
+  postEntryOutcome?: unknown;
+  envelope?: unknown;
+  category?: string;
+  swingProfile?: string;
+  source?: string;
+};
+
+function parseBuyPlanFromNote(note: string | undefined) {
+  if (!note) {
+    return undefined;
+  }
+
+  const buyMatch = note.match(/매수\s+([\d,]+)\/([\d,]+)\/([\d,]+)/);
+  const stopMatch = note.match(/손절\s+([\d,]+)/);
+  const parsePrice = (value: string | undefined) => {
+    const parsed = Number(value?.replace(/,/g, ""));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+
+  if (!buyMatch && !stopMatch) {
+    return undefined;
+  }
+
+  return {
+    firstBuyPrice: parsePrice(buyMatch?.[1]),
+    secondBuyPrice: parsePrice(buyMatch?.[2]),
+    thirdBuyPrice: parsePrice(buyMatch?.[3]),
+    stopLossPrice: parsePrice(stopMatch?.[1])
+  };
+}
+
+function getUniverseHistoryCategory(diff: RecommendationUniverseAlertDiff) {
+  if (diff.category === "smallcapSwing") {
+    return "swing";
+  }
+  return diff.category;
+}
+
+function getUniverseHistoryProfile(diff: RecommendationUniverseAlertDiff) {
+  if (diff.category === "smallcapSwing") {
+    return "smallcap";
+  }
+  if (diff.category === "swing") {
+    return "default";
+  }
+  return undefined;
+}
+
+function collectUniverseAlertItems(payload: {
+  executionItems?: UniverseAlertHistoryItem[];
+  watchItems?: UniverseAlertHistoryItem[];
+  items?: UniverseAlertHistoryItem[];
+}) {
+  const executionItems = (payload.executionItems ?? []).map((item) => ({
+    ...item,
+    bucket: item.bucket ?? "execution"
+  }));
+  const watchItems = (payload.watchItems ?? []).map((item) => ({
+    ...item,
+    bucket: item.bucket ?? "watch"
+  }));
+  const items = (payload.items ?? []).map((item) => ({
+    ...item,
+    bucket: item.bucket ?? item.longTermBucket
+  }));
+
+  return [...executionItems, ...watchItems, ...items];
+}
+
+function buildRecommendationUniverseAlertHistoryRecords(params: {
+  diff: RecommendationUniverseAlertDiff;
+  payload: {
+    executionItems?: UniverseAlertHistoryItem[];
+    watchItems?: UniverseAlertHistoryItem[];
+    items?: UniverseAlertHistoryItem[];
+  };
+  username?: string;
+  messageCount: number;
+}): DiscordAlertHistoryRecordInput[] {
+  const currentBySymbol = new Map(
+    collectUniverseAlertItems(params.payload)
+      .filter((item) => item.symbol)
+      .map((item) => [String(item.symbol), item])
+  );
+  const category = getUniverseHistoryCategory(params.diff);
+  const profile = getUniverseHistoryProfile(params.diff);
+
+  return params.diff.changes.map((change, index) => {
+    const currentItem = currentBySymbol.get(change.symbol);
+    return {
+      alertType: "recommendation-universe",
+      source: "recommendation-universe-scan",
+      username: params.username,
+      messageCount: params.messageCount,
+      messageIndex: index + 1,
+      category,
+      profile,
+      symbol: change.symbol,
+      name: change.name,
+      bucket: change.toBucket,
+      previousBucket: change.fromBucket,
+      changeType: change.type,
+      anchorDate: currentItem?.anchorDate,
+      latestMentionDate: currentItem?.latestMentionDate,
+      metadata: {
+        rawCategory: params.diff.category,
+        key: currentItem?.key,
+        note: currentItem?.note,
+        buyPlan: parseBuyPlanFromNote(currentItem?.note),
+        reasons: currentItem?.reasons,
+        tags: currentItem?.tags,
+        penaltyFactors: currentItem?.penaltyFactors,
+        envelope: currentItem?.envelope,
+        postEntryOutcome: currentItem?.postEntryOutcome,
+        source: currentItem?.source,
+        currentCount: params.diff.currentCount,
+        previousCount: params.diff.previousCount
+      }
+    };
+  });
+}
+
+function buildRecommendationPatternAlertHistoryRecords(params: {
+  analyses: RecommendationPatternHistoryAnalysis[];
+  username?: string;
+  messageCount: number;
+}): DiscordAlertHistoryRecordInput[] {
+  if (!params.analyses.length) {
+    return [
+      {
+        alertType: "recommendation-pattern",
+        source: "recommendation-patterns",
+        username: params.username,
+        messageCount: params.messageCount,
+        messageIndex: 1,
+        category: "recommendation-pattern",
+        metadata: {
+          result: "no-matches"
+        }
+      }
+    ];
+  }
+
+  return params.analyses.map((item, index) => ({
+    alertType: "recommendation-pattern",
+    source: "recommendation-patterns",
+    username: params.username,
+    messageCount: params.messageCount,
+    messageIndex: index + 1,
+    category: "recommendation-pattern",
+    symbol: item.symbol,
+    name: item.name,
+    anchorDate: item.tradingAnchorDate,
+    metadata: {
+      matched: item.pattern.matched,
+      signalDate: item.pattern.signalDate,
+      signalScore: item.pattern.signalScore,
+      priceChangePercent: item.pattern.priceChangePercent,
+      volumeRatio20d: item.pattern.volumeRatio20d,
+      reasons: item.pattern.reasons
+    }
+  }));
+}
+
+function buildSmartMoneyAlertHistoryRecords(params: {
+  alertType: "smart-money-pattern" | "smart-money-watchlist";
+  source: string;
+  analyses: SmartMoneyPatternHistoryAnalysis[];
+  username?: string;
+  messageCount: number;
+  profile?: string;
+}): DiscordAlertHistoryRecordInput[] {
+  if (!params.analyses.length) {
+    return [
+      {
+        alertType: params.alertType,
+        source: params.source,
+        username: params.username,
+        messageCount: params.messageCount,
+        messageIndex: 1,
+        category: "swing",
+        profile: params.profile,
+        metadata: {
+          result: "no-matches"
+        }
+      }
+    ];
+  }
+
+  return params.analyses.map((item, index) => {
+    const classification = classifySwingCandidate(item);
+    return {
+      alertType: params.alertType,
+      source: params.source,
+      username: params.username,
+      messageCount: params.messageCount,
+      messageIndex: index + 1,
+      category: "swing",
+      profile: params.profile,
+      symbol: item.symbol,
+      name: item.name,
+      bucket: classification.bucket,
+      anchorDate: item.tradingReferenceDate,
+      referenceDate: item.tradingReferenceDate,
+      metadata: {
+        matched: item.pattern.matched,
+        actionable: classification.bucket !== "watch",
+        status: item.pattern.status,
+        entryStrategy: item.pattern.entryStrategy,
+        patternScore: item.pattern.patternScore,
+        finalRankScore: item.pattern.finalRankScore,
+        leadInDate: item.pattern.leadInDate,
+        breakoutDate: item.pattern.breakoutDate,
+        buyPlan: item.pattern.buyPlan,
+        invalidationPrice: item.pattern.invalidationPrice,
+        reasons: item.pattern.reasons,
+        tags: item.pattern.tags,
+        penaltyFactors: item.pattern.penaltyFactors
+      }
+    };
+  });
+}
+
+function buildKoreanMoverAlertHistoryRecords(params: {
+  analyses: KoreanMoverHistoryAnalysis[];
+  username?: string;
+  messageCount: number;
+}): DiscordAlertHistoryRecordInput[] {
+  if (!params.analyses.length) {
+    return [
+      {
+        alertType: "korean-movers",
+        source: "korean-movers-discord",
+        username: params.username,
+        messageCount: params.messageCount,
+        messageIndex: 1,
+        category: "korean-movers",
+        metadata: {
+          result: "no-matches"
+        }
+      }
+    ];
+  }
+
+  return params.analyses.map((item, index) => ({
+    alertType: "korean-movers",
+    source: "korean-movers-discord",
+    username: params.username,
+    messageCount: params.messageCount,
+    messageIndex: index + 1,
+    category: "korean-movers",
+    symbol: item.symbol,
+    name: item.name,
+    metadata: {
+      market: item.market,
+      direction: item.direction,
+      signal: item.signal,
+      alertScore: item.alertScore,
+      changePercent: item.changePercent,
+      volumeRatio20d: item.volumeRatio20d,
+      estimatedTurnover: item.estimatedTurnover,
+      reasons: item.reasons
+    }
+  }));
+}
+
 analysisRoutes.post("/recommendations", async (request, response, next) => {
   try {
     const input = recommendationBatchSchema.parse(request.body);
@@ -417,11 +705,19 @@ analysisRoutes.post("/recommendation-patterns", async (request, response, next) 
         mention: input.discord.mention
       });
 
+      const username = input.discord.username ?? "Recommendation Pattern Bot";
       await sendDiscordMessages({
         messages,
         webhookUrl: input.discord.webhookUrl,
-        username: input.discord.username ?? "Recommendation Pattern Bot"
+        username
       });
+      await appendDiscordAlertHistoryRecords(
+        buildRecommendationPatternAlertHistoryRecords({
+          analyses: targetAnalyses,
+          username,
+          messageCount: messages.length
+        })
+      );
 
       messageCount = messages.length;
     }
@@ -472,11 +768,22 @@ analysisRoutes.post("/smart-money-patterns", async (request, response, next) => 
         mention: input.discord.mention
       });
 
+      const username = input.discord.username ?? "Smart Money Pattern Bot";
       await sendDiscordMessages({
         messages,
         webhookUrl: input.discord.webhookUrl,
-        username: input.discord.username ?? "Smart Money Pattern Bot"
+        username
       });
+      await appendDiscordAlertHistoryRecords(
+        buildSmartMoneyAlertHistoryRecords({
+          alertType: "smart-money-pattern",
+          source: "smart-money-patterns",
+          analyses: targetAnalyses,
+          username,
+          messageCount: messages.length,
+          profile
+        })
+      );
 
       messageCount = messages.length;
     }
@@ -595,11 +902,20 @@ async function executeRecommendationUniverseScan(input: RecommendationUniverseSc
     });
 
     if (messages.length) {
+      const username = input.discord?.username ?? "Recommendation Universe Bot";
       await sendDiscordMessages({
         messages,
         webhookUrl,
-        username: input.discord?.username ?? "Recommendation Universe Bot"
+        username
       });
+      await appendDiscordAlertHistoryRecords(
+        buildRecommendationUniverseAlertHistoryRecords({
+          diff: universeDiff,
+          payload,
+          username,
+          messageCount: messages.length
+        })
+      );
       discordSent = true;
       discordMessageCount = messages.length;
     }
@@ -994,11 +1310,19 @@ analysisRoutes.post("/korean-movers/discord", async (request, response, next) =>
       mention: input.mention
     });
 
+    const username = input.username ?? "Stock Alert Bot";
     await sendDiscordMessages({
       messages,
       webhookUrl: input.webhookUrl,
-      username: input.username
+      username
     });
+    await appendDiscordAlertHistoryRecords(
+      buildKoreanMoverAlertHistoryRecords({
+        analyses,
+        username,
+        messageCount: messages.length
+      })
+    );
 
     response.json({
       ok: true,

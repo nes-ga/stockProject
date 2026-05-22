@@ -2,6 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { buildSmartMoneyPatternDiscordMessages, sendDiscordMessages } from "../services/discord.js";
+import {
+  appendDiscordAlertHistoryRecords,
+  type DiscordAlertHistoryRecordInput
+} from "../services/discordAlertHistory.js";
 import { evaluateRealTimePriceSpike } from "../services/realtimeAlerts.js";
 import { classifySwingCandidate } from "../services/recommendationUniverse.js";
 import { resolveSmartMoneyPatternFilters } from "../services/smartMoneyEngine.js";
@@ -244,6 +248,101 @@ function buildPriceSpikeDiscordMessage(params: {
   return lines.join("\n");
 }
 
+
+type SmartMoneyPatternHistoryAnalysis = Awaited<ReturnType<typeof analyzeSmartMoneyPatterns>>[number];
+
+function buildPriceSpikeAlertHistoryRecords(params: {
+  evaluation: ReturnType<typeof evaluateRealTimePriceSpike>;
+  username?: string;
+  messageCount: number;
+}): DiscordAlertHistoryRecordInput[] {
+  const { event } = params.evaluation;
+  return [
+    {
+      alertType: "price-spike",
+      source: "price-spike",
+      username: params.username,
+      messageCount: params.messageCount,
+      messageIndex: 1,
+      category: "price-spike",
+      symbol: event.symbol,
+      name: event.name,
+      referenceDate: event.detectedAt?.slice(0, 10),
+      metadata: {
+        market: event.market,
+        price: event.price,
+        previousClose: event.previousClose,
+        changePercent: event.changePercent,
+        volume: event.volume,
+        volumeRatio20d: event.volumeRatio20d,
+        turnoverKrw: event.turnoverKrw,
+        breakout20d: event.breakout20d,
+        breakout60d: event.breakout60d,
+        signal: params.evaluation.signal,
+        score: params.evaluation.score,
+        reasons: params.evaluation.reasons,
+        accepted: params.evaluation.accepted,
+        source: event.source,
+        note: event.note
+      }
+    }
+  ];
+}
+
+function buildSmartMoneyWatchlistAlertHistoryRecords(params: {
+  analyses: SmartMoneyPatternHistoryAnalysis[];
+  username?: string;
+  messageCount: number;
+}): DiscordAlertHistoryRecordInput[] {
+  if (!params.analyses.length) {
+    return [
+      {
+        alertType: "smart-money-watchlist",
+        source: "smart-money-watchlist-scan",
+        username: params.username,
+        messageCount: params.messageCount,
+        messageIndex: 1,
+        category: "swing",
+        metadata: {
+          result: "no-matches"
+        }
+      }
+    ];
+  }
+
+  return params.analyses.map((item, index) => {
+    const classification = classifySwingCandidate(item);
+    return {
+      alertType: "smart-money-watchlist",
+      source: "smart-money-watchlist-scan",
+      username: params.username,
+      messageCount: params.messageCount,
+      messageIndex: index + 1,
+      category: "swing",
+      symbol: item.symbol,
+      name: item.name,
+      bucket: classification.bucket,
+      anchorDate: item.tradingReferenceDate,
+      referenceDate: item.tradingReferenceDate,
+      metadata: {
+        matched: item.pattern.matched,
+        actionable: classification.bucket !== "watch",
+        status: item.pattern.status,
+        entryStrategy: item.pattern.entryStrategy,
+        patternScore: item.pattern.patternScore,
+        finalRankScore: item.pattern.finalRankScore,
+        leadInDate: item.pattern.leadInDate,
+        breakoutDate: item.pattern.breakoutDate,
+        buyPlan: item.pattern.buyPlan,
+        invalidationPrice: item.pattern.invalidationPrice,
+        reasons: item.pattern.reasons,
+        tags: item.pattern.tags,
+        penaltyFactors: item.pattern.penaltyFactors
+      }
+    };
+  });
+}
+
 alertRoutes.post("/price-spike", async (request, response, next) => {
   try {
     if (config.alertWebhookSecret) {
@@ -278,11 +377,19 @@ alertRoutes.post("/price-spike", async (request, response, next) => {
       evaluation
     });
 
+    const username = input.discord?.username ?? "Real-time Stock Alert";
     await sendDiscordMessages({
       messages: [message],
       webhookUrl: input.discord?.webhookUrl,
-      username: input.discord?.username ?? "Real-time Stock Alert"
+      username
     });
+    await appendDiscordAlertHistoryRecords(
+      buildPriceSpikeAlertHistoryRecords({
+        evaluation,
+        username,
+        messageCount: 1
+      })
+    );
 
     response.json({
       ok: true,
@@ -369,11 +476,19 @@ alertRoutes.post("/smart-money-watchlist/scan", async (request, response, next) 
         mention: input.discord.mention
       });
 
+      const username = input.discord.username ?? "Smart Money Watchlist Bot";
       await sendDiscordMessages({
         messages,
         webhookUrl: input.discord.webhookUrl,
-        username: input.discord.username ?? "Smart Money Watchlist Bot"
+        username
       });
+      await appendDiscordAlertHistoryRecords(
+        buildSmartMoneyWatchlistAlertHistoryRecords({
+          analyses: targetAnalyses,
+          username,
+          messageCount: messages.length
+        })
+      );
 
       messageCount = messages.length;
     }

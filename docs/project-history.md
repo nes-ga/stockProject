@@ -2,6 +2,16 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-05-22
+
+Swing recommendation history policy was adjusted so that a candidate is not closed merely because it moved from `executionItems` to `watchItems`.
+
+- `watchItems` are now included when deciding whether an existing swing history case is still current.
+- Existing or entered watch cases stay `active` until a real close condition occurs, such as stop break, target/exit classification, timeout, or complete removal from the swing universe.
+- New watch-only names are not opened as history cases unless they already have an entry assumption or an existing history case.
+- Active entered cases refresh `latestClose`, `dataDate`, and return from the latest Naver daily candle before writing history, so stale pick payload prices do not overwrite history.
+- Example: `삼륭물산` moved from execution candidate to watch because of lower-envelope/support quality deterioration, but it remains an active history case because it did not break the stop.
+
 ## 2026-05-15
 
 스윙/소형 스윙 매수 후보 엔진을 차트 구조 중심으로 재정리했습니다.
