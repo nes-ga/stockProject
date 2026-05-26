@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-22T07:13:43.892Z",
-  "asOfDate": "2026-05-22",
+  "generatedAt": "2026-05-26T14:30:05.332Z",
+  "asOfDate": "2026-05-26",
   "scope": {
     "strategy": "swing",
     "profiles": [
@@ -20,22 +20,265 @@
   },
   "summary": {
     "scannedExecutionCandidates": 15,
-    "openedCases": 131,
-    "enteredCases": 71,
-    "noEntryCases": 60,
-    "targetHitCases": 4,
+    "openedCases": 135,
+    "enteredCases": 65,
+    "noEntryCases": 70,
+    "targetHitCases": 8,
     "driftProfitExitCases": 0,
-    "profitExitCases": 4,
-    "entryMissedUpsideCases": 47,
-    "stopBrokenCases": 1,
+    "profitExitCases": 8,
+    "entryMissedUpsideCases": 51,
+    "stopBrokenCases": 2,
     "staleTimeoutCases": 0,
     "defaultCases": 75,
-    "smallcapCases": 56,
-    "firstBuyOnlyCases": 12,
-    "secondBuyReachedCases": 59,
-    "thirdBuyReachedCases": 34
+    "smallcapCases": 60,
+    "firstBuyOnlyCases": 14,
+    "secondBuyReachedCases": 51,
+    "thirdBuyReachedCases": 28
   },
   "cases": [
+    {
+      "id": "swing:smallcap:017900:2026-05-26",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "017900",
+      "name": "광전자",
+      "sourceKey": "광전자-017900",
+      "openedAt": "2026-05-26T14:30:04.748Z",
+      "openedDate": "2026-05-26",
+      "dataDate": "2026-05-04",
+      "entryBucket": "execution_probe",
+      "status": "closed",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+      },
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "buyPlan": {
+        "firstBuyPrice": 10950,
+        "secondBuyPrice": 7910,
+        "thirdBuyPrice": 4790,
+        "stopLossPrice": 1761
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-05-04",
+        "latestMentionDate": "2026-05-04",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-09 | 급등 피크 2026-04-16 | 눌림 2026-04-17~2026-05-04 | SMA20 11231 | 구간 10950~10669 | 손절 1761 | 손절기준 2026-03-04 low | 점수 75",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      },
+      "historyOutcome": {
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
+        "includeInReturnStats": false,
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
+    },
+    {
+      "id": "swing:smallcap:031820:2026-05-26",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "031820",
+      "name": "아이티센씨티에스",
+      "sourceKey": "아이티센씨티에스-031820",
+      "openedAt": "2026-05-26T14:30:05.332Z",
+      "openedDate": "2026-05-26",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+      },
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "buyPlan": {
+        "firstBuyPrice": 7606,
+        "secondBuyPrice": 7267,
+        "thirdBuyPrice": 6919,
+        "stopLossPrice": 6580
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-05-26",
+        "latestMentionDate": "2026-05-26",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-02-12 | 급등 피크 2026-02-23 | 눌림 2026-02-24~2026-05-26 | SMA20 7801 | 매수 7606/7267/6919 | ENV20 lower_band 7021/7801/8581 | 손절 6580 | 손절기준 2026-04-02 low | 점수 36",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_hold"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_hold",
+          "risk_reward_ok",
+          "long_pullback_until_stop_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "execution_gate_overridden_by_envelope"
+        ],
+        "source": "server-universe"
+      },
+      "historyOutcome": {
+        "type": "active_no_entry",
+        "label": "현재 후보",
+        "category": "active",
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+      }
+    },
+    {
+      "id": "swing:smallcap:092600:2026-05-26",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "092600",
+      "name": "앤씨앤",
+      "sourceKey": "앤씨앤-092600",
+      "openedAt": "2026-05-26T14:30:04.748Z",
+      "openedDate": "2026-05-26",
+      "dataDate": "2026-05-04",
+      "entryBucket": "execution_probe",
+      "status": "closed",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+      },
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "buyPlan": {
+        "firstBuyPrice": 1119,
+        "secondBuyPrice": 934,
+        "thirdBuyPrice": 744,
+        "stopLossPrice": 560
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-04-27",
+        "latestMentionDate": "2026-05-04",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-07 | 급등 피크 2026-04-14 | 눌림 2026-04-15~2026-05-04 | SMA20 1147 | 구간 1119~1090 | 손절 560 | 손절기준 2026-03-11 low | 점수 72",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable",
+          "watch_halt_event"
+        ],
+        "reasons": [
+          "matched_setup",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "halt_event",
+          "halt_action_allow_with_penalty",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "halt_penalty_active"
+        ],
+        "source": "server-universe"
+      },
+      "historyOutcome": {
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
+        "includeInReturnStats": false,
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
+    },
+    {
+      "id": "swing:smallcap:261780:2026-05-26",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "261780",
+      "name": "차백신연구소",
+      "sourceKey": "차백신연구소-261780",
+      "openedAt": "2026-05-26T14:30:04.748Z",
+      "openedDate": "2026-05-26",
+      "dataDate": "2026-05-04",
+      "entryBucket": "execution_probe",
+      "status": "closed",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "daily_low_touched_buy_price",
+        "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+      },
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "buyPlan": {
+        "firstBuyPrice": 3500,
+        "secondBuyPrice": 3095,
+        "thirdBuyPrice": 2680,
+        "stopLossPrice": 2280
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-05-04",
+        "latestMentionDate": "2026-05-04",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-19 | 급등 피크 2026-03-26 | 눌림 2026-03-27~2026-05-04 | SMA20 3593 | 매수 3500/3095/2680 | 손절 2280 | 손절기준 2026-03-19 low | 점수 48",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_volume_turnover_strong",
+          "tag_support_unstable"
+        ],
+        "reasons": [
+          "setup_watch_only",
+          "entry_zone_hit",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_ok",
+          "unstable_support",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "execution_gate_not_cleared"
+        ],
+        "source": "server-universe"
+      },
+      "historyOutcome": {
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
+        "includeInReturnStats": false,
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
+    },
     {
       "id": "swing:smallcap:003540:2026-05-22",
       "strategy": "swing",
@@ -45,7 +288,7 @@
       "sourceKey": "대신증권-003540",
       "openedAt": "2026-05-22T06:19:15.821Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -58,28 +301,28 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 35970,
-          "date": "2026-05-22"
+          "price": 35680,
+          "date": "2026-05-26"
         },
         {
           "stage": 2,
-          "price": 34149,
-          "date": "2026-05-22"
+          "price": 33954,
+          "date": "2026-05-26"
         },
         {
           "stage": 3,
-          "price": 32272,
-          "date": "2026-05-22"
+          "price": 32176,
+          "date": "2026-05-26"
         }
       ],
-      "averageBuyPrice": 33336.57,
-      "latestClose": 33650,
+      "averageBuyPrice": 33184.57,
+      "latestClose": 33100,
       "latestLow": 30450,
-      "unrealizedReturnPct": 0.94,
+      "unrealizedReturnPct": -0.25,
       "buyPlan": {
-        "firstBuyPrice": 35970,
-        "secondBuyPrice": 34149,
-        "thirdBuyPrice": 32272,
+        "firstBuyPrice": 35680,
+        "secondBuyPrice": 33954,
+        "thirdBuyPrice": 32176,
         "stopLossPrice": 30450
       },
       "initialSnapshot": {
@@ -120,12 +363,12 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "maxFavorablePrice": 34250,
-      "maxFavorableDate": "2026-05-22",
-      "maxFavorableReturnPct": 2.74,
-      "maxAdversePrice": 33350,
-      "maxAdverseDate": "2026-05-22",
-      "maxAdverseReturnPct": 0.04
+      "maxFavorablePrice": 34700,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 4.57,
+      "maxAdversePrice": 33000,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -0.56
     },
     {
       "id": "swing:default:223250:2026-05-22",
@@ -136,9 +379,9 @@
       "sourceKey": "드림씨아이에스-223250",
       "openedAt": "2026-05-22T06:19:12.197Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -154,9 +397,9 @@
         }
       ],
       "averageBuyPrice": 5711,
-      "latestClose": 5750,
+      "latestClose": 6160,
       "latestLow": 5330,
-      "unrealizedReturnPct": 0.68,
+      "unrealizedReturnPct": 7.86,
       "buyPlan": {
         "firstBuyPrice": 5711,
         "secondBuyPrice": 5265,
@@ -195,18 +438,20 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "target_hit",
+        "label": "슈팅 수익",
+        "category": "profit",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 6,670원 기준 최대 수익률 +16.79%입니다. 종료 기준가 6,160원, 평균 매수가 5,711원 기준 수익률 +7.86%입니다."
       },
-      "maxFavorablePrice": 5910,
-      "maxFavorableDate": "2026-05-22",
-      "maxFavorableReturnPct": 3.48,
+      "maxFavorablePrice": 6670,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 16.79,
       "maxAdversePrice": 5570,
       "maxAdverseDate": "2026-05-22",
-      "maxAdverseReturnPct": -2.47
+      "maxAdverseReturnPct": -2.47,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:033130:2026-05-22",
@@ -217,7 +462,7 @@
       "sourceKey": "디지틀조선-033130",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -228,12 +473,12 @@
       "outcomeStatus": "active",
       "executedBuyCount": 0,
       "executedBuys": [],
-      "latestClose": 1991,
+      "latestClose": 1980,
       "latestLow": 1810,
       "buyPlan": {
-        "firstBuyPrice": 2310,
-        "secondBuyPrice": 2145,
-        "thirdBuyPrice": 1976,
+        "firstBuyPrice": 2275,
+        "secondBuyPrice": 2120,
+        "thirdBuyPrice": 1964,
         "stopLossPrice": 1810
       },
       "initialSnapshot": {
@@ -285,8 +530,8 @@
       "sourceKey": "비츠로테크-042370",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -297,19 +542,24 @@
       "executedBuyCount": 2,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 16050,
+          "date": "2026-05-26"
+        },
+        {
           "stage": 2,
-          "price": 14330,
-          "date": "2026-05-15"
+          "price": 14278,
+          "date": "2026-05-26"
         }
       ],
-      "averageBuyPrice": 14330,
-      "latestClose": 14790,
+      "averageBuyPrice": 14868.67,
+      "latestClose": 14880,
       "latestLow": 13410,
-      "unrealizedReturnPct": 3.21,
+      "unrealizedReturnPct": 0.08,
       "buyPlan": {
-        "firstBuyPrice": 16130,
-        "secondBuyPrice": 14330,
-        "thirdBuyPrice": 12470,
+        "firstBuyPrice": 16050,
+        "secondBuyPrice": 14278,
+        "thirdBuyPrice": 12452,
         "stopLossPrice": 10680
       },
       "initialSnapshot": {
@@ -350,12 +600,12 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "maxFavorablePrice": 15300,
-      "maxFavorableDate": "2026-05-15",
-      "maxFavorableReturnPct": 6.77,
-      "maxAdversePrice": 13410,
-      "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -6.42
+      "maxFavorablePrice": 15350,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 3.24,
+      "maxAdversePrice": 14700,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -1.13
     },
     {
       "id": "swing:smallcap:003720:2026-05-22",
@@ -368,7 +618,7 @@
       "openedDate": "2026-05-22",
       "dataDate": "2026-05-22",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -410,12 +660,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:001620:2026-05-22",
@@ -426,7 +678,7 @@
       "sourceKey": "케이비아이동국실업-001620",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -437,12 +689,12 @@
       "outcomeStatus": "active",
       "executedBuyCount": 0,
       "executedBuys": [],
-      "latestClose": 2780,
+      "latestClose": 2650,
       "latestLow": 2585,
       "buyPlan": {
-        "firstBuyPrice": 3010,
-        "secondBuyPrice": 2870,
-        "thirdBuyPrice": 2725,
+        "firstBuyPrice": 2980,
+        "secondBuyPrice": 2850,
+        "thirdBuyPrice": 2715,
         "stopLossPrice": 2585
       },
       "initialSnapshot": {
@@ -494,7 +746,7 @@
       "sourceKey": "코데즈컴바인-047770",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -503,22 +755,15 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "outcomeStatus": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 3,
-          "price": 3370,
-          "date": "2026-05-15"
-        }
-      ],
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "averageBuyPrice": 3370,
-      "latestClose": 3480,
+      "latestClose": 3145,
       "latestLow": 3000,
-      "unrealizedReturnPct": 3.26,
       "buyPlan": {
-        "firstBuyPrice": 4120,
-        "secondBuyPrice": 3750,
-        "thirdBuyPrice": 3370,
+        "firstBuyPrice": 4050,
+        "secondBuyPrice": 3700,
+        "thirdBuyPrice": 3345,
         "stopLossPrice": 3000
       },
       "initialSnapshot": {
@@ -554,11 +799,11 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 3705,
       "maxFavorableDate": "2026-05-15",
@@ -576,7 +821,7 @@
       "sourceKey": "흥구석유-024060",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -587,13 +832,13 @@
       "outcomeStatus": "active",
       "executedBuyCount": 0,
       "executedBuys": [],
-      "latestClose": 14060,
-      "latestLow": 13520,
+      "latestClose": 13300,
+      "latestLow": 13160,
       "buyPlan": {
-        "firstBuyPrice": 15340,
-        "secondBuyPrice": 14740,
-        "thirdBuyPrice": 14120,
-        "stopLossPrice": 13520
+        "firstBuyPrice": 15130,
+        "secondBuyPrice": 14480,
+        "thirdBuyPrice": 13810,
+        "stopLossPrice": 13160
       },
       "initialSnapshot": {
         "anchorDate": "2026-05-22",
@@ -644,7 +889,7 @@
       "sourceKey": "희림-037440",
       "openedAt": "2026-05-22T06:19:12.197Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -655,9 +900,9 @@
       "executedBuyCount": 0,
       "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 5892,
-        "secondBuyPrice": 5235,
-        "thirdBuyPrice": 4557,
+        "firstBuyPrice": 5879,
+        "secondBuyPrice": 5226,
+        "thirdBuyPrice": 4553,
         "stopLossPrice": 3900
       },
       "initialSnapshot": {
@@ -705,7 +950,7 @@
       "sourceKey": "HLB이노베이션-024850",
       "openedAt": "2026-05-22T06:54:31.093Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -714,14 +959,25 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "outcomeStatus": "active",
-      "executedBuyCount": 0,
-      "executedBuys": [],
-      "latestClose": 18200,
+      "executedBuyCount": 3,
+      "executedBuys": [
+        {
+          "stage": 2,
+          "price": 19970,
+          "date": "2026-05-11"
+        },
+        {
+          "stage": 3,
+          "price": 18610,
+          "date": "2026-05-20"
+        }
+      ],
+      "latestClose": 18740,
       "latestLow": 17300,
       "buyPlan": {
-        "firstBuyPrice": 21450,
-        "secondBuyPrice": 20100,
-        "thirdBuyPrice": 18680,
+        "firstBuyPrice": 21250,
+        "secondBuyPrice": 19970,
+        "thirdBuyPrice": 18610,
         "stopLossPrice": 17300
       },
       "initialSnapshot": {
@@ -756,12 +1012,20 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
+        "type": "active_entered",
+        "label": "현재",
         "category": "active",
-        "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+      },
+      "averageBuyPrice": 19063.33,
+      "unrealizedReturnPct": -1.7,
+      "maxFavorablePrice": 25500,
+      "maxFavorableDate": "2026-05-13",
+      "maxFavorableReturnPct": 33.76,
+      "maxAdversePrice": 17300,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -9.25
     },
     {
       "id": "swing:default:460860:2026-05-18",
@@ -772,7 +1036,7 @@
       "sourceKey": "동국제강-460860",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -785,18 +1049,18 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 12890,
-          "date": "2026-05-18"
+          "price": 13160,
+          "date": "2026-05-26"
         }
       ],
-      "averageBuyPrice": 12890,
-      "latestClose": 12330,
+      "averageBuyPrice": 13160,
+      "latestClose": 11970,
       "latestLow": 12400,
-      "unrealizedReturnPct": -4.34,
+      "unrealizedReturnPct": -9.04,
       "buyPlan": {
-        "firstBuyPrice": 13110,
-        "secondBuyPrice": 11660,
-        "thirdBuyPrice": 10160,
+        "firstBuyPrice": 13160,
+        "secondBuyPrice": 11700,
+        "thirdBuyPrice": 10180,
         "stopLossPrice": 8720
       },
       "initialSnapshot": {
@@ -836,12 +1100,12 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "maxFavorablePrice": 13280,
-      "maxFavorableDate": "2026-05-18",
-      "maxFavorableReturnPct": 3.03,
-      "maxAdversePrice": 11050,
-      "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -14.27
+      "maxFavorablePrice": 12480,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": -5.17,
+      "maxAdversePrice": 11920,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -9.42
     },
     {
       "id": "swing:default:059090:2026-05-18",
@@ -852,9 +1116,9 @@
       "sourceKey": "미코-059090",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -902,23 +1166,25 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "target_hit",
+        "label": "슈팅 수익",
+        "category": "profit",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 23,000원 기준 최대 수익률 +22.08%입니다. 종료 기준가 21,950원, 평균 매수가 18,840원 기준 수익률 +16.51%입니다."
       },
       "averageBuyPrice": 18840,
-      "latestClose": 21400,
-      "unrealizedReturnPct": 13.59,
+      "latestClose": 21950,
+      "unrealizedReturnPct": 16.51,
       "outcomeStatus": "active",
       "latestLow": 18500,
-      "maxFavorablePrice": 21750,
-      "maxFavorableDate": "2026-05-22",
-      "maxFavorableReturnPct": 15.45,
+      "maxFavorablePrice": 23000,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 22.08,
       "maxAdversePrice": 18500,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -1.8
+      "maxAdverseReturnPct": -1.8,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:417500:2026-05-18",
@@ -929,7 +1195,7 @@
       "sourceKey": "제이아이테크-417500",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -940,9 +1206,9 @@
       "executedBuyCount": 0,
       "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 4585,
-        "secondBuyPrice": 4392,
-        "thirdBuyPrice": 4193,
+        "firstBuyPrice": 4570,
+        "secondBuyPrice": 4382,
+        "thirdBuyPrice": 4188,
         "stopLossPrice": 4000
       },
       "initialSnapshot": {
@@ -989,7 +1255,7 @@
       "sourceKey": "포스코스틸리온-058430",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -1001,19 +1267,24 @@
       "executedBuyCount": 2,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 7164,
+          "date": "2026-05-26"
+        },
+        {
           "stage": 2,
-          "price": 6190,
-          "date": "2026-05-20"
+          "price": 6241,
+          "date": "2026-05-26"
         }
       ],
-      "averageBuyPrice": 6190,
-      "latestClose": 6780,
+      "averageBuyPrice": 6548.67,
+      "latestClose": 6550,
       "latestLow": 6000,
-      "unrealizedReturnPct": 9.53,
+      "unrealizedReturnPct": 0.02,
       "buyPlan": {
-        "firstBuyPrice": 7094,
-        "secondBuyPrice": 6193,
-        "thirdBuyPrice": 5265,
+        "firstBuyPrice": 7164,
+        "secondBuyPrice": 6241,
+        "thirdBuyPrice": 5289,
         "stopLossPrice": 4365
       },
       "initialSnapshot": {
@@ -1052,12 +1323,12 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "maxFavorablePrice": 6820,
-      "maxFavorableDate": "2026-05-22",
-      "maxFavorableReturnPct": 10.18,
-      "maxAdversePrice": 6000,
-      "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -3.07
+      "maxFavorablePrice": 6930,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 5.82,
+      "maxAdversePrice": 6400,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -2.27
     },
     {
       "id": "swing:default:024060:2026-05-18",
@@ -1368,7 +1639,7 @@
       "sourceKey": "모헨즈-006920",
       "openedAt": "2026-05-14T05:42:09.034Z",
       "openedDate": "2026-05-14",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -1377,20 +1648,14 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "outcomeStatus": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 3,
-          "price": 3860,
-          "date": "2026-05-18"
-        }
-      ],
-      "latestClose": 3910,
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "latestClose": 3755,
       "latestLow": 3620,
       "buyPlan": {
-        "firstBuyPrice": 4350,
-        "secondBuyPrice": 4110,
-        "thirdBuyPrice": 3860,
+        "firstBuyPrice": 4285,
+        "secondBuyPrice": 4065,
+        "thirdBuyPrice": 3840,
         "stopLossPrice": 3620
       },
       "initialSnapshot": {
@@ -1426,14 +1691,12 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
-      "averageBuyPrice": 3860,
-      "unrealizedReturnPct": 1.3,
       "maxFavorablePrice": 4050,
       "maxFavorableDate": "2026-05-18",
       "maxFavorableReturnPct": 4.92,
@@ -2065,7 +2328,7 @@
       "sourceKey": "케이에스피-073010",
       "openedAt": "2026-05-14T05:42:09.034Z",
       "openedDate": "2026-05-14",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -2073,18 +2336,12 @@
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
-      "executedBuyCount": 2,
-      "executedBuys": [
-        {
-          "stage": 2,
-          "price": 4585,
-          "date": "2026-05-18"
-        }
-      ],
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 5240,
-        "secondBuyPrice": 4585,
-        "thirdBuyPrice": 3905,
+        "firstBuyPrice": 5220,
+        "secondBuyPrice": 4570,
+        "thirdBuyPrice": 3900,
         "stopLossPrice": 3250
       },
       "initialSnapshot": {
@@ -2117,15 +2374,13 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
-      "averageBuyPrice": 4585,
-      "latestClose": 4695,
-      "unrealizedReturnPct": 2.4,
+      "latestClose": 4720,
       "outcomeStatus": "active",
       "latestLow": 4190,
       "maxFavorablePrice": 4860,
@@ -2570,28 +2825,28 @@
       "sourceKey": "경보제약-214390",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 6260,
+          "price": 6220,
           "date": "2026-05-11"
         },
         {
           "stage": 2,
-          "price": 6110,
+          "price": 6080,
           "date": "2026-05-15"
         },
         {
           "stage": 3,
-          "price": 5950,
+          "price": 5940,
           "date": "2026-05-18"
         }
       ],
-      "averageBuyPrice": 6040,
+      "averageBuyPrice": 6020,
       "latestLow": 5810,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
@@ -2623,17 +2878,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 6260,
-      "unrealizedReturnPct": 3.64,
+      "latestClose": 6120,
+      "unrealizedReturnPct": 1.66,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 6261,
-        "secondBuyPrice": 6112,
-        "thirdBuyPrice": 5959,
+        "firstBuyPrice": 6227,
+        "secondBuyPrice": 6090,
+        "thirdBuyPrice": 5948,
         "stopLossPrice": 5810
       },
       "outcomeStatus": "active",
@@ -2646,10 +2901,10 @@
       },
       "maxFavorablePrice": 6500,
       "maxFavorableDate": "2026-05-11",
-      "maxFavorableReturnPct": 7.62,
+      "maxFavorableReturnPct": 7.97,
       "maxAdversePrice": 5810,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -3.81
+      "maxAdverseReturnPct": -3.49
     },
     {
       "id": "swing:default:307750:2026-05-12",
@@ -2660,28 +2915,11 @@
       "sourceKey": "국전-307750",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 3485,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 2,
-          "price": 3320,
-          "date": "2026-05-15"
-        },
-        {
-          "stage": 3,
-          "price": 3150,
-          "date": "2026-05-18"
-        }
-      ],
-      "averageBuyPrice": 3246.43,
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "latestLow": 2965,
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -2712,26 +2950,25 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 3205,
-      "unrealizedReturnPct": -1.28,
+      "latestClose": 3110,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 3485,
-        "secondBuyPrice": 3320,
-        "thirdBuyPrice": 3150,
+        "firstBuyPrice": 3450,
+        "secondBuyPrice": 3295,
+        "thirdBuyPrice": 3140,
         "stopLossPrice": 2990
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 3600,
       "maxFavorableDate": "2026-05-12",
@@ -2881,20 +3118,25 @@
       "sourceKey": "녹십자웰빙-234690",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 11377,
+          "date": "2026-05-26"
+        },
+        {
           "stage": 2,
-          "price": 10950,
-          "date": "2026-05-11"
+          "price": 10906,
+          "date": "2026-05-26"
         },
         {
           "stage": 3,
-          "price": 10310,
-          "date": "2026-05-12"
+          "price": 10421,
+          "date": "2026-05-26"
         }
       ],
       "latestLow": 9950,
@@ -2933,17 +3175,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 10690,
+      "latestClose": 10340,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 11570,
-        "secondBuyPrice": 10950,
-        "thirdBuyPrice": 10310,
-        "stopLossPrice": 9700
+        "firstBuyPrice": 11377,
+        "secondBuyPrice": 10906,
+        "thirdBuyPrice": 10421,
+        "stopLossPrice": 9950
       },
       "outcomeStatus": "active",
       "historyOutcome": {
@@ -2953,14 +3195,14 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 10523.33,
-      "unrealizedReturnPct": 1.58,
-      "maxFavorablePrice": 11500,
-      "maxFavorableDate": "2026-05-11",
-      "maxFavorableReturnPct": 9.28,
-      "maxAdversePrice": 9950,
-      "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -5.45
+      "averageBuyPrice": 10696.14,
+      "unrealizedReturnPct": -3.33,
+      "maxFavorablePrice": 11030,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 3.12,
+      "maxAdversePrice": 10260,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -4.08
     },
     {
       "id": "swing:default:117580:2026-05-12",
@@ -2971,18 +3213,11 @@
       "sourceKey": "대성에너지-117580",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 3,
-          "price": 7990,
-          "date": "2026-05-18"
-        }
-      ],
-      "averageBuyPrice": 7990,
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "latestLow": 7750,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
@@ -3014,26 +3249,25 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 8000,
-      "unrealizedReturnPct": 0.13,
+      "latestClose": 7860,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 8290,
-        "secondBuyPrice": 8140,
-        "thirdBuyPrice": 7990,
+        "firstBuyPrice": 8240,
+        "secondBuyPrice": 8110,
+        "thirdBuyPrice": 7970,
         "stopLossPrice": 7840
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 8210,
       "maxFavorableDate": "2026-05-18",
@@ -3114,23 +3348,23 @@
       "sourceKey": "동아엘텍-088130",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 10140,
-          "date": "2026-05-08"
+          "price": 10092,
+          "date": "2026-05-26"
         },
         {
           "stage": 2,
-          "price": 8970,
-          "date": "2026-05-18"
+          "price": 8940,
+          "date": "2026-05-26"
         }
       ],
-      "averageBuyPrice": 9360,
+      "averageBuyPrice": 9324,
       "latestLow": 7970,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
@@ -3162,17 +3396,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 9360,
-      "unrealizedReturnPct": 0,
+      "latestClose": 9530,
+      "unrealizedReturnPct": 2.21,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 10140,
-        "secondBuyPrice": 8970,
-        "thirdBuyPrice": 7760,
+        "firstBuyPrice": 10092,
+        "secondBuyPrice": 8940,
+        "thirdBuyPrice": 7752,
         "stopLossPrice": 6600
       },
       "outcomeStatus": "active",
@@ -3183,12 +3417,12 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "maxFavorablePrice": 10900,
-      "maxFavorableDate": "2026-05-11",
-      "maxFavorableReturnPct": 16.45,
-      "maxAdversePrice": 7970,
-      "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -14.85
+      "maxFavorablePrice": 9860,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 5.75,
+      "maxAdversePrice": 9140,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -1.97
     },
     {
       "id": "swing:smallcap:376900:2026-05-12",
@@ -3436,7 +3670,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-22",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 3405,
@@ -3483,13 +3717,15 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "latestClose": 3710
+      "latestClose": 3710,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:424760:2026-05-12",
@@ -3564,7 +3800,7 @@
       "sourceKey": "부국철강-026940",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -3575,16 +3811,21 @@
       "executedBuyCount": 2,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 2545,
+          "date": "2026-05-11"
+        },
+        {
           "stage": 2,
-          "price": 2355,
+          "price": 2350,
           "date": "2026-05-15"
         }
       ],
       "buyPlan": {
-        "firstBuyPrice": 2565,
-        "secondBuyPrice": 2355,
-        "thirdBuyPrice": 2140,
-        "stopLossPrice": 1935
+        "firstBuyPrice": 2545,
+        "secondBuyPrice": 2350,
+        "thirdBuyPrice": 2145,
+        "stopLossPrice": 1953
       },
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -3621,17 +3862,17 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 2355,
-      "latestClose": 2325,
-      "unrealizedReturnPct": -1.27,
+      "averageBuyPrice": 2415,
+      "latestClose": 2345,
+      "unrealizedReturnPct": -2.9,
       "outcomeStatus": "active",
       "latestLow": 2255,
-      "maxFavorablePrice": 2495,
-      "maxFavorableDate": "2026-05-15",
-      "maxFavorableReturnPct": 5.94,
+      "maxFavorablePrice": 2715,
+      "maxFavorableDate": "2026-05-11",
+      "maxFavorableReturnPct": 12.42,
       "maxAdversePrice": 2255,
       "maxAdverseDate": "2026-05-21",
-      "maxAdverseReturnPct": -4.25
+      "maxAdverseReturnPct": -6.63
     },
     {
       "id": "swing:default:369370:2026-05-12",
@@ -3930,28 +4171,28 @@
       "sourceKey": "삼륭물산-014970",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 6650,
-          "date": "2026-05-11"
+          "price": 6570,
+          "date": "2026-05-12"
         },
         {
           "stage": 2,
-          "price": 6440,
+          "price": 6360,
           "date": "2026-05-15"
         },
         {
           "stage": 3,
-          "price": 6220,
+          "price": 6140,
           "date": "2026-05-18"
         }
       ],
-      "latestLow": 6010,
+      "latestLow": 5930,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-12",
@@ -3982,17 +4223,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 6110,
+      "latestClose": 5980,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 6650,
-        "secondBuyPrice": 6440,
-        "thirdBuyPrice": 6220,
-        "stopLossPrice": 6010
+        "firstBuyPrice": 6570,
+        "secondBuyPrice": 6360,
+        "thirdBuyPrice": 6140,
+        "stopLossPrice": 5930
       },
       "outcomeStatus": "active",
       "historyOutcome": {
@@ -4002,14 +4243,14 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 6344.29,
-      "unrealizedReturnPct": -3.69,
+      "averageBuyPrice": 6264.29,
+      "unrealizedReturnPct": -4.54,
       "maxFavorablePrice": 7050,
       "maxFavorableDate": "2026-05-12",
-      "maxFavorableReturnPct": 11.12,
-      "maxAdversePrice": 6010,
-      "maxAdverseDate": "2026-05-22",
-      "maxAdverseReturnPct": -5.27
+      "maxFavorableReturnPct": 12.54,
+      "maxAdversePrice": 5930,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": -5.34
     },
     {
       "id": "swing:default:091580:2026-05-12",
@@ -4101,19 +4342,29 @@
       "sourceKey": "상지건설-042940",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-15",
-      "entryBucket": "watch",
-      "status": "closed",
-      "executedBuyCount": 2,
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "executedBuyCount": 3,
       "executedBuys": [
         {
-          "stage": 2,
-          "price": 9510,
+          "stage": 1,
+          "price": 9490,
           "date": "2026-05-11"
+        },
+        {
+          "stage": 2,
+          "price": 8860,
+          "date": "2026-05-15"
+        },
+        {
+          "stage": 3,
+          "price": 8210,
+          "date": "2026-05-18"
         }
       ],
-      "averageBuyPrice": 9510,
-      "latestLow": 9000,
+      "averageBuyPrice": 8578.57,
+      "latestLow": 7950,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-12",
@@ -4146,35 +4397,33 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 8820,
-      "unrealizedReturnPct": -7.26,
+      "latestClose": 8790,
+      "unrealizedReturnPct": 2.46,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 10460,
-        "secondBuyPrice": 9510,
-        "thirdBuyPrice": 8530,
+        "firstBuyPrice": 9497,
+        "secondBuyPrice": 8864,
+        "thirdBuyPrice": 8213,
         "stopLossPrice": 7580
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "closed_unknown",
-        "label": "관찰 종료",
-        "category": "neutral",
-        "includeInReturnStats": false,
-        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 8,820원, 평균 매수가 9,510원 기준 수익률 -7.26%입니다."
+        "type": "active_entered",
+        "label": "현재",
+        "category": "active",
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "closedDate": "2026-05-15",
-      "closedMonth": "2026-05",
       "maxFavorablePrice": 10120,
       "maxFavorableDate": "2026-05-11",
-      "maxFavorableReturnPct": 6.41,
-      "maxAdversePrice": 8820,
-      "maxAdverseDate": "2026-05-15",
-      "maxAdverseReturnPct": -7.26
+      "maxFavorableReturnPct": 17.97,
+      "maxAdversePrice": 7950,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -7.33
     },
     {
       "id": "swing:default:046890:2026-05-12",
@@ -4185,9 +4434,9 @@
       "sourceKey": "서울반도체-046890",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -4234,22 +4483,24 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 14,980원, 평균 매수가 15,210원 기준 수익률 -1.51%입니다."
       },
       "averageBuyPrice": 15210,
-      "latestClose": 15080,
-      "unrealizedReturnPct": -0.85,
+      "latestClose": 14980,
+      "unrealizedReturnPct": -1.51,
       "latestLow": 13900,
       "maxFavorablePrice": 15910,
       "maxFavorableDate": "2026-05-18",
       "maxFavorableReturnPct": 4.6,
       "maxAdversePrice": 13900,
       "maxAdverseDate": "2026-05-19",
-      "maxAdverseReturnPct": -8.61
+      "maxAdverseReturnPct": -8.61,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:189860:2026-05-12",
@@ -4321,7 +4572,7 @@
       "sourceKey": "씨아이에스-222080",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -4329,23 +4580,12 @@
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
-      "executedBuyCount": 2,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 15370,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 2,
-          "price": 14080,
-          "date": "2026-05-14"
-        }
-      ],
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 15060,
-        "secondBuyPrice": 13870,
-        "thirdBuyPrice": 12650,
+        "firstBuyPrice": 14930,
+        "secondBuyPrice": 13790,
+        "thirdBuyPrice": 12610,
         "stopLossPrice": 11470
       },
       "initialSnapshot": {
@@ -4377,16 +4617,15 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "averageBuyPrice": 14510,
-      "unrealizedReturnPct": -6.55,
       "outcomeStatus": "active",
-      "latestClose": 13560,
+      "latestClose": 13470,
       "latestLow": 13570,
       "maxFavorablePrice": 16250,
       "maxFavorableDate": "2026-05-12",
@@ -4614,7 +4853,7 @@
       "sourceKey": "에이럭스-475580",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -4622,28 +4861,12 @@
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 10970,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 2,
-          "price": 10260,
-          "date": "2026-05-14"
-        },
-        {
-          "stage": 3,
-          "price": 9520,
-          "date": "2026-05-18"
-        }
-      ],
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 10970,
-        "secondBuyPrice": 10260,
-        "thirdBuyPrice": 9520,
+        "firstBuyPrice": 10770,
+        "secondBuyPrice": 10120,
+        "thirdBuyPrice": 9450,
         "stopLossPrice": 8810
       },
       "initialSnapshot": {
@@ -4679,16 +4902,14 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
-      "averageBuyPrice": 9938.57,
-      "unrealizedReturnPct": -4.61,
       "outcomeStatus": "active",
-      "latestClose": 9480,
+      "latestClose": 9250,
       "latestLow": 8810,
       "maxFavorablePrice": 11190,
       "maxFavorableDate": "2026-05-12",
@@ -4974,7 +5195,7 @@
       "sourceKey": "오픈베이스-049480",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -4986,19 +5207,19 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 2960,
+          "price": 2930,
           "date": "2026-05-12"
         },
         {
           "stage": 2,
-          "price": 2665,
+          "price": 2645,
           "date": "2026-05-18"
         }
       ],
       "buyPlan": {
-        "firstBuyPrice": 2960,
-        "secondBuyPrice": 2665,
-        "thirdBuyPrice": 2365,
+        "firstBuyPrice": 2930,
+        "secondBuyPrice": 2645,
+        "thirdBuyPrice": 2355,
         "stopLossPrice": 2075
       },
       "initialSnapshot": {
@@ -5037,17 +5258,17 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "averageBuyPrice": 2763.33,
-      "unrealizedReturnPct": -2.47,
+      "averageBuyPrice": 2740,
+      "unrealizedReturnPct": -1.28,
       "outcomeStatus": "active",
-      "latestClose": 2695,
+      "latestClose": 2705,
       "latestLow": 2515,
       "maxFavorablePrice": 3155,
       "maxFavorableDate": "2026-05-12",
-      "maxFavorableReturnPct": 14.17,
+      "maxFavorableReturnPct": 15.15,
       "maxAdversePrice": 2515,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -8.99
+      "maxAdverseReturnPct": -8.21
     },
     {
       "id": "swing:smallcap:209640:2026-05-12",
@@ -5206,7 +5427,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-22",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 0,
       "executedBuys": [],
       "latestLow": 908,
@@ -5254,12 +5475,14 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+      },
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:083640:2026-05-12",
@@ -5434,7 +5657,7 @@
       "sourceKey": "제이오-418550",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "executedBuyCount": 2,
@@ -5480,17 +5703,17 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 9650,
-      "unrealizedReturnPct": -7.74,
+      "latestClose": 9590,
+      "unrealizedReturnPct": -8.32,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 10850,
-        "secondBuyPrice": 9690,
-        "thirdBuyPrice": 8490,
+        "firstBuyPrice": 10670,
+        "secondBuyPrice": 9570,
+        "thirdBuyPrice": 8430,
         "stopLossPrice": 7330
       },
       "outcomeStatus": "active",
@@ -6132,7 +6355,7 @@
       "openedDate": "2026-05-12",
       "dataDate": "2026-05-22",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -6175,15 +6398,17 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
-        "category": "active",
+        "type": "entry_missed_upside",
+        "label": "미체결 제외",
+        "category": "excluded",
         "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
+        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
       "latestClose": 19930,
       "outcomeStatus": "active",
-      "latestLow": 16800
+      "latestLow": 16800,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:011280:2026-05-12",
@@ -6194,23 +6419,11 @@
       "sourceKey": "태림포장-011280",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 2,
-          "price": 1881,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 3,
-          "price": 1843,
-          "date": "2026-05-14"
-        }
-      ],
-      "averageBuyPrice": 1855.67,
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "latestLow": 1792,
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -6246,26 +6459,25 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 1826,
-      "unrealizedReturnPct": -1.6,
+      "latestClose": 1847,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 1919,
-        "secondBuyPrice": 1881,
-        "thirdBuyPrice": 1843,
+        "firstBuyPrice": 1904,
+        "secondBuyPrice": 1871,
+        "thirdBuyPrice": 1839,
         "stopLossPrice": 1807
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 1947,
       "maxFavorableDate": "2026-05-15",
@@ -6585,8 +6797,8 @@
       "sourceKey": "필에너지-378340",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-18",
-      "entryBucket": "execution_probe",
+      "dataDate": "2026-05-26",
+      "entryBucket": "watch",
       "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -6603,9 +6815,9 @@
       ],
       "buyPlan": {
         "firstBuyPrice": 18845,
-        "secondBuyPrice": 16966,
-        "thirdBuyPrice": 15029,
-        "stopLossPrice": 13150
+        "secondBuyPrice": 15580,
+        "thirdBuyPrice": 13760,
+        "stopLossPrice": 12000
       },
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -6638,24 +6850,24 @@
       },
       "historyOutcome": {
         "type": "closed_unknown",
-        "label": "종료",
-        "category": "loss",
-        "includeInReturnStats": true,
-        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 16,440원, 평균 매수가 18,845원 기준 수익률 -12.76%입니다."
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 17,450원, 평균 매수가 18,845원 기준 수익률 -7.40%입니다."
       },
       "averageBuyPrice": 18845,
-      "latestClose": 16440,
-      "unrealizedReturnPct": -12.76,
+      "latestClose": 17450,
+      "unrealizedReturnPct": -7.4,
       "outcomeStatus": "active",
       "latestLow": 17090,
-      "closedDate": "2026-05-18",
-      "closedMonth": "2026-05",
       "maxFavorablePrice": 18730,
       "maxFavorableDate": "2026-05-15",
       "maxFavorableReturnPct": -0.61,
-      "maxAdversePrice": 15610,
-      "maxAdverseDate": "2026-05-18",
-      "maxAdverseReturnPct": -17.17
+      "maxAdversePrice": 14600,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -22.53,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:106190:2026-05-12",
@@ -6666,18 +6878,28 @@
       "sourceKey": "하이텍팜-106190",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "executedBuyCount": 3,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 16610,
+          "date": "2026-05-07"
+        },
+        {
+          "stage": 2,
+          "price": 16090,
+          "date": "2026-05-08"
+        },
+        {
           "stage": 3,
-          "price": 15630,
+          "price": 15560,
           "date": "2026-05-12"
         }
       ],
-      "averageBuyPrice": 15630,
+      "averageBuyPrice": 15861.43,
       "latestLow": 15050,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
@@ -6716,9 +6938,9 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 16811,
-        "secondBuyPrice": 16230,
-        "thirdBuyPrice": 15631,
+        "firstBuyPrice": 16616,
+        "secondBuyPrice": 16099,
+        "thirdBuyPrice": 15567,
         "stopLossPrice": 15050
       },
       "outcomeStatus": "active",
@@ -6729,14 +6951,14 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "unrealizedReturnPct": 1.09,
-      "latestClose": 15800,
-      "maxFavorablePrice": 16560,
-      "maxFavorableDate": "2026-05-14",
-      "maxFavorableReturnPct": 5.95,
+      "unrealizedReturnPct": -0.32,
+      "latestClose": 15810,
+      "maxFavorablePrice": 17290,
+      "maxFavorableDate": "2026-05-07",
+      "maxFavorableReturnPct": 9.01,
       "maxAdversePrice": 15050,
       "maxAdverseDate": "2026-05-19",
-      "maxAdverseReturnPct": -3.71
+      "maxAdverseReturnPct": -5.12
     },
     {
       "id": "swing:default:025770:2026-05-12",
@@ -6747,7 +6969,7 @@
       "sourceKey": "한국정보통신-025770",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "executedBuyCount": 2,
@@ -6794,16 +7016,16 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 9500,
+      "latestClose": 9340,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 10520,
-        "secondBuyPrice": 9520,
-        "thirdBuyPrice": 8490,
+        "firstBuyPrice": 10390,
+        "secondBuyPrice": 9430,
+        "thirdBuyPrice": 8450,
         "stopLossPrice": 7500
       },
       "outcomeStatus": "active",
@@ -6815,7 +7037,7 @@
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
       "averageBuyPrice": 9853.33,
-      "unrealizedReturnPct": -3.59,
+      "unrealizedReturnPct": -5.21,
       "maxFavorablePrice": 11340,
       "maxFavorableDate": "2026-05-12",
       "maxFavorableReturnPct": 15.09,
@@ -6902,28 +7124,11 @@
       "sourceKey": "한일사료-005860",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 3535,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 2,
-          "price": 3410,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 3,
-          "price": 3275,
-          "date": "2026-05-20"
-        }
-      ],
-      "averageBuyPrice": 3350.71,
+      "executedBuyCount": 0,
+      "executedBuys": [],
       "latestLow": 3150,
       "initialSnapshot": {
         "anchorDate": "2026-05-12",
@@ -6959,26 +7164,25 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 3230,
-      "unrealizedReturnPct": -3.6,
+      "latestClose": 3170,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 3535,
-        "secondBuyPrice": 3410,
-        "thirdBuyPrice": 3275,
+        "firstBuyPrice": 3500,
+        "secondBuyPrice": 3385,
+        "thirdBuyPrice": 3265,
         "stopLossPrice": 3150
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 3760,
       "maxFavorableDate": "2026-05-13",
@@ -7141,7 +7345,7 @@
       "sourceKey": "헬릭스미스-084990",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -7152,9 +7356,9 @@
       "executedBuyCount": 0,
       "executedBuys": [],
       "buyPlan": {
-        "firstBuyPrice": 7832,
-        "secondBuyPrice": 7036,
-        "thirdBuyPrice": 6216,
+        "firstBuyPrice": 7771,
+        "secondBuyPrice": 6995,
+        "thirdBuyPrice": 6196,
         "stopLossPrice": 5420
       },
       "initialSnapshot": {
@@ -7369,9 +7573,9 @@
       "sourceKey": "APS이노베이션-079810",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
-      "status": "active",
+      "status": "closed",
       "executedBuyCount": 2,
       "executedBuys": [
         {
@@ -7414,8 +7618,8 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 5160,
-      "unrealizedReturnPct": -1.34,
+      "latestClose": 5020,
+      "unrealizedReturnPct": -4.02,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -7429,18 +7633,20 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "type": "closed_unknown",
+        "label": "관찰 종료",
+        "category": "neutral",
+        "includeInReturnStats": false,
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 5,020원, 평균 매수가 5,230원 기준 수익률 -4.02%입니다."
       },
       "maxFavorablePrice": 5900,
       "maxFavorableDate": "2026-05-15",
       "maxFavorableReturnPct": 12.81,
       "maxAdversePrice": 4680,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -10.52
+      "maxAdverseReturnPct": -10.52,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:smallcap:456040:2026-05-12",
@@ -7451,7 +7657,7 @@
       "sourceKey": "OCI-456040",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
@@ -7464,19 +7670,19 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 129660,
-          "date": "2026-05-22"
+          "price": 129080,
+          "date": "2026-05-26"
         },
         {
           "stage": 2,
-          "price": 115813,
-          "date": "2026-05-22"
+          "price": 115425,
+          "date": "2026-05-26"
         }
       ],
       "buyPlan": {
-        "firstBuyPrice": 129660,
-        "secondBuyPrice": 115813,
-        "thirdBuyPrice": 101547,
+        "firstBuyPrice": 129080,
+        "secondBuyPrice": 115425,
+        "thirdBuyPrice": 101355,
         "stopLossPrice": 87700
       },
       "initialSnapshot": {
@@ -7514,16 +7720,16 @@
         "includeInReturnStats": true,
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
-      "latestClose": 123000,
-      "averageBuyPrice": 120428.67,
-      "unrealizedReturnPct": 2.14,
+      "latestClose": 125400,
+      "averageBuyPrice": 119976.67,
+      "unrealizedReturnPct": 4.52,
       "latestLow": 107700,
-      "maxFavorablePrice": 128800,
-      "maxFavorableDate": "2026-05-22",
-      "maxFavorableReturnPct": 6.95,
-      "maxAdversePrice": 121200,
-      "maxAdverseDate": "2026-05-22",
-      "maxAdverseReturnPct": 0.64
+      "maxFavorablePrice": 127700,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 6.44,
+      "maxAdversePrice": 123000,
+      "maxAdverseDate": "2026-05-26",
+      "maxAdverseReturnPct": 2.52
     },
     {
       "id": "swing:smallcap:004060:2026-05-12",
@@ -7534,12 +7740,12 @@
       "sourceKey": "SG세계물산-004060",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-05-12",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
-      "status": "closed",
+      "status": "active",
       "executedBuyCount": 0,
       "executedBuys": [],
-      "latestLow": 3470,
+      "latestLow": 3105,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-12",
@@ -7576,22 +7782,20 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4500,
-        "secondBuyPrice": 4160,
-        "thirdBuyPrice": 3810,
-        "stopLossPrice": 3470
+        "firstBuyPrice": 3875,
+        "secondBuyPrice": 3620,
+        "thirdBuyPrice": 3355,
+        "stopLossPrice": 3105
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "entry_missed_upside",
-        "label": "미체결 제외",
-        "category": "excluded",
+        "type": "active_no_entry",
+        "label": "현재 후보",
+        "category": "active",
         "includeInReturnStats": false,
-        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
-      "closedDate": "2026-05-14",
-      "closedMonth": "2026-05",
-      "latestClose": 3470
+      "latestClose": 3135
     },
     {
       "id": "swing:default:001510:2026-05-12",
@@ -7757,7 +7961,7 @@
       "sourceKey": "대동금속-020400",
       "openedAt": "2026-05-11T05:49:39.475Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -7766,20 +7970,30 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4605,
-        "secondBuyPrice": 4130,
-        "thirdBuyPrice": 3640,
-        "stopLossPrice": 3172
+        "firstBuyPrice": 4520,
+        "secondBuyPrice": 4090,
+        "thirdBuyPrice": 3650,
+        "stopLossPrice": 3222
       },
       "executedBuyCount": 3,
       "executedBuys": [
         {
+          "stage": 1,
+          "price": 4520,
+          "date": "2026-05-08"
+        },
+        {
+          "stage": 2,
+          "price": 4090,
+          "date": "2026-05-12"
+        },
+        {
           "stage": 3,
-          "price": 3640,
+          "price": 3650,
           "date": "2026-05-20"
         }
       ],
-      "latestClose": 3950,
+      "latestClose": 3740,
       "latestLow": 3640,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
@@ -7815,14 +8029,14 @@
         "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
       },
       "outcomeStatus": "active",
-      "averageBuyPrice": 3640,
-      "unrealizedReturnPct": 8.52,
-      "maxFavorablePrice": 3995,
-      "maxFavorableDate": "2026-05-21",
-      "maxFavorableReturnPct": 9.75,
+      "averageBuyPrice": 3900,
+      "unrealizedReturnPct": -4.1,
+      "maxFavorablePrice": 4890,
+      "maxFavorableDate": "2026-05-08",
+      "maxFavorableReturnPct": 25.38,
       "maxAdversePrice": 3640,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": 0
+      "maxAdverseReturnPct": -6.67
     },
     {
       "id": "swing:default:317120:2026-05-11",
@@ -7910,8 +8124,8 @@
       "sourceKey": "레이-228670",
       "openedAt": "2026-05-11T05:49:39.348Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "active",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -7919,14 +8133,25 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 7570,
-        "secondBuyPrice": 6650,
-        "thirdBuyPrice": 5710,
+        "firstBuyPrice": 7488,
+        "secondBuyPrice": 6600,
+        "thirdBuyPrice": 5684,
         "stopLossPrice": 4795
       },
-      "executedBuyCount": 0,
-      "executedBuys": [],
-      "latestClose": 6960,
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 7480,
+          "date": "2026-05-07"
+        },
+        {
+          "stage": 2,
+          "price": 6590,
+          "date": "2026-05-20"
+        }
+      ],
+      "latestClose": 6810,
       "latestLow": 6510,
       "initialSnapshot": {
         "anchorDate": "2026-05-08",
@@ -7955,12 +8180,20 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_no_entry",
-        "label": "현재 후보",
+        "type": "active_entered",
+        "label": "현재",
         "category": "active",
-        "includeInReturnStats": false,
-        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
-      }
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+      },
+      "averageBuyPrice": 6886.67,
+      "unrealizedReturnPct": -1.11,
+      "maxFavorablePrice": 8440,
+      "maxFavorableDate": "2026-05-07",
+      "maxFavorableReturnPct": 22.56,
+      "maxAdversePrice": 6510,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -5.47
     },
     {
       "id": "swing:default:058110:2026-05-11",
@@ -8100,8 +8333,8 @@
       "sourceKey": "삼일씨엔에스-004440",
       "openedAt": "2026-05-11T05:49:40.404Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-15",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -8109,10 +8342,10 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 7300,
+        "firstBuyPrice": 7700,
         "secondBuyPrice": 6710,
-        "thirdBuyPrice": 6110,
-        "stopLossPrice": 5530
+        "thirdBuyPrice": 5880,
+        "stopLossPrice": 4990
       },
       "executedBuyCount": 2,
       "executedBuys": [
@@ -8123,9 +8356,9 @@
         }
       ],
       "averageBuyPrice": 6710,
-      "latestClose": 6400,
+      "latestClose": 5880,
       "latestLow": 6440,
-      "unrealizedReturnPct": -4.62,
+      "unrealizedReturnPct": -12.37,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
         "latestMentionDate": "2026-05-11",
@@ -8153,19 +8386,19 @@
       "outcomeStatus": "active",
       "historyOutcome": {
         "type": "closed_unknown",
-        "label": "관찰 종료",
-        "category": "neutral",
-        "includeInReturnStats": false,
-        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 6,400원, 평균 매수가 6,710원 기준 수익률 -4.62%입니다."
+        "label": "종료",
+        "category": "loss",
+        "includeInReturnStats": true,
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 5,880원, 평균 매수가 6,710원 기준 수익률 -12.37%입니다."
       },
-      "closedDate": "2026-05-15",
-      "closedMonth": "2026-05",
       "maxFavorablePrice": 6880,
       "maxFavorableDate": "2026-05-12",
       "maxFavorableReturnPct": 2.53,
-      "maxAdversePrice": 6250,
-      "maxAdverseDate": "2026-05-15",
-      "maxAdverseReturnPct": -6.86
+      "maxAdversePrice": 5800,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -13.56,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:294630:2026-05-11",
@@ -8176,9 +8409,9 @@
       "sourceKey": "서남-294630",
       "openedAt": "2026-05-11T05:49:39.622Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -8203,7 +8436,7 @@
           "date": "2026-05-18"
         }
       ],
-      "latestClose": 3975,
+      "latestClose": 4005,
       "latestLow": 3560,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
@@ -8231,21 +8464,23 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "target_hit",
+        "label": "슈팅 수익",
+        "category": "profit",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 4,330원 기준 최대 수익률 +12.86%입니다. 종료 기준가 4,005원, 평균 매수가 3,836.67원 기준 수익률 +4.39%입니다."
       },
       "outcomeStatus": "active",
       "averageBuyPrice": 3836.67,
-      "unrealizedReturnPct": 3.61,
-      "maxFavorablePrice": 4180,
-      "maxFavorableDate": "2026-05-15",
-      "maxFavorableReturnPct": 8.95,
+      "unrealizedReturnPct": 4.39,
+      "maxFavorablePrice": 4330,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 12.86,
       "maxAdversePrice": 3560,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -7.21
+      "maxAdverseReturnPct": -7.21,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:108860:2026-05-11",
@@ -8395,7 +8630,7 @@
       "sourceKey": "시공테크-020710",
       "openedAt": "2026-05-11T05:49:40.116Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -8404,33 +8639,15 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4515,
-        "secondBuyPrice": 4315,
-        "thirdBuyPrice": 4110,
+        "firstBuyPrice": 4465,
+        "secondBuyPrice": 4280,
+        "thirdBuyPrice": 4090,
         "stopLossPrice": 3910
       },
-      "executedBuyCount": 3,
-      "executedBuys": [
-        {
-          "stage": 1,
-          "price": 4515,
-          "date": "2026-05-12"
-        },
-        {
-          "stage": 2,
-          "price": 4315,
-          "date": "2026-05-15"
-        },
-        {
-          "stage": 3,
-          "price": 4110,
-          "date": "2026-05-19"
-        }
-      ],
-      "averageBuyPrice": 4226.43,
-      "latestClose": 4130,
-      "latestLow": 4000,
-      "unrealizedReturnPct": -2.28,
+      "executedBuyCount": 0,
+      "executedBuys": [],
+      "latestClose": 3995,
+      "latestLow": 3985,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
         "latestMentionDate": "2026-05-11",
@@ -8457,11 +8674,11 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
+        "type": "active_no_entry",
+        "label": "현재 후보",
         "category": "active",
-        "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "includeInReturnStats": false,
+        "description": "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다."
       },
       "maxFavorablePrice": 4800,
       "maxFavorableDate": "2026-05-12",
@@ -8757,7 +8974,7 @@
       "sourceKey": "아티스트컴퍼니-321820",
       "openedAt": "2026-05-11T05:49:40.349Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -8766,10 +8983,10 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 4775,
+        "firstBuyPrice": 4630,
         "secondBuyPrice": 4165,
-        "thirdBuyPrice": 3535,
-        "stopLossPrice": 2930
+        "thirdBuyPrice": 3485,
+        "stopLossPrice": 2920
       },
       "executedBuyCount": 2,
       "executedBuys": [
@@ -8780,9 +8997,9 @@
         }
       ],
       "averageBuyPrice": 4165,
-      "latestClose": 3690,
+      "latestClose": 4230,
       "latestLow": 3925,
-      "unrealizedReturnPct": -11.4,
+      "unrealizedReturnPct": 1.56,
       "initialSnapshot": {
         "anchorDate": "2026-05-11",
         "latestMentionDate": "2026-05-11",
@@ -8814,16 +9031,16 @@
         "label": "관찰 종료",
         "category": "neutral",
         "includeInReturnStats": false,
-        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 3,690원, 평균 매수가 4,165원 기준 수익률 -11.40%입니다."
+        "description": "관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. 종료 기준가 4,230원, 평균 매수가 4,165원 기준 수익률 +1.56%입니다."
       },
-      "closedDate": "2026-05-14",
-      "closedMonth": "2026-05",
-      "maxFavorablePrice": 4420,
-      "maxFavorableDate": "2026-05-12",
-      "maxFavorableReturnPct": 6.12,
-      "maxAdversePrice": 3610,
-      "maxAdverseDate": "2026-05-14",
-      "maxAdverseReturnPct": -13.33
+      "maxFavorablePrice": 4950,
+      "maxFavorableDate": "2026-05-26",
+      "maxFavorableReturnPct": 18.85,
+      "maxAdversePrice": 3385,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -18.73,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:061040:2026-05-11",
@@ -8834,7 +9051,7 @@
       "sourceKey": "알에프텍-061040",
       "openedAt": "2026-05-11T05:49:39.563Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -8843,8 +9060,8 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 1889,
-        "secondBuyPrice": 1760,
+        "firstBuyPrice": 1890,
+        "secondBuyPrice": 1761,
         "thirdBuyPrice": 1628,
         "stopLossPrice": 1500
       },
@@ -9099,7 +9316,7 @@
       "sourceKey": "옵티시스-109080",
       "openedAt": "2026-05-11T05:49:40.212Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-11",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
       "status": "closed",
       "assumption": {
@@ -9108,14 +9325,20 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 16065,
-        "secondBuyPrice": 13436,
-        "thirdBuyPrice": 10728,
-        "stopLossPrice": 8100
+        "firstBuyPrice": 15990,
+        "secondBuyPrice": 13330,
+        "thirdBuyPrice": 10590,
+        "stopLossPrice": 7930
       },
-      "executedBuyCount": 0,
-      "executedBuys": [],
-      "latestClose": 15960,
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 15990,
+          "date": "2026-05-04"
+        }
+      ],
+      "latestClose": 15160,
       "latestLow": 15300,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
@@ -9143,13 +9366,21 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "entry_missed_upside",
-        "label": "미체결 제외",
-        "category": "excluded",
-        "includeInReturnStats": false,
-        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+        "type": "closed_unknown",
+        "label": "종료",
+        "category": "loss",
+        "includeInReturnStats": true,
+        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 15,160원, 평균 매수가 15,990원 기준 수익률 -5.19%입니다."
       },
-      "closedDate": "2026-05-14",
+      "averageBuyPrice": 15990,
+      "unrealizedReturnPct": -5.19,
+      "maxFavorablePrice": 17100,
+      "maxFavorableDate": "2026-05-12",
+      "maxFavorableReturnPct": 6.94,
+      "maxAdversePrice": 11700,
+      "maxAdverseDate": "2026-05-21",
+      "maxAdverseReturnPct": -26.83,
+      "closedDate": "2026-05-26",
       "closedMonth": "2026-05"
     },
     {
@@ -9238,8 +9469,8 @@
       "sourceKey": "제넥신-095700",
       "openedAt": "2026-05-11T05:49:40.323Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-14",
-      "entryBucket": "watch",
+      "dataDate": "2026-05-26",
+      "entryBucket": "execution_probe",
       "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -9247,14 +9478,20 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 5550,
-        "secondBuyPrice": 5160,
-        "thirdBuyPrice": 4755,
-        "stopLossPrice": 4365
+        "firstBuyPrice": 5400,
+        "secondBuyPrice": 5010,
+        "thirdBuyPrice": 4610,
+        "stopLossPrice": 4220
       },
-      "executedBuyCount": 0,
-      "executedBuys": [],
-      "latestClose": 5340,
+      "executedBuyCount": 1,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 5400,
+          "date": "2026-05-04"
+        }
+      ],
+      "latestClose": 4005,
       "latestLow": 5120,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
@@ -9280,13 +9517,21 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "entry_missed_upside",
-        "label": "미체결 제외",
-        "category": "excluded",
-        "includeInReturnStats": false,
-        "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
+        "type": "stop_broken",
+        "label": "손절 종료",
+        "category": "loss",
+        "includeInReturnStats": true,
+        "description": "종가 4,005원이 손절가 4,220원 이하로 내려왔습니다. 종료 기준가 4,005원, 평균 매수가 5,400원 기준 수익률 -25.83%입니다."
       },
-      "closedDate": "2026-05-15",
+      "averageBuyPrice": 5400,
+      "unrealizedReturnPct": -25.83,
+      "maxFavorablePrice": 5540,
+      "maxFavorableDate": "2026-05-04",
+      "maxFavorableReturnPct": 2.59,
+      "maxAdversePrice": 3900,
+      "maxAdverseDate": "2026-05-21",
+      "maxAdverseReturnPct": -27.78,
+      "closedDate": "2026-05-26",
       "closedMonth": "2026-05"
     },
     {
@@ -9440,7 +9685,7 @@
       "sourceKey": "포톤-208710",
       "openedAt": "2026-05-11T05:49:40.375Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-12",
+      "dataDate": "2026-05-04",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -9449,10 +9694,10 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 2705,
-        "secondBuyPrice": 2400,
-        "thirdBuyPrice": 2085,
-        "stopLossPrice": 1780
+        "firstBuyPrice": 2590,
+        "secondBuyPrice": 2295,
+        "thirdBuyPrice": 1994,
+        "stopLossPrice": 1700
       },
       "executedBuyCount": 0,
       "executedBuys": [],
@@ -9488,7 +9733,7 @@
         "includeInReturnStats": false,
         "description": "체결 가정이 없어 수익률 통계에서 제외합니다."
       },
-      "closedDate": "2026-05-14",
+      "closedDate": "2026-05-26",
       "closedMonth": "2026-05"
     },
     {
@@ -9579,9 +9824,9 @@
       "sourceKey": "HC보광산업-225530",
       "openedAt": "2026-05-11T05:49:40.294Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "execution_probe",
-      "status": "active",
+      "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "daily_low_touched_buy_price",
@@ -9602,9 +9847,9 @@
         }
       ],
       "averageBuyPrice": 2845,
-      "latestClose": 3060,
+      "latestClose": 2820,
       "latestLow": 2810,
-      "unrealizedReturnPct": 7.56,
+      "unrealizedReturnPct": -0.88,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
         "latestMentionDate": "2026-05-11",
@@ -9635,18 +9880,20 @@
       },
       "outcomeStatus": "active",
       "historyOutcome": {
-        "type": "active_entered",
-        "label": "현재",
-        "category": "active",
+        "type": "target_hit",
+        "label": "슈팅 수익",
+        "category": "profit",
         "includeInReturnStats": true,
-        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다."
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 3,190원 기준 최대 수익률 +12.13%입니다. 종료 기준가 2,820원, 평균 매수가 2,845원 기준 수익률 -0.88%입니다."
       },
       "maxFavorablePrice": 3190,
       "maxFavorableDate": "2026-05-22",
       "maxFavorableReturnPct": 12.13,
       "maxAdversePrice": 2810,
       "maxAdverseDate": "2026-05-22",
-      "maxAdverseReturnPct": -1.23
+      "maxAdverseReturnPct": -1.23,
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05"
     },
     {
       "id": "swing:default:100090:2026-05-11",
@@ -9657,7 +9904,7 @@
       "sourceKey": "SK오션플랜트-100090",
       "openedAt": "2026-05-11T05:49:40.176Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-05-22",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -9666,33 +9913,33 @@
         "note": "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
       },
       "buyPlan": {
-        "firstBuyPrice": 20800,
-        "secondBuyPrice": 19730,
-        "thirdBuyPrice": 18590,
+        "firstBuyPrice": 20600,
+        "secondBuyPrice": 19590,
+        "thirdBuyPrice": 18520,
         "stopLossPrice": 17490
       },
       "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 20800,
+          "price": 20600,
           "date": "2026-05-12"
         },
         {
           "stage": 2,
-          "price": 19730,
+          "price": 19590,
           "date": "2026-05-15"
         },
         {
           "stage": 3,
-          "price": 18590,
+          "price": 18520,
           "date": "2026-05-18"
         }
       ],
-      "averageBuyPrice": 19231.43,
-      "latestClose": 18860,
+      "averageBuyPrice": 19122.86,
+      "latestClose": 18850,
       "latestLow": 17490,
-      "unrealizedReturnPct": -1.93,
+      "unrealizedReturnPct": -1.43,
       "initialSnapshot": {
         "anchorDate": "2026-04-24",
         "latestMentionDate": "2026-05-11",
@@ -9727,22 +9974,22 @@
       },
       "maxFavorablePrice": 21850,
       "maxFavorableDate": "2026-05-13",
-      "maxFavorableReturnPct": 13.62,
+      "maxFavorableReturnPct": 14.26,
       "maxAdversePrice": 17490,
       "maxAdverseDate": "2026-05-20",
-      "maxAdverseReturnPct": -9.06
+      "maxAdverseReturnPct": -8.54
     }
   ],
   "closedMonths": [
     {
       "month": "2026-05",
       "label": "2026년 05월",
-      "closedCaseCount": 15,
-      "enteredCaseCount": 15,
+      "closedCaseCount": 22,
+      "enteredCaseCount": 22,
       "noEntryCaseCount": 0,
-      "profitExitCaseCount": 4,
-      "stopBrokenCaseCount": 1,
-      "averageReturnPct": -4.14
+      "profitExitCaseCount": 8,
+      "stopBrokenCaseCount": 2,
+      "averageReturnPct": -3.02
     }
   ]
 }

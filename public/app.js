@@ -1,4 +1,4 @@
-﻿import {
+import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
@@ -1875,6 +1875,10 @@ function shouldDisplayClosedHistoryCase(item) {
   return item?.lifecycleStatus === "closed" && getExecutedBuyCountForHistoryItem(item) > 0 && item?.entryBucket !== "watch";
 }
 
+function shouldDisplayCurrentRecommendationCandidate(item) {
+  return item?.sourceBucket !== "watch";
+}
+
 function renderHistoryClosedFilterControls(monthOptions, totalClosedCount, filteredClosedCount) {
   if (historyClosedMonthSelect) {
     const selectedMonth = recommendationHistoryClosedMonth || "all";
@@ -1940,7 +1944,9 @@ function renderRecommendationHistoryBoard() {
   const payload = recommendationHistoryPayload;
   const summary = payload?.summary ?? {};
   const cases = Array.isArray(payload?.cases) ? payload.cases : [];
-  const currentCandidates = Array.isArray(payload?.currentCandidates) ? payload.currentCandidates : [];
+  const currentCandidates = Array.isArray(payload?.currentCandidates)
+    ? payload.currentCandidates.filter(shouldDisplayCurrentRecommendationCandidate)
+    : [];
   const currentCases = cases.filter((item) => item.lifecycleStatus === "current");
   const closedCases = cases.filter(shouldDisplayClosedHistoryCase);
   const closedMonthOptions = getHistoryClosedMonthOptions(payload, closedCases);
@@ -1961,7 +1967,7 @@ function renderRecommendationHistoryBoard() {
 
   recommendationHistorySummary.innerHTML = [
     renderHistorySummaryCard("추적 케이스", formatNumber(summary.openedCases ?? cases.length), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
-    renderHistorySummaryCard("현재 후보", formatNumber(summary.currentRecommendationCount ?? currentCandidates.length), "오늘 기준 매수 후보", "neutral"),
+    renderHistorySummaryCard("현재 후보", formatNumber(summary.currentExecutionCount ?? currentCandidates.length), "오늘 기준 매수 후보", "neutral"),
     renderHistorySummaryCard("종료 케이스", formatNumber(summary.closedCaseCount ?? closedCases.length), "후보 이탈/종료 검증 대상", closedCases.length ? "negative" : ""),
     renderHistorySummaryCard(
       "평균 수익률",
@@ -2291,7 +2297,9 @@ function renderHistoryMatrixModalBody() {
   const closedMonthOptions = getHistoryClosedMonthOptions(payload, closedCases);
   ensureHistoryClosedMonthSelection(closedMonthOptions);
   const filteredClosedCases = filterHistoryClosedCases(closedCases);
-  const currentCandidates = Array.isArray(payload?.currentCandidates) ? payload.currentCandidates : [];
+  const currentCandidates = Array.isArray(payload?.currentCandidates)
+    ? payload.currentCandidates.filter(shouldDisplayCurrentRecommendationCandidate)
+    : [];
   const activeMonth = closedMonthOptions.find((item) => item.month === recommendationHistoryClosedMonth);
   const monthLabel =
     recommendationHistoryClosedMonth === "all"
@@ -2474,15 +2482,17 @@ function renderHistoryCurrentStageSummary(enteredRows) {
 function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
   const rows = currentCandidates.length
     ? currentCandidates
-    : currentCases.map((item) => ({
-        name: item.name,
-        symbol: item.symbol,
-        profile: item.profile,
-        bucket: item.currentRecommendation?.bucket ?? item.entryBucket,
-        sourceBucket: item.currentRecommendation?.sourceBucket ?? "execution",
-        hasHistoryCase: true,
-        historyCase: item
-      }));
+    : currentCases
+        .filter((item) => item.currentRecommendation?.sourceBucket !== "watch")
+        .map((item) => ({
+          name: item.name,
+          symbol: item.symbol,
+          profile: item.profile,
+          bucket: item.currentRecommendation?.bucket ?? item.entryBucket,
+          sourceBucket: item.currentRecommendation?.sourceBucket ?? "execution",
+          hasHistoryCase: true,
+          historyCase: item
+        }));
   const enteredRows = sortCurrentHistoryRowsByRecent(rows);
   const validStageFilters = new Set(["all", "1", "2", "3"]);
   if (!validStageFilters.has(String(recommendationHistoryCurrentStageFilter))) {
@@ -2568,7 +2578,8 @@ function renderHistoryCaseList(cases, options = {}) {
                 </div>
                 ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys)}
                 ${mode === "closed" ? metricsHtml : ""}
-                ${mode === "closed" && outcome?.description ? `<p class="history-case-reason">${escapeHtml(outcome.description)}</p>` : ""}
+                ${mode === "closed" ? renderHistoryOutcomeBasis(outcome) : ""}
+                ${mode === "closed" ? renderHistoryClosedReason(outcome) : ""}
               </div>
             </article>
           `;
@@ -2599,6 +2610,58 @@ function renderHistoryOutcomeChip(outcome) {
   }
 
   return `<span class="history-outcome-chip ${escapeHtml(outcome.category ?? "neutral")}" title="${escapeHtml(outcome.description ?? "")}">${escapeHtml(outcome.label)}</span>`;
+}
+
+function renderHistoryOutcomeBasis(outcome) {
+  const basis = outcome?.returnBasis;
+  if (!basis) {
+    return "";
+  }
+
+  const returnValue = Number(basis.returnPct);
+  const returnClass = Number.isFinite(returnValue) && returnValue > 0 ? "positive" : Number.isFinite(returnValue) && returnValue < 0 ? "negative" : "neutral";
+  const resultLabel =
+    basis.result === "profit"
+      ? "수익"
+      : basis.result === "loss"
+        ? "손절/손실"
+        : basis.result === "excluded"
+          ? "미체결"
+          : "중립";
+  const thresholdText =
+    basis.thresholdLabel && Number.isFinite(Number(basis.thresholdPct))
+      ? `${basis.thresholdLabel} ${formatPercent(Number(basis.thresholdPct)).replace("+", "")}`
+      : basis.thresholdLabel && Number.isFinite(Number(basis.stopLossPrice))
+        ? `${basis.thresholdLabel} ${formatNumber(basis.stopLossPrice)}`
+        : "";
+
+  return `
+    <div class="history-outcome-basis">
+      <span>${escapeHtml(resultLabel)}</span>
+      <strong class="${escapeHtml(returnClass)}">${Number.isFinite(returnValue) ? formatPercent(returnValue) : "-"}</strong>
+      <em>
+        ${escapeHtml(basis.basisPriceLabel ?? "기준가")} ${formatNumber(basis.basisPrice)}
+        → ${escapeHtml(basis.comparePriceLabel ?? "비교가")} ${formatNumber(basis.comparePrice)}
+        ${thresholdText ? ` / ${escapeHtml(thresholdText)}` : ""}
+      </em>
+    </div>
+  `;
+}
+
+function renderHistoryClosedReason(outcome) {
+  if (!outcome?.description && !outcome?.closeBasis?.rule) {
+    return "";
+  }
+
+  const stopText =
+    Number.isFinite(Number(outcome?.returnBasis?.stopLossPrice))
+      ? `손절가 ${formatNumber(outcome.returnBasis.stopLossPrice)} 기준입니다.`
+      : "";
+  const parts = [outcome?.closeBasis?.rule, stopText, outcome?.description].filter(Boolean);
+
+  return `
+    <p class="history-case-reason">${escapeHtml(parts.join(" "))}</p>
+  `;
 }
 
 function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
@@ -10407,10 +10470,3 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
-
-
-
-
-
-
-

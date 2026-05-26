@@ -2,6 +2,20 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-05-27
+
+스윙 히스토리와 현재 후보 저장 정책을 보정했습니다.
+
+- 체결된 기존 스윙 케이스는 새 universe scan에서 신선한 패턴으로 다시 잡히지 않아도 바로 종료하지 않습니다.
+- 손절가 이탈, 목표 수익률 도달, 완만 상승 종료, 시간 종료, 명시적 수동 제거가 없으면 `watchItems`로 carry-forward 합니다.
+- `src/services/recommendationHistory.ts`에 carry-forward 대상 판정 helper를 추가했습니다.
+- `src/services/recommendationUniverse.ts`에서 새 스캔 결과 저장 전 기존 체결 케이스를 `watchItems`에 병합합니다.
+- 현재 추천 상태 UI는 매수 후보만 보여주되, 히스토리 생명주기 판단은 `executionItems`와 `watchItems`를 모두 현재 케이스로 봅니다.
+- 기준 사례: `펄어비스`는 손절가 위에 있고 목표 수익률도 확정되지 않았으므로 새 스캔 누락만으로 종료하면 안 됩니다.
+
+관련 문서:
+
+- [2026-05-27 스윙 히스토리 carry-forward 정책](./work-summary-2026-05-27.md)
 ## 2026-05-22
 
 Swing recommendation history policy was adjusted so that a candidate is not closed merely because it moved from `executionItems` to `watchItems`.

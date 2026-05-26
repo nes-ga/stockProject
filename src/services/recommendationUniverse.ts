@@ -2,12 +2,12 @@ import { scanDividendUniverse } from "./dividendEngine.js";
 import { scanLongTermUniverse } from "./longTermEngine.js";
 import { writeServerDividendPicks } from "./serverDividendPicks.js";
 import { writeServerLongTermPicks } from "./serverLongTermPicks.js";
-import { readServerSwingPickPayload, writeServerSwingPicks } from "./serverSwingPicks.js";
+import { readServerSwingPickPayload, writeServerSwingPicks, type ServerSwingPick } from "./serverSwingPicks.js";
 import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 import { getTradingHaltLookup } from "./tradingHalts.js";
-import { updateSwingRecommendationHistoryFromCurrentPicks } from "./recommendationHistory.js";
+import { readSwingCarryForwardCases, updateSwingRecommendationHistoryFromCurrentPicks, type SwingCarryForwardCase } from "./recommendationHistory.js";
 
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
@@ -272,6 +272,57 @@ function preserveSwingPickDates(
   };
 }
 
+// 아직 종료 조건이 없는 체결 히스토리 케이스를 watch 후보로 되살립니다.
+// 실행 후보로 승격하는 경로가 아니라, 손절/목표/시간 종료 전까지
+// 현재 후보 파일에서 사라지지 않게 하는 생명주기 보호 장치입니다.
+function toCarryForwardSwingWatchPick(historyCase: SwingCarryForwardCase, profile: SwingEngineProfile): ServerSwingPick {
+  const anchorDate = historyCase.openedDate ?? historyCase.initialSnapshot?.anchorDate ?? historyCase.dataDate ?? "";
+  const latestMentionDate = historyCase.dataDate ?? historyCase.initialSnapshot?.latestMentionDate ?? anchorDate;
+  const baseNote = historyCase.initialSnapshot?.note ?? "기존 체결 후보";
+  const stopText = historyCase.buyPlan?.stopLossPrice ? `손절 ${Math.round(historyCase.buyPlan.stopLossPrice)}` : "손절 기준 유지";
+  const executedBuys = (historyCase.executedBuys ?? [])
+    .filter((buy): buy is { stage: 1 | 2 | 3; price: number; date?: string } =>
+      (buy.stage === 1 || buy.stage === 2 || buy.stage === 3) &&
+      typeof buy.price === "number" &&
+      Number.isFinite(buy.price)
+    )
+    .map((buy) => ({
+      stage: buy.stage,
+      price: buy.price,
+      date: buy.date ?? latestMentionDate
+    }));
+
+  return {
+    key: `${historyCase.name}-${historyCase.symbol}`,
+    name: historyCase.name,
+    symbol: historyCase.symbol,
+    anchorDate,
+    latestMentionDate,
+    note: `${baseNote} | 기존 체결 유지 | ${stopText}`,
+    bucket: "watch",
+    tags: [
+      ...(historyCase.initialSnapshot?.tags ?? []),
+      "tag_carry_forward_until_stop"
+    ],
+    reasons: [
+      ...(historyCase.initialSnapshot?.reasons ?? []),
+      "carry_forward_until_stop",
+      "above_stop"
+    ],
+    postEntryOutcome: {
+      status: "active",
+      executedBuyCount: historyCase.executedBuyCount,
+      executedBuys,
+      averageBuyPrice: historyCase.averageBuyPrice,
+      latestClose: historyCase.latestClose,
+      latestDate: historyCase.dataDate,
+      unrealizedReturnPct: historyCase.unrealizedReturnPct
+    },
+    category: "swing",
+    swingProfile: profile,
+    source: "history-carry-forward"
+  };
+}
 function compareSwingAnalyses(left: SwingScanRankedItem, right: SwingScanRankedItem) {
   const leftRank = left.analysis.pattern.stage === "breakout" ? 2 : left.analysis.pattern.stage === "setup" ? 1 : 0;
   const rightRank = right.analysis.pattern.stage === "breakout" ? 2 : right.analysis.pattern.stage === "setup" ? 1 : 0;
@@ -818,22 +869,32 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const existingPayload = await readServerSwingPickPayload(profile);
   const existingPickBySymbol = new Map(existingPayload.items.map((item) => [item.symbol, item] as const));
 
+  const executionItems = filteredActionable.map(({ item, analysis }) => ({
+    ...preserveSwingPickDates(
+      toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+      existingPickBySymbol.get(item.code)
+    ),
+    swingProfile: profile
+  }));
+  const engineWatchItems = filteredWatch.map(({ item, analysis }) => ({
+    ...preserveSwingPickDates(
+      toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+      existingPickBySymbol.get(item.code)
+    ),
+    swingProfile: profile
+  }));
+  const nextSymbols = new Set([...executionItems, ...engineWatchItems].map((item) => item.symbol));
+  // 새 스캔에서 fresh setup이 안 잡혔다는 이유만으로 체결 케이스를
+  // 덮어써서 없애면 안 됩니다. 실제 종료 조건 전까지 watchItems에 병합합니다.
+  const carryForwardWatchItems = (await readSwingCarryForwardCases(profile))
+    .filter((historyCase) => !nextSymbols.has(historyCase.symbol))
+    .filter((historyCase) => defaultSwingSymbols == null || !defaultSwingSymbols.has(historyCase.symbol))
+    .map((historyCase) => toCarryForwardSwingWatchPick(historyCase, profile));
+
   const payload = await writeServerSwingPicks(
     {
-      executionItems: filteredActionable.map(({ item, analysis }) => ({
-        ...preserveSwingPickDates(
-          toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
-          existingPickBySymbol.get(item.code)
-        ),
-        swingProfile: profile
-      })),
-      watchItems: filteredWatch.map(({ item, analysis }) => ({
-        ...preserveSwingPickDates(
-          toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
-          existingPickBySymbol.get(item.code)
-        ),
-        swingProfile: profile
-      }))
+      executionItems,
+      watchItems: [...engineWatchItems, ...carryForwardWatchItems]
     },
     {
       profile

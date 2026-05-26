@@ -74,6 +74,28 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
   - `watch_halt_event`
   - `watch_halt_structural`
 
+## 체결 케이스 유지 원칙
+
+이미 매수가 터치되어 히스토리 체결 가정이 생긴 스윙 케이스는 새 universe scan에서 신선한 패턴으로 다시 잡히지 않았다는 이유만으로 종료하면 안 됩니다.
+
+핵심 규칙:
+
+- 체결된 기존 케이스는 손절가를 종가 기준으로 깨기 전까지 최소 `watchItems`에 유지합니다.
+- `executionItems`에서 `watchItems`로 내려가는 것은 강등이지 종료가 아닙니다.
+- 종료는 실제 종료 조건이 있을 때만 허용합니다.
+- 실제 종료 조건은 손절가 이탈, 목표 수익률 도달, 완만 상승 종료, 시간 종료, 명시적 수동 제거입니다.
+- 새 스캔에서 `no_pattern`이 되거나 품질 gate를 통과하지 못해도, 손절가 위에 있고 목표/시간 종료가 아니면 `history-carry-forward` watch 후보로 보존합니다.
+- 보존 후보에는 `carry_forward_until_stop`, `above_stop` reason을 남깁니다.
+- 현재 추천 상태 UI는 매수 후보만 보여야 하므로 `watchItems`를 숨길 수 있지만, 히스토리 생명주기 판단에서는 `watchItems`를 현재 케이스로 봐야 합니다.
+
+대표 사례:
+
+- `펄어비스`처럼 평균 매수가 이후 새 스캔에서 패턴이 사라졌더라도, 종가가 손절가보다 위이고 목표 수익률도 확정되지 않았다면 종료 케이스가 아니라 관찰 유지 케이스입니다.
+
+수정 위치:
+
+- `src/services/recommendationHistory.ts`: `readSwingCarryForwardCases`, `shouldCarryForwardSwingCase`
+- `src/services/recommendationUniverse.ts`: `carryForwardWatchItems` 병합
 ## 매물대 반영 원칙
 
 스윙 매물대는 BUY를 공격적으로 늘리는 지표가 아닙니다.

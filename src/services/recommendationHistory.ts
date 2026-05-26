@@ -126,12 +126,49 @@ type SwingHistoryOutcome = {
   category: "active" | "profit" | "loss" | "excluded" | "neutral";
   includeInReturnStats: boolean;
   description: string;
+  returnBasis?: {
+    result: "profit" | "loss" | "neutral" | "excluded";
+    basisPriceLabel: string;
+    basisPrice?: number;
+    comparePriceLabel: string;
+    comparePrice?: number;
+    returnPct?: number;
+    thresholdLabel?: string;
+    thresholdPct?: number;
+    stopLossPrice?: number;
+  };
+  closeBasis?: {
+    lifecycleStatus: "current" | "closed";
+    rule: string;
+    sourceFiles: string[];
+    includedBuckets: string[];
+    matchKey?: string;
+  };
 };
 
 type SwingHistoryPayload = {
   summary?: Record<string, unknown>;
   cases?: SwingHistoryCase[];
   [key: string]: unknown;
+};
+
+export type SwingCarryForwardCase = {
+  profile: string;
+  symbol: string;
+  name: string;
+  openedDate?: string;
+  dataDate?: string;
+  latestClose?: number;
+  averageBuyPrice?: number;
+  unrealizedReturnPct?: number;
+  executedBuyCount: number;
+  executedBuys?: Array<{
+    stage?: number;
+    price?: number;
+    date?: string;
+  }>;
+  buyPlan?: SwingHistoryCase["buyPlan"];
+  initialSnapshot?: SwingHistoryCase["initialSnapshot"];
 };
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
@@ -528,14 +565,18 @@ function buildHistoryOutcome(
   label: string,
   category: SwingHistoryOutcome["category"],
   includeInReturnStats: boolean,
-  description: string
+  description: string,
+  returnBasis?: SwingHistoryOutcome["returnBasis"],
+  closeBasis?: SwingHistoryOutcome["closeBasis"]
 ): SwingHistoryOutcome {
   return {
     type,
     label,
     category,
     includeInReturnStats,
-    description
+    description,
+    returnBasis,
+    closeBasis
   };
 }
 
@@ -548,6 +589,16 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
   const targetReturnPct = getTargetReturnPct(executedBuyCount);
   const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
   const businessDaysSinceFirstBuy = countBusinessDaysBetween(getFirstExecutedBuyDate(historyCase), historyCase.dataDate);
+  const closeBasis: SwingHistoryOutcome["closeBasis"] = {
+    lifecycleStatus,
+    rule:
+      lifecycleStatus === "current"
+        ? "현재 매수 후보 또는 관찰 후보에 같은 종목이 남아 있어 진행 중으로 봅니다."
+        : "현재 매수 후보와 관찰 후보 어디에도 같은 종목이 없어 후보 목록 이탈로 봅니다.",
+    sourceFiles: swingSourceFiles.map((source) => `data/${source.file}`),
+    includedBuckets: ["executionItems", "watchItems"],
+    matchKey: getHistoryCaseKey(historyCase.profile, historyCase.symbol)
+  };
   const maxFavorableDescription =
     isFiniteNumber(maxFavorableReturnPct) && isFiniteNumber(historyCase.maxFavorablePrice)
       ? ` 기간 중 최고가 ${formatKrw(historyCase.maxFavorablePrice)} 기준 최대 수익률 ${formatSignedPercentText(maxFavorableReturnPct)}입니다.`
@@ -556,11 +607,22 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     isFiniteNumber(returnPct) && isFiniteNumber(historyCase.averageBuyPrice) && isFiniteNumber(latestClose)
       ? `종료 기준가 ${formatKrw(latestClose)}, 평균 매수가 ${formatKrw(historyCase.averageBuyPrice)} 기준 수익률 ${formatSignedPercentText(returnPct)}입니다.`
       : "종료 기준 가격 또는 평균 매수가가 부족해 수익률 계산을 보류했습니다.";
+  const latestCloseReturnBasis =
+    isFiniteNumber(returnPct) && isFiniteNumber(historyCase.averageBuyPrice) && isFiniteNumber(latestClose)
+      ? {
+          result: returnPct > 0 ? ("profit" as const) : returnPct < 0 ? ("loss" as const) : ("neutral" as const),
+          basisPriceLabel: "평균 매수가",
+          basisPrice: historyCase.averageBuyPrice,
+          comparePriceLabel: "종료 기준가",
+          comparePrice: latestClose,
+          returnPct
+        }
+      : undefined;
 
   if (lifecycleStatus === "current") {
     return executedBuyCount > 0
-      ? buildHistoryOutcome("active_entered", "현재", "active", true, "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.")
-      : buildHistoryOutcome("active_no_entry", "현재 후보", "active", false, "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다.");
+      ? buildHistoryOutcome("active_entered", "현재", "active", true, "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.", undefined, closeBasis)
+      : buildHistoryOutcome("active_no_entry", "현재 후보", "active", false, "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다.", undefined, closeBasis);
   }
 
   if (executedBuyCount <= 0) {
@@ -575,11 +637,22 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
         "미체결 제외",
         "excluded",
         false,
-        `1차 매수가 대비 ${SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT}% 이상 위로 이탈해 체결 없는 제외로 분류합니다.`
+        `1차 매수가 대비 ${SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT}% 이상 위로 이탈해 체결 없는 제외로 분류합니다.`,
+        {
+          result: "excluded",
+          basisPriceLabel: "1차 매수가",
+          basisPrice: firstBuyPrice,
+          comparePriceLabel: "종료 기준가",
+          comparePrice: latestClose,
+          returnPct: round(((latestClose - firstBuyPrice) / firstBuyPrice) * 100),
+          thresholdLabel: "미체결 이탈 기준",
+          thresholdPct: SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT
+        },
+        closeBasis
       );
     }
 
-    return buildHistoryOutcome("entry_missed_upside", "미체결 제외", "excluded", false, "체결 가정이 없어 수익률 통계에서 제외합니다.");
+    return buildHistoryOutcome("entry_missed_upside", "미체결 제외", "excluded", false, "체결 가정이 없어 수익률 통계에서 제외합니다.", undefined, closeBasis);
   }
 
   if (historyCase.entryBucket === "watch") {
@@ -588,7 +661,9 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "관찰 종료",
       "neutral",
       false,
-      `관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. ${returnDescription}`
+      `관찰 후보 목록에서 이탈해 종료 케이스로 분류합니다. 매수 후보가 아니어서 수익률 통계에서는 제외합니다. ${returnDescription}`,
+      latestCloseReturnBasis,
+      closeBasis
     );
   }
 
@@ -604,7 +679,25 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "슈팅 수익",
       "profit",
       true,
-      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다.${maxFavorableDescription} ${returnDescription}`
+      `평균 매수가 대비 목표 수익률 ${targetReturnPct}% 이상을 충족했습니다.${maxFavorableDescription} ${returnDescription}`,
+      isFiniteNumber(historyCase.averageBuyPrice)
+        ? {
+            result: "profit",
+            basisPriceLabel: "평균 매수가",
+            basisPrice: historyCase.averageBuyPrice,
+            comparePriceLabel:
+              isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct ? "기간 중 최고가" : "종료 기준가",
+            comparePrice:
+              isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct
+                ? historyCase.maxFavorablePrice
+                : latestClose,
+            returnPct:
+              isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct ? maxFavorableReturnPct : returnPct,
+            thresholdLabel: "목표 수익률",
+            thresholdPct: targetReturnPct
+          }
+        : undefined,
+      closeBasis
     );
   }
 
@@ -614,7 +707,16 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "손절 종료",
       "loss",
       true,
-      `종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하로 내려왔습니다. ${returnDescription}`
+      `종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하로 내려왔습니다. ${returnDescription}`,
+      latestCloseReturnBasis
+        ? {
+            ...latestCloseReturnBasis,
+            result: "loss",
+            thresholdLabel: "손절가",
+            stopLossPrice
+          }
+        : undefined,
+      closeBasis
     );
   }
 
@@ -628,7 +730,16 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "완만 상승 종료",
       "profit",
       true,
-      `슈팅은 아니지만 평균 매수가 대비 ${SWING_DRIFT_PROFIT_RETURN_PCT}% 이상 수익권에서 매수 후보를 이탈했습니다. ${returnDescription}`
+      `슈팅은 아니지만 평균 매수가 대비 ${SWING_DRIFT_PROFIT_RETURN_PCT}% 이상 수익권에서 매수 후보를 이탈했습니다. ${returnDescription}`,
+      latestCloseReturnBasis
+        ? {
+            ...latestCloseReturnBasis,
+            result: "profit",
+            thresholdLabel: "완만 상승 종료 기준",
+            thresholdPct: SWING_DRIFT_PROFIT_RETURN_PCT
+          }
+        : undefined,
+      closeBasis
     );
   }
 
@@ -638,11 +749,21 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
       "시간 종료",
       "neutral",
       true,
-      `첫 체결 후 ${SWING_STALE_TIMEOUT_BUSINESS_DAYS}거래일 이상 목표/손절 없이 후보에서 이탈했습니다. ${returnDescription}`
+      `첫 체결 후 ${SWING_STALE_TIMEOUT_BUSINESS_DAYS}거래일 이상 목표/손절 없이 후보에서 이탈했습니다. ${returnDescription}`,
+      latestCloseReturnBasis,
+      closeBasis
     );
   }
 
-  return buildHistoryOutcome("closed_unknown", "종료", isFiniteNumber(returnPct) && returnPct < 0 ? "loss" : "neutral", true, `후보 목록에서 이탈해 종료 케이스로 분류합니다. ${returnDescription}`);
+  return buildHistoryOutcome(
+    "closed_unknown",
+    "종료",
+    isFiniteNumber(returnPct) && returnPct < 0 ? "loss" : "neutral",
+    true,
+    `후보 목록에서 이탈해 종료 케이스로 분류합니다. ${returnDescription}`,
+    latestCloseReturnBasis,
+    closeBasis
+  );
 }
 
 function normalizeHistoryCaseWeightedBuys(historyCase: SwingHistoryCase): SwingHistoryCase {
@@ -953,6 +1074,70 @@ function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
     });
 }
 
+// 중요: 이미 체결 가정이 생긴 스윙 케이스는 최신 스캔에서 새 패턴이
+// 잡히지 않았다는 이유만으로 종료하면 안 됩니다. 손절, 목표 수익,
+// 완만 상승 종료, 시간 종료, 명시적 제거가 나오기 전까지 watch로 유지합니다.
+function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
+  const executedBuyCount = getExecutedBuyStage(historyCase);
+  if (
+    executedBuyCount <= 0 ||
+    !historyCase.profile ||
+    !historyCase.symbol ||
+    !historyCase.name ||
+    !isExecutionHistoryCase(historyCase)
+  ) {
+    return false;
+  }
+
+  const latestClose = historyCase.latestClose;
+  const stopLossPrice = historyCase.buyPlan?.stopLossPrice;
+  if (isFiniteNumber(latestClose) && isFiniteNumber(stopLossPrice) && latestClose <= stopLossPrice) {
+    return false;
+  }
+
+  const targetReturnPct = getTargetReturnPct(executedBuyCount);
+  const returnPct = getReturnPct(historyCase);
+  const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
+  if (
+    (isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct) ||
+    (isFiniteNumber(returnPct) && returnPct >= targetReturnPct)
+  ) {
+    return false;
+  }
+
+  const businessDaysSinceFirstBuy = countBusinessDaysBetween(getFirstExecutedBuyDate(historyCase), historyCase.dataDate);
+  return businessDaysSinceFirstBuy < SWING_STALE_TIMEOUT_BUSINESS_DAYS;
+}
+
+// recommendationUniverse가 현재 스윙 후보 파일을 덮어쓰기 전에 사용합니다.
+// 펄어비스 같은 체결 케이스가 손절가 위에 있고 목표/시간 종료가 아닌데
+// watchItems에서 사라지는 일을 막기 위한 보존 경로입니다.
+export async function readSwingCarryForwardCases(profile?: string): Promise<SwingCarryForwardCase[]> {
+  const existingPayload = await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath);
+  const cases = Array.isArray(existingPayload?.cases)
+    ? existingPayload.cases
+        .map(normalizeHistoryCaseWeightedBuys)
+        .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
+    : [];
+
+  return cases
+    .filter((historyCase) => shouldCarryForwardSwingCase(historyCase))
+    .filter((historyCase) => !profile || historyCase.profile === profile)
+    .map((historyCase) => ({
+      profile: historyCase.profile as string,
+      symbol: historyCase.symbol as string,
+      name: historyCase.name as string,
+      openedDate: historyCase.openedDate,
+      dataDate: historyCase.dataDate,
+      latestClose: historyCase.latestClose,
+      averageBuyPrice: historyCase.averageBuyPrice,
+      unrealizedReturnPct: historyCase.unrealizedReturnPct,
+      executedBuyCount: getExecutedBuyStage(historyCase),
+      executedBuys: historyCase.executedBuys,
+      buyPlan: historyCase.buyPlan,
+      initialSnapshot: historyCase.initialSnapshot
+    }));
+}
 export async function updateSwingRecommendationHistoryFromCurrentPicks() {
   const now = new Date();
   const existingPayload = await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath);

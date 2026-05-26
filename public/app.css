@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #eefbf5;
   --bg-accent: #dcf4ee;
   --panel: rgba(247, 255, 253, 0.9);
@@ -1661,6 +1661,45 @@ body {
 .history-case-card.closed .history-case-reason {
   grid-column: 1 / -1;
   padding-top: 2px;
+}
+
+.history-outcome-basis {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid rgba(96, 118, 128, 0.14);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.78);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-outcome-basis span {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.history-outcome-basis strong {
+  font-size: 14px;
+}
+
+.history-outcome-basis strong.positive {
+  color: var(--positive);
+}
+
+.history-outcome-basis strong.negative {
+  color: var(--negative);
+}
+
+.history-outcome-basis strong.neutral {
+  color: var(--neutral);
+}
+
+.history-outcome-basis em {
+  font-style: normal;
 }
 
 .history-case-metrics span {
@@ -6290,4 +6329,3 @@ body {
     width: 27px;
   }
 }
-

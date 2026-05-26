@@ -204,7 +204,7 @@ The previous note said swing history should treat only `executionItems` as curre
 - Moving from `execution_ready`/`execution_probe` down to `watch` is a downgrade, not a close.
 - A case closes only when a real close condition is reached, such as stop break, target/exit classification, timeout, or complete removal from the swing universe.
 - New watch-only names are not opened as history cases unless they already have an entry assumption.
-- `삼륭물산` is the reference case: it moved to `watch` because of lower-envelope/support quality deterioration, but it remains active because the stop was not broken.
+- `삼륭물산`은 기준 사례입니다. 하단 밴드/지지 품질 악화로 `watch`로 내려가도 손절가를 깨지 않았으면 active로 유지합니다.`r`n- 2026-05-27 보정: 새 스캔에서 패턴 자체가 사라진 기존 체결 케이스도 손절/목표/시간 종료 전이면 `history-carry-forward`로 `watchItems`에 다시 병합합니다.`r`n- `펄어비스`는 기준 사례입니다. 손절가 39,800원 위에 있는데 새 스캔 누락만으로 종료 처리되면 안 됩니다.
 
 ### Chart Refresh
 
