@@ -12,10 +12,17 @@
 - `src/services/recommendationUniverse.ts`에서 새 스캔 결과 저장 전 기존 체결 케이스를 `watchItems`에 병합합니다.
 - 현재 추천 상태 UI는 매수 후보만 보여주되, 히스토리 생명주기 판단은 `executionItems`와 `watchItems`를 모두 현재 케이스로 봅니다.
 - 기준 사례: `펄어비스`는 손절가 위에 있고 목표 수익률도 확정되지 않았으므로 새 스캔 누락만으로 종료하면 안 됩니다.
+- 후속으로 히스토리 UI와 생명주기 판정을 보정했습니다.
+  - 신규 `watchItems`는 히스토리 케이스를 새로 열지 않습니다.
+  - 기존 히스토리 케이스가 `watch`로 내려간 경우만 현재 케이스로 유지합니다.
+  - 손절가 이탈은 현재 후보 매칭보다 우선해서 `stop_broken`으로 닫습니다.
+  - 미체결 후보는 평균 매수가 대신 1차 매수가를 표시합니다.
+  - 기준 사례: `삼륭물산`은 기존 3차 체결 watch 케이스로 유지, `극동유화`는 신규 watch 히스토리에서 제거, `흥구석유` default는 손절 종료 처리.
 
 관련 문서:
 
 - [2026-05-27 스윙 히스토리 carry-forward 정책](./work-summary-2026-05-27.md)
+- [2026-05-27 스윙 히스토리 정리](./work-summary-2026-05-27-history-cleanup.md)
 ## 2026-05-22
 
 Swing recommendation history policy was adjusted so that a candidate is not closed merely because it moved from `executionItems` to `watchItems`.

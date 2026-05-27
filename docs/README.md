@@ -41,3 +41,4 @@
 - [2026-05-15 스윙 엔진/후보 정리](./work-summary-2026-05-15.md)
 - [2026-05-22 Discord 알림 히스토리 기준](./discord-alert-history-policy-2026-05-22.md)
 - [2026-05-22 뉴스 시그널 대상 기준](./news-signal-policy-2026-05-22.md)`r`n- [2026-05-27 스윙 히스토리 carry-forward 정책](./work-summary-2026-05-27.md)
+- [2026-05-27 스윙 히스토리 정리](./work-summary-2026-05-27-history-cleanup.md)

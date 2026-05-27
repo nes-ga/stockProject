@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchQuoteAndChart } from "./stockAnalysis.js";
+import { readServerSwingPickPayload } from "./serverSwingPicks.js";
 import type { ChartPoint } from "../types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -655,7 +656,7 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     return buildHistoryOutcome("entry_missed_upside", "미체결 제외", "excluded", false, "체결 가정이 없어 수익률 통계에서 제외합니다.", undefined, closeBasis);
   }
 
-  if (historyCase.entryBucket === "watch") {
+  if (historyCase.entryBucket === "watch" && executedBuyCount <= 0) {
     return buildHistoryOutcome(
       "closed_unknown",
       "관찰 종료",
@@ -907,7 +908,7 @@ async function readCurrentSwingCandidates() {
   const candidates: Array<SwingCandidate & { profile: "default" | "smallcap"; sourceBucket: "execution" | "watch" }> = [];
 
   for (const source of swingSourceFiles) {
-    const payload = await readJsonFile<SwingPickPayload>(path.join(projectRoot, "data", source.file));
+    const payload = await readServerSwingPickPayload(source.profile);
     const executionItems = payload.executionItems ?? [];
     const watchItems = payload.watchItems ?? [];
 
@@ -934,7 +935,8 @@ function shouldUpsertCurrentHistoryCase(
 ) {
   // A downgrade from execution to watch is still a live swing case.
   // Keep existing/entered watch cases active until the stop or another real close condition is hit.
-  return candidate.sourceBucket === "execution" || Boolean(existingCase) || getExecutedBuyStage(candidate.postEntryOutcome) > 0;
+  // New watch-only names must not open history cases just because their low touched a staged buy level.
+  return candidate.sourceBucket === "execution" || Boolean(existingCase);
 }
 
 function buildSwingHistorySummary(
@@ -990,11 +992,30 @@ function enrichClosedDateFields(
   };
 }
 
+function isStopBrokenHistoryCase(historyCase: SwingHistoryCase) {
+  return (
+    isFiniteNumber(historyCase.latestClose) &&
+    isFiniteNumber(historyCase.buyPlan?.stopLossPrice) &&
+    historyCase.latestClose <= historyCase.buyPlan.stopLossPrice
+  );
+}
+
+function getEffectiveLifecycleStatus(
+  historyCase: SwingHistoryCase,
+  currentCaseKeys: Set<string>
+): "current" | "closed" {
+  if (isStopBrokenHistoryCase(historyCase)) {
+    return "closed";
+  }
+  return currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
+}
+
 function shouldRefreshMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
   const entered = getExecutedBuyStage(historyCase) > 0;
   const closedEntered = historyCase.status === "closed" && entered;
   const activeEntered = historyCase.status === "active" && entered;
-  return Boolean(historyCase.symbol && (closedEntered || activeEntered));
+  const activeWithBuyPlan = historyCase.status === "active" && Boolean(historyCase.buyPlan);
+  return Boolean(historyCase.symbol && (closedEntered || activeEntered || activeWithBuyPlan));
 }
 
 async function refreshCaseMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
@@ -1114,11 +1135,16 @@ function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
 // watchItems에서 사라지는 일을 막기 위한 보존 경로입니다.
 export async function readSwingCarryForwardCases(profile?: string): Promise<SwingCarryForwardCase[]> {
   const existingPayload = await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath);
-  const cases = Array.isArray(existingPayload?.cases)
+  const rawCases = Array.isArray(existingPayload?.cases)
     ? existingPayload.cases
         .map(normalizeHistoryCaseWeightedBuys)
         .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
+  const asOfDate = formatDateInSeoul(new Date());
+  const cases = await refreshCaseMarketPrices(
+    rawCases.map((historyCase) => enrichClosedDateFields(historyCase, "current", asOfDate)),
+    asOfDate
+  );
 
   return cases
     .filter((historyCase) => shouldCarryForwardSwingCase(historyCase))
@@ -1187,11 +1213,12 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
   });
   const casesWithLatestMarketPrice = await refreshCaseMarketPrices(casesWithClosedDate, asOfDate);
   const casesWithOutcome = casesWithLatestMarketPrice.map((historyCase) => {
-    const lifecycleStatus = currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
+    const lifecycleStatus = getEffectiveLifecycleStatus(historyCase, currentCaseKeys);
+    const caseWithLifecycle = enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
 
     return {
-      ...historyCase,
-      historyOutcome: deriveHistoryOutcome(historyCase, lifecycleStatus)
+      ...caseWithLifecycle,
+      historyOutcome: deriveHistoryOutcome(caseWithLifecycle, lifecycleStatus)
     };
   });
   const currentEnteredRecommendationCount = casesWithOutcome.filter(
@@ -1241,19 +1268,20 @@ export async function readSwingRecommendationHistory() {
     currentCandidates.map((candidate) => [getCandidateKey(candidate.profile, candidate.symbol), candidate])
   );
   const currentBySymbol = new Map(currentCandidates.map((candidate) => [candidate.symbol, candidate]));
+  const currentCaseKeys = new Set(currentCandidates.map((candidate) => getHistoryCaseKey(candidate.profile, candidate.symbol)));
 
   const enrichedCases = cases.map((historyCase) => {
     const currentRecommendation =
       currentByProfileSymbol.get(getCandidateKey(historyCase.profile, historyCase.symbol)) ??
       (historyCase.profile ? undefined : currentBySymbol.get(historyCase.symbol));
-    const lifecycleStatus = currentRecommendation ? "current" : "closed";
+    const lifecycleStatus = getEffectiveLifecycleStatus(historyCase, currentCaseKeys);
     const caseWithClosedDate = enrichClosedDateFields(historyCase, lifecycleStatus, payload.asOfDate as string | undefined);
 
     return {
       ...caseWithClosedDate,
       lifecycleStatus,
       historyOutcome: deriveHistoryOutcome(caseWithClosedDate, lifecycleStatus),
-      currentRecommendation: currentRecommendation
+      currentRecommendation: lifecycleStatus === "current" && currentRecommendation
         ? {
             key: currentRecommendation.key,
             name: currentRecommendation.name,

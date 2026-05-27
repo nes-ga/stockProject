@@ -8,17 +8,17 @@
     "score": 3,
     "state": "SELECTIVE"
   },
-  "themeRotationScore": 27.64,
+  "themeRotationScore": 31.45,
   "marketMode": "SELECTIVE",
   "topThemes": [
     "반도체",
-    "2차전지",
+    "헬스케어 / 바이오",
     "자동차 / 산업재"
   ],
   "bottomThemes": [
     "건설 / 인프라",
     "철강 / 화학",
-    "AI / 플랫폼"
+    "소비 / 화장품"
   ],
-  "updatedAt": "2026-05-27T00:04:12.877+09:00"
+  "updatedAt": "2026-05-27T15:37:55.210+09:00"
 }

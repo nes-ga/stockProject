@@ -1876,7 +1876,15 @@ function shouldDisplayClosedHistoryCase(item) {
 }
 
 function shouldDisplayCurrentRecommendationCandidate(item) {
-  return item?.sourceBucket !== "watch";
+  if (item?.sourceBucket !== "watch") {
+    return true;
+  }
+  return Boolean(
+    item?.hasHistoryCase &&
+      item?.hasEntryAssumption &&
+      item?.historyCase?.lifecycleStatus !== "closed" &&
+      item?.historyCase?.historyOutcome?.type !== "stop_broken"
+  );
 }
 
 function renderHistoryClosedFilterControls(monthOptions, totalClosedCount, filteredClosedCount) {
@@ -2074,6 +2082,8 @@ function findHistoryChartItem(symbol, profile) {
 function getHistoryChartDisplayItem(item) {
   const historyCase = item?.historyCase ?? item;
   const outcome = item?.postEntryOutcome ?? {};
+  const buyPlan = historyCase?.buyPlan ?? item?.buyPlan;
+  const averageBuyPrice = historyCase?.averageBuyPrice ?? outcome.averageBuyPrice;
   return {
     key: item?.key ?? historyCase?.id ?? `${historyCase?.name ?? ""}-${historyCase?.symbol ?? ""}`,
     name: item?.name ?? historyCase?.name,
@@ -2082,11 +2092,13 @@ function getHistoryChartDisplayItem(item) {
     anchorDate: item?.anchorDate ?? historyCase?.openedDate ?? historyCase?.dataDate,
     latestMentionDate: item?.latestMentionDate ?? historyCase?.dataDate,
     bucket: item?.bucket ?? historyCase?.entryBucket,
-    averageBuyPrice: historyCase?.averageBuyPrice ?? outcome.averageBuyPrice,
+    averageBuyPrice,
+    averageBuyPriceLabel: Number.isFinite(Number(averageBuyPrice)) ? "평균 매수가" : "1차 매수가",
+    displayBuyPrice: Number.isFinite(Number(averageBuyPrice)) ? averageBuyPrice : buyPlan?.firstBuyPrice,
     latestClose: historyCase?.latestClose ?? outcome.latestClose,
     unrealizedReturnPct: historyCase?.unrealizedReturnPct ?? outcome.unrealizedReturnPct,
     executedBuyCount: historyCase?.executedBuyCount ?? outcome.executedBuyCount,
-    buyPlan: historyCase?.buyPlan
+    buyPlan
   };
 }
 
@@ -2109,7 +2121,7 @@ function renderHistoryChartModalShell(item, options = {}) {
       const returnClass = Number.isFinite(returnValue) && returnValue > 0 ? "positive" : Number.isFinite(returnValue) && returnValue < 0 ? "negative" : "neutral";
       historyChartModalSummary.innerHTML = [
         renderHistoryChartSummaryItem("현재가", formatNumber(displayItem.latestClose), ""),
-        renderHistoryChartSummaryItem("평균 매수가", formatNumber(displayItem.averageBuyPrice), ""),
+        renderHistoryChartSummaryItem(displayItem.averageBuyPriceLabel, formatNumber(displayItem.displayBuyPrice), ""),
         renderHistoryChartSummaryItem("수익률", Number.isFinite(returnValue) ? formatPercent(returnValue) : "-", returnClass),
         renderHistoryChartSummaryItem("체결 단계", `${formatNumber(displayItem.executedBuyCount ?? 0)}차`, "")
       ].join("");
@@ -2397,6 +2409,8 @@ function renderHistoryCurrentCandidateCard(item) {
   const buyPlan = historyCase?.buyPlan ?? item.buyPlan;
   const returnValue = Number(hasHistoryCase ? historyCase?.unrealizedReturnPct : liveOutcome.unrealizedReturnPct);
   const averageBuyPrice = hasHistoryCase ? historyCase?.averageBuyPrice : liveOutcome.averageBuyPrice;
+  const displayBuyPrice = Number.isFinite(Number(averageBuyPrice)) ? averageBuyPrice : buyPlan?.firstBuyPrice;
+  const displayBuyPriceLabel = Number.isFinite(Number(averageBuyPrice)) ? "평균" : "1차";
   const latestClose = hasHistoryCase ? historyCase?.latestClose ?? liveOutcome.latestClose : liveOutcome.latestClose;
   const returnClass = Number.isFinite(returnValue) && returnValue > 0 ? "positive" : Number.isFinite(returnValue) && returnValue < 0 ? "negative" : "neutral";
   const returnBadge = Number.isFinite(returnValue)
@@ -2431,7 +2445,7 @@ function renderHistoryCurrentCandidateCard(item) {
           <div class="history-case-metrics">
             <span>추천 ${escapeHtml(startDate || "-")}</span>
             <span>현재가 ${formatNumber(latestClose)}</span>
-            <span>평균 ${formatNumber(averageBuyPrice)}</span>
+            <span>${escapeHtml(displayBuyPriceLabel)} ${formatNumber(displayBuyPrice)}</span>
           </div>
         </div>
         ${renderHistoryBuyLevels(buyPlan, executedBuys, { highlightMode: "deepest" })}
@@ -2483,7 +2497,9 @@ function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
   const rows = currentCandidates.length
     ? currentCandidates
     : currentCases
-        .filter((item) => item.currentRecommendation?.sourceBucket !== "watch")
+        .filter(
+          (item) => item.currentRecommendation?.sourceBucket !== "watch" || getExecutedBuyCountForHistoryItem(item) > 0
+        )
         .map((item) => ({
           name: item.name,
           symbol: item.symbol,
