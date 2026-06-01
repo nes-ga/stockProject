@@ -84,6 +84,7 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
 - `executionItems`에서 `watchItems`로 내려가는 것은 강등이지 종료가 아닙니다.
 - 종료는 실제 종료 조건이 있을 때만 허용합니다.
 - 실제 종료 조건은 손절가 이탈, 목표 수익률 도달, 완만 상승 종료, 시간 종료, 명시적 수동 제거입니다.
+- 단, KOSPI/KOSDAQ 급락으로 시장 충격이 확인된 날의 손절가 이탈은 `market_shock_grace`로 1거래일 유예하고, 다음 확인에서도 회복하지 못하면 `market_shock_stop`으로 종료합니다.
 - 새 스캔에서 `no_pattern`이 되거나 품질 gate를 통과하지 못해도, 손절가 위에 있고 목표/시간 종료가 아니면 `history-carry-forward` watch 후보로 보존합니다.
 - 보존 후보에는 `carry_forward_until_stop`, `above_stop` reason을 남깁니다.
 - 현재 추천 상태 UI는 매수 후보만 보여야 하므로 `watchItems`를 숨길 수 있지만, 히스토리 생명주기 판단에서는 `watchItems`를 현재 케이스로 봐야 합니다.
@@ -192,9 +193,11 @@ npm run scan:swing-universe
 - 매물대 양수 점수만으로 BUY가 승격되지 않는가
 - 위 매물/리테스트 실패가 제대로 감점되는가
 - event halt는 보이되 penalty가 유지되는가
+- 시장 충격일 손절 이탈은 1거래일만 유예되고, 회복 실패 시 `market_shock_stop`으로 닫히는가
 
 ## 최근 반영
 
 - 2026-04-14: `execution_ready`, `execution_probe`, `watch` bucket 구조 정리
 - 2026-05-08: 스윙 매물대 분석 추가
 - 2026-05-08: 매물대 양수 가산을 BUY 직접 승격에서 제외하고 ranking support로 보수화
+- 2026-06-01: 시장 충격 손절 유예와 `market_shock_grace`/`market_shock_stop` outcome 추가

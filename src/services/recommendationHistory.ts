@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchQuoteAndChart } from "./stockAnalysis.js";
 import { readServerSwingPickPayload } from "./serverSwingPicks.js";
-import type { ChartPoint } from "../types.js";
+import { getMarketWatchSnapshots } from "./marketWatch.js";
+import type { ChartPoint, MarketWatchSnapshot } from "../types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, "../..");
@@ -15,6 +16,7 @@ const SWING_DRIFT_PROFIT_RETURN_PCT = 5;
 const SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT = 7;
 const SWING_STALE_TIMEOUT_BUSINESS_DAYS = 20;
 const CLOSED_CASE_MARKET_REFRESH_SESSIONS = 80;
+const MARKET_SHOCK_GRACE_SESSIONS = 1;
 const swingSourceFiles = [
   { profile: "default", file: "server-swing-picks.json" },
   { profile: "smallcap", file: "server-smallcap-swing-picks.json" }
@@ -94,6 +96,7 @@ type SwingHistoryCase = {
   maxAdverseReturnPct?: number;
   outcomeStatus?: string;
   historyOutcome?: SwingHistoryOutcome;
+  marketStopGrace?: MarketStopGraceState;
   buyPlan?: {
     firstBuyPrice?: number;
     secondBuyPrice?: number;
@@ -114,10 +117,12 @@ type SwingHistoryCase = {
 type SwingHistoryOutcomeType =
   | "active_entered"
   | "active_no_entry"
+  | "market_shock_grace"
   | "target_hit"
   | "drift_profit_exit"
   | "entry_missed_upside"
   | "stop_broken"
+  | "market_shock_stop"
   | "stale_timeout"
   | "closed_unknown";
 
@@ -151,6 +156,33 @@ type SwingHistoryPayload = {
   summary?: Record<string, unknown>;
   cases?: SwingHistoryCase[];
   [key: string]: unknown;
+};
+
+type MarketShockLevel = "shock" | "crash";
+
+type MarketShockContext = {
+  active: boolean;
+  date?: string;
+  level?: MarketShockLevel;
+  reasons: string[];
+  indexChanges: {
+    KOSPI?: number;
+    KOSDAQ?: number;
+    average1d?: number;
+    average3d?: number;
+    average5d?: number;
+  };
+};
+
+type MarketStopGraceState = {
+  status: "active" | "expired" | "recovered";
+  startedDate?: string;
+  lastCheckedDate?: string;
+  shockDate?: string;
+  level?: MarketShockLevel;
+  expiresAfterSessions: number;
+  reasons: string[];
+  indexChanges?: MarketShockContext["indexChanges"];
 };
 
 export type SwingCarryForwardCase = {
@@ -246,6 +278,120 @@ function formatKrw(value: number) {
 
 function formatSignedPercentText(value: number) {
   return `${value > 0 ? "+" : ""}${round(value, 2).toFixed(2)}%`;
+}
+
+function formatMarketShockLevel(level: MarketShockLevel | undefined) {
+  return level === "crash" ? "붕괴" : "급락";
+}
+
+function averageNumbers(values: Array<number | undefined>) {
+  const validValues = values.filter((value): value is number => isFiniteNumber(value));
+  return validValues.length ? validValues.reduce((sum, value) => sum + value, 0) / validValues.length : undefined;
+}
+
+function percentChange(current: number | undefined, previous: number | undefined) {
+  if (!isFiniteNumber(current) || !isFiniteNumber(previous) || previous === 0) {
+    return undefined;
+  }
+  return ((current - previous) / previous) * 100;
+}
+
+function getMovingAverageAt(points: ChartPoint[], endIndex: number, period: number) {
+  if (endIndex < period - 1) {
+    return undefined;
+  }
+
+  return averageNumbers(points.slice(endIndex - period + 1, endIndex + 1).map((point) => point.close));
+}
+
+function findPointIndexAtOrBefore(points: ChartPoint[], date: string | undefined) {
+  if (!date) {
+    return points.length - 1;
+  }
+
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    if (points[index].date <= date) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function deriveIndexShockMetrics(snapshot: MarketWatchSnapshot | undefined, date: string | undefined) {
+  const points = snapshot?.chartSets?.daily?.points ?? [];
+  const index = findPointIndexAtOrBefore(points, date);
+  const latestPoint = index >= 0 ? points[index] : undefined;
+  if (!latestPoint) {
+    return undefined;
+  }
+
+  const previousPoint = points[index - 1];
+  const prior3Point = points[index - 3];
+  const prior5Point = points[index - 5];
+  const sma20 = getMovingAverageAt(points, index, 20);
+  const change1d = percentChange(latestPoint.close, previousPoint?.close);
+  const change3d = percentChange(latestPoint.close, prior3Point?.close);
+  const change5d = percentChange(latestPoint.close, prior5Point?.close);
+
+  return {
+    date: latestPoint.date,
+    change1d,
+    change3d,
+    change5d,
+    belowSma20: isFiniteNumber(sma20) ? latestPoint.close < sma20 : undefined
+  };
+}
+
+function buildMarketShockContext(items: MarketWatchSnapshot[], date: string | undefined): MarketShockContext | undefined {
+  const kospi = deriveIndexShockMetrics(items.find((item) => item.key === "KOSPI"), date);
+  const kosdaq = deriveIndexShockMetrics(items.find((item) => item.key === "KOSDAQ"), date);
+  if (!kospi && !kosdaq) {
+    return undefined;
+  }
+
+  const average1d = averageNumbers([kospi?.change1d, kosdaq?.change1d]);
+  const average3d = averageNumbers([kospi?.change3d, kosdaq?.change3d]);
+  const average5d = averageNumbers([kospi?.change5d, kosdaq?.change5d]);
+  const reasons: string[] = [];
+  const oneDayCrash = [kospi?.change1d, kosdaq?.change1d].some((value) => isFiniteNumber(value) && value <= -4);
+  const oneDayShock = [kospi?.change1d, kosdaq?.change1d].some((value) => isFiniteNumber(value) && value <= -2);
+  const broadOneDayShock = isFiniteNumber(average1d) && average1d <= -1.8 && (kospi?.change1d ?? 0) < 0 && (kosdaq?.change1d ?? 0) < 0;
+  const multiDayCrash = isFiniteNumber(average3d) && average3d <= -6;
+  const multiDayShock = isFiniteNumber(average3d) && average3d <= -3.5;
+  const belowSma20Selloff =
+    kospi?.belowSma20 === true &&
+    kosdaq?.belowSma20 === true &&
+    isFiniteNumber(average5d) &&
+    average5d <= -4;
+
+  if (oneDayShock) {
+    reasons.push("index_1d_shock");
+  }
+  if (broadOneDayShock) {
+    reasons.push("broad_index_1d_selloff");
+  }
+  if (multiDayShock) {
+    reasons.push("index_3d_shock");
+  }
+  if (belowSma20Selloff) {
+    reasons.push("index_below_sma20_selloff");
+  }
+
+  const active = reasons.length > 0;
+  return {
+    active,
+    date: [kosdaq?.date, kospi?.date].filter(Boolean).sort().at(-1),
+    level: active ? (oneDayCrash || multiDayCrash ? "crash" : "shock") : undefined,
+    reasons,
+    indexChanges: {
+      KOSPI: kospi?.change1d,
+      KOSDAQ: kosdaq?.change1d,
+      average1d,
+      average3d,
+      average5d
+    }
+  };
 }
 
 function parseDateOnly(value: string | undefined) {
@@ -619,8 +765,31 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
           returnPct
         }
       : undefined;
+  const marketStopGrace = historyCase.marketStopGrace;
 
   if (lifecycleStatus === "current") {
+    if (isStopBrokenHistoryCase(historyCase) && marketStopGrace?.status === "active") {
+      return buildHistoryOutcome(
+        "market_shock_grace",
+        "시장충격 유예",
+        "active",
+        true,
+        `지수 ${formatMarketShockLevel(marketStopGrace.level)} 구간의 손절가 이탈이라 ${MARKET_SHOCK_GRACE_SESSIONS}거래일 확인 후 손절을 확정합니다. ${returnDescription}`,
+        latestCloseReturnBasis
+          ? {
+              ...latestCloseReturnBasis,
+              result: "loss",
+              thresholdLabel: "시장충격 유예 손절가",
+              stopLossPrice
+            }
+          : undefined,
+        {
+          ...closeBasis,
+          rule: "손절가를 이탈했지만 KOSPI/KOSDAQ 시장 충격이 확인되어 1거래일 유예 상태로 유지합니다."
+        }
+      );
+    }
+
     return executedBuyCount > 0
       ? buildHistoryOutcome("active_entered", "현재", "active", true, "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.", undefined, closeBasis)
       : buildHistoryOutcome("active_no_entry", "현재 후보", "active", false, "현재 추천 목록에 남아 있으며 아직 체결 가정은 없습니다.", undefined, closeBasis);
@@ -668,10 +837,51 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     );
   }
 
+  if (isFiniteNumber(stopLossPrice) && isFiniteNumber(latestClose) && latestClose <= stopLossPrice) {
+    if (marketStopGrace?.status === "expired") {
+      return buildHistoryOutcome(
+        "market_shock_stop",
+        "시장 충격 손절",
+        "loss",
+        true,
+        `시장충격 유예 후에도 종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하라 손절 종료로 확정합니다. ${returnDescription}`,
+        latestCloseReturnBasis
+          ? {
+              ...latestCloseReturnBasis,
+              result: "loss",
+              thresholdLabel: "유예 후 손절가",
+              stopLossPrice
+            }
+          : undefined,
+        {
+          ...closeBasis,
+          rule: "시장 충격으로 1거래일 유예했지만 다음 확인에서도 손절가를 회복하지 못해 종료합니다."
+        }
+      );
+    }
+
+    return buildHistoryOutcome(
+      "stop_broken",
+      "손절 종료",
+      "loss",
+      true,
+      `종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하로 내려왔습니다. ${returnDescription}`,
+      latestCloseReturnBasis
+        ? {
+            ...latestCloseReturnBasis,
+            result: "loss",
+            thresholdLabel: "손절가",
+            stopLossPrice
+          }
+        : undefined,
+      closeBasis
+    );
+  }
+
   if (
     historyCase.outcomeStatus?.startsWith("target_hit_after") ||
     // Target hits are based on the post-entry high path, not only the closing price.
-    // A setup can finish as a profit even if the final close settles near the entry.
+    // Once the latest close is below the stop, stop handling must win over a prior run-up.
     (isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct) ||
     (isFiniteNumber(returnPct) && returnPct >= targetReturnPct)
   ) {
@@ -696,25 +906,6 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
               isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct ? maxFavorableReturnPct : returnPct,
             thresholdLabel: "목표 수익률",
             thresholdPct: targetReturnPct
-          }
-        : undefined,
-      closeBasis
-    );
-  }
-
-  if (isFiniteNumber(stopLossPrice) && isFiniteNumber(latestClose) && latestClose <= stopLossPrice) {
-    return buildHistoryOutcome(
-      "stop_broken",
-      "손절 종료",
-      "loss",
-      true,
-      `종가 ${formatKrw(latestClose)}이 손절가 ${formatKrw(stopLossPrice)} 이하로 내려왔습니다. ${returnDescription}`,
-      latestCloseReturnBasis
-        ? {
-            ...latestCloseReturnBasis,
-            result: "loss",
-            thresholdLabel: "손절가",
-            stopLossPrice
           }
         : undefined,
       closeBasis
@@ -954,7 +1145,9 @@ function buildSwingHistorySummary(
       (item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit"
     ).length,
     entryMissedUpsideCases: cases.filter((item) => item.historyOutcome?.type === "entry_missed_upside").length,
-    stopBrokenCases: cases.filter((item) => item.historyOutcome?.type === "stop_broken").length,
+    stopBrokenCases: cases.filter((item) => item.historyOutcome?.type === "stop_broken" || item.historyOutcome?.type === "market_shock_stop").length,
+    marketShockGraceCases: cases.filter((item) => item.historyOutcome?.type === "market_shock_grace").length,
+    marketShockStopCases: cases.filter((item) => item.historyOutcome?.type === "market_shock_stop").length,
     staleTimeoutCases: cases.filter((item) => item.historyOutcome?.type === "stale_timeout").length,
     defaultCases: cases.filter((item) => item.profile === "default").length,
     smallcapCases: cases.filter((item) => item.profile === "smallcap").length,
@@ -1000,11 +1193,101 @@ function isStopBrokenHistoryCase(historyCase: SwingHistoryCase) {
   );
 }
 
+function isActiveMarketStopGrace(historyCase: SwingHistoryCase) {
+  return historyCase.marketStopGrace?.status === "active" && Boolean(historyCase.marketStopGrace.startedDate);
+}
+
+function isMarketShockGraceEligible(historyCase: SwingHistoryCase, marketShockContext: MarketShockContext | undefined) {
+  if (!isStopBrokenHistoryCase(historyCase) || getExecutedBuyStage(historyCase) <= 0 || !marketShockContext?.active) {
+    return false;
+  }
+
+  const stopBreakDate = getValidDateText(historyCase.dataDate);
+  if (!stopBreakDate) {
+    return false;
+  }
+
+  const startedDate = getValidDateText(historyCase.marketStopGrace?.startedDate);
+  return !startedDate || startedDate === stopBreakDate;
+}
+
+function applyMarketStopGrace(
+  historyCase: SwingHistoryCase,
+  marketShockContext: MarketShockContext | undefined,
+  asOfDate: string | undefined
+): SwingHistoryCase {
+  const stopBreakDate = getValidDateText(historyCase.dataDate);
+  const existingGrace = historyCase.marketStopGrace;
+  const currentAsOfDate = getValidDateText(asOfDate);
+
+  if (!isStopBrokenHistoryCase(historyCase)) {
+    if (existingGrace?.status === "active") {
+      return {
+        ...historyCase,
+        marketStopGrace: {
+          ...existingGrace,
+          status: "recovered",
+          lastCheckedDate: stopBreakDate ?? existingGrace.lastCheckedDate
+        }
+      };
+    }
+    return historyCase;
+  }
+
+  if (existingGrace?.status === "active" && stopBreakDate !== existingGrace.startedDate) {
+    return {
+      ...historyCase,
+      marketStopGrace: {
+        ...existingGrace,
+        status: "expired",
+        lastCheckedDate: stopBreakDate ?? existingGrace.lastCheckedDate
+      }
+    };
+  }
+
+  if (currentAsOfDate && stopBreakDate && stopBreakDate < currentAsOfDate && existingGrace?.status !== "active") {
+    return historyCase;
+  }
+
+  if (isMarketShockGraceEligible(historyCase, marketShockContext)) {
+    const startedDate = getValidDateText(existingGrace?.startedDate) ?? stopBreakDate;
+    return {
+      ...historyCase,
+      marketStopGrace: {
+        status: "active",
+        startedDate,
+        lastCheckedDate: stopBreakDate,
+        shockDate: marketShockContext?.date ?? stopBreakDate,
+        level: marketShockContext?.level,
+        expiresAfterSessions: MARKET_SHOCK_GRACE_SESSIONS,
+        reasons: marketShockContext?.reasons ?? [],
+        indexChanges: marketShockContext?.indexChanges
+      }
+    };
+  }
+
+  if (existingGrace?.status === "active") {
+    return {
+      ...historyCase,
+      marketStopGrace: {
+        ...existingGrace,
+        status: "expired",
+        lastCheckedDate: stopBreakDate ?? existingGrace.lastCheckedDate
+      }
+    };
+  }
+
+  return historyCase;
+}
+
 function getEffectiveLifecycleStatus(
   historyCase: SwingHistoryCase,
   currentCaseKeys: Set<string>
 ): "current" | "closed" {
   if (isStopBrokenHistoryCase(historyCase)) {
+    if (isActiveMarketStopGrace(historyCase)) {
+      return "current";
+    }
     return "closed";
   }
   return currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
@@ -1059,6 +1342,31 @@ async function refreshCaseMarketPrices(cases: SwingHistoryCase[], asOfDate: stri
   return Promise.all(cases.map((historyCase) => refreshCaseMarketPrice(historyCase, asOfDate)));
 }
 
+async function createMarketShockContextResolver() {
+  try {
+    const snapshots = await getMarketWatchSnapshots();
+    const contextByDate = new Map<string, MarketShockContext | undefined>();
+
+    return (date: string | undefined) => {
+      const key = getValidDateText(date) ?? "__latest__";
+      if (!contextByDate.has(key)) {
+        contextByDate.set(key, buildMarketShockContext(snapshots.items, getValidDateText(date)));
+      }
+      return contextByDate.get(key);
+    };
+  } catch {
+    return (_date: string | undefined) => undefined;
+  }
+}
+
+function applyMarketStopGraceToCases(
+  cases: SwingHistoryCase[],
+  resolveMarketShockContext: (date: string | undefined) => MarketShockContext | undefined,
+  asOfDate: string | undefined
+) {
+  return cases.map((historyCase) => applyMarketStopGrace(historyCase, resolveMarketShockContext(historyCase.dataDate), asOfDate));
+}
+
 function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
   const grouped = new Map<string, SwingHistoryCase[]>();
 
@@ -1089,7 +1397,10 @@ function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
         profitExitCaseCount: monthCases.filter(
           (item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit"
         ).length,
-        stopBrokenCaseCount: monthCases.filter((item) => item.historyOutcome?.type === "stop_broken").length,
+        stopBrokenCaseCount: monthCases.filter(
+          (item) => item.historyOutcome?.type === "stop_broken" || item.historyOutcome?.type === "market_shock_stop"
+        ).length,
+        marketShockStopCaseCount: monthCases.filter((item) => item.historyOutcome?.type === "market_shock_stop").length,
         averageReturnPct
       };
     });
@@ -1112,7 +1423,12 @@ function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
 
   const latestClose = historyCase.latestClose;
   const stopLossPrice = historyCase.buyPlan?.stopLossPrice;
-  if (isFiniteNumber(latestClose) && isFiniteNumber(stopLossPrice) && latestClose <= stopLossPrice) {
+  if (
+    isFiniteNumber(latestClose) &&
+    isFiniteNumber(stopLossPrice) &&
+    latestClose <= stopLossPrice &&
+    !isActiveMarketStopGrace(historyCase)
+  ) {
     return false;
   }
 
@@ -1145,8 +1461,10 @@ export async function readSwingCarryForwardCases(profile?: string): Promise<Swin
     rawCases.map((historyCase) => enrichClosedDateFields(historyCase, "current", asOfDate)),
     asOfDate
   );
+  const resolveMarketShockContext = await createMarketShockContextResolver();
+  const casesWithMarketStopGrace = applyMarketStopGraceToCases(cases, resolveMarketShockContext, asOfDate);
 
-  return cases
+  return casesWithMarketStopGrace
     .filter((historyCase) => shouldCarryForwardSwingCase(historyCase))
     .filter((historyCase) => !profile || historyCase.profile === profile)
     .map((historyCase) => ({
@@ -1212,7 +1530,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
     return enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
   });
   const casesWithLatestMarketPrice = await refreshCaseMarketPrices(casesWithClosedDate, asOfDate);
-  const casesWithOutcome = casesWithLatestMarketPrice.map((historyCase) => {
+  const resolveMarketShockContext = await createMarketShockContextResolver();
+  const casesWithMarketStopGrace = applyMarketStopGraceToCases(casesWithLatestMarketPrice, resolveMarketShockContext, asOfDate);
+  const casesWithOutcome = casesWithMarketStopGrace.map((historyCase) => {
     const lifecycleStatus = getEffectiveLifecycleStatus(historyCase, currentCaseKeys);
     const caseWithLifecycle = enrichClosedDateFields(historyCase, lifecycleStatus, asOfDate);
 
@@ -1269,8 +1589,10 @@ export async function readSwingRecommendationHistory() {
   );
   const currentBySymbol = new Map(currentCandidates.map((candidate) => [candidate.symbol, candidate]));
   const currentCaseKeys = new Set(currentCandidates.map((candidate) => getHistoryCaseKey(candidate.profile, candidate.symbol)));
+  const resolveMarketShockContext = await createMarketShockContextResolver();
+  const casesWithMarketStopGrace = applyMarketStopGraceToCases(cases, resolveMarketShockContext, payload.asOfDate as string | undefined);
 
-  const enrichedCases = cases.map((historyCase) => {
+  const enrichedCases = casesWithMarketStopGrace.map((historyCase) => {
     const currentRecommendation =
       currentByProfileSymbol.get(getCandidateKey(historyCase.profile, historyCase.symbol)) ??
       (historyCase.profile ? undefined : currentBySymbol.get(historyCase.symbol));

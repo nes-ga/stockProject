@@ -1138,3 +1138,660 @@ export async function analyzeRecommendation(input: RecommendationRequest): Promi
   ...
 }
 ```
+
+## 16. 2차 학습 기록: `analyzeRecommendation(input)` 초반 흐름
+
+학습일: 2026-06-01
+
+이번 학습에서는 `src/services/stockAnalysis.ts`의 `analyzeRecommendation(input)` 함수 내부를 읽기 시작했습니다.
+
+이 함수의 역할은 다음과 같습니다.
+
+```text
+RecommendationRequest 하나를 받아서
+차트 데이터 + 펀더멘털 데이터 + 수익률 계산을 한 뒤
+RecommendationAnalysis 하나로 만들어 반환한다.
+```
+
+Java 관점으로 보면 대략 다음과 비슷합니다.
+
+```java
+public CompletableFuture<RecommendationAnalysis> analyzeRecommendation(RecommendationRequest input) {
+    ...
+}
+```
+
+### 16.1 입력 symbol을 실제 조회용 symbol로 변환
+
+첫 줄:
+
+```ts
+const symbol = resolveFinanceSymbol(input.symbol, config.yahooDefaultMarketSuffix);
+```
+
+뜻:
+
+```text
+사용자가 입력한 symbol을 실제 금융 API 조회용 symbol로 바꾼다.
+```
+
+예를 들어 한국 종목 코드를 `005930`처럼 넣으면, 실제 Yahoo/Naver 조회에는 `.KS` 같은 suffix가 필요할 수 있습니다. 그 처리를 `resolveFinanceSymbol(...)`이 담당합니다.
+
+Java 감각:
+
+```java
+String symbol = resolveFinanceSymbol(input.getSymbol(), config.getYahooDefaultMarketSuffix());
+```
+
+여기서 `const`는 Java의 `final` 변수처럼 보면 됩니다.
+
+```ts
+const symbol = ...
+```
+
+즉 한 번 값을 정하면 다시 다른 값으로 재할당하지 않겠다는 뜻입니다.
+
+### 16.2 분석 시작 로그
+
+```ts
+logger.info("recommendation:analyze:start", {
+  symbol: input.symbol,
+  resolvedSymbol: symbol,
+  anchorDate: input.anchorDate
+});
+```
+
+뜻:
+
+```text
+종목 분석을 시작했다는 로그를 남긴다.
+입력 symbol, 실제 조회 symbol, 기준일(anchorDate)을 함께 기록한다.
+```
+
+Java/Spring 로그와 비교하면:
+
+```java
+log.info("recommendation:analyze:start symbol={}, resolvedSymbol={}, anchorDate={}",
+    input.getSymbol(),
+    symbol,
+    input.getAnchorDate()
+);
+```
+
+TypeScript 코드에서는 로그 context를 객체로 넘깁니다.
+
+```ts
+{
+  symbol: input.symbol,
+  resolvedSymbol: symbol,
+  anchorDate: input.anchorDate
+}
+```
+
+이런 형태는 JSON 로그로 남기기 좋습니다.
+
+### 16.3 기준일보다 40일 전 날짜 계산
+
+```ts
+const period1 = addDays(input.anchorDate, -40);
+```
+
+뜻:
+
+```text
+추천 기준일보다 40일 전 날짜를 구한다.
+```
+
+예:
+
+```text
+anchorDate = 2026-05-29
+period1 = 2026-04-19 근처
+```
+
+40일 전부터 차트를 가져오는 이유는 기준일 가격만 필요한 것이 아니기 때문입니다. 기준일 이전 거래량 평균이나 기준일 주변 흐름을 계산하려면 이전 데이터가 필요합니다.
+
+Java 감각:
+
+```java
+LocalDate period1 = addDays(input.getAnchorDate(), -40);
+```
+
+### 16.4 category에 따라 차트 조회 개수 결정
+
+```ts
+const naverCount = input.category === "swing" ? DEFAULT_NAVER_CHART_SESSIONS : LONG_TERM_NAVER_CHART_SESSIONS;
+```
+
+이 코드는 삼항 연산자입니다.
+
+```ts
+조건 ? 참일 때 값 : 거짓일 때 값
+```
+
+풀어 쓰면:
+
+```ts
+let naverCount;
+
+if (input.category === "swing") {
+  naverCount = DEFAULT_NAVER_CHART_SESSIONS;
+} else {
+  naverCount = LONG_TERM_NAVER_CHART_SESSIONS;
+}
+```
+
+Java와 비교하면:
+
+```java
+int naverCount = input.getCategory() == Category.SWING
+    ? DEFAULT_NAVER_CHART_SESSIONS
+    : LONG_TERM_NAVER_CHART_SESSIONS;
+```
+
+여기서 `===`는 JavaScript/TypeScript의 엄격 비교입니다. TypeScript 코드에서는 일반적으로 `==`보다 `===`를 씁니다.
+
+### 16.5 차트 데이터와 펀더멘털 데이터를 동시에 가져오기
+
+```ts
+const [chartResult, fundamentals] = await Promise.all([
+  fetchQuoteAndChart(symbol, { period1, naverCount }),
+  fetchFundamentals(input.symbol)
+]);
+```
+
+뜻:
+
+```text
+차트 데이터 조회와 펀더멘털 데이터 조회를 동시에 시작한다.
+둘 다 끝날 때까지 기다린다.
+결과를 chartResult, fundamentals에 각각 담는다.
+```
+
+Java의 `CompletableFuture` 감각으로 보면:
+
+```java
+CompletableFuture<ChartResult> chartFuture = fetchQuoteAndChart(symbol, period1, naverCount);
+CompletableFuture<Fundamentals> fundamentalsFuture = fetchFundamentals(input.getSymbol());
+
+CompletableFuture.allOf(chartFuture, fundamentalsFuture).join();
+
+ChartResult chartResult = chartFuture.join();
+Fundamentals fundamentals = fundamentalsFuture.join();
+```
+
+TypeScript에서는 이 흐름을 `Promise.all(...)`로 짧게 씁니다.
+
+```ts
+const [chartResult, fundamentals] = await Promise.all([...]);
+```
+
+여기서 `[chartResult, fundamentals]`는 배열 구조 분해 할당입니다.
+
+풀어 쓰면:
+
+```ts
+const results = await Promise.all([...]);
+
+const chartResult = results[0];
+const fundamentals = results[1];
+```
+
+### 16.6 category별 longTermReview 분기
+
+```ts
+const longTermReview =
+  input.category === "swing"
+    ? undefined
+    : input.category === "dividend"
+      ? await analyzeDividendCandidate({
+          symbol: input.symbol,
+          name: input.name,
+          fundamentals
+        })
+      : await analyzeLongTermCandidate({
+          symbol: input.symbol,
+          name: input.name,
+          fundamentals
+        });
+```
+
+삼항 연산자가 두 번 겹친 코드입니다.
+
+풀어 쓰면:
+
+```ts
+let longTermReview;
+
+if (input.category === "swing") {
+  longTermReview = undefined;
+} else if (input.category === "dividend") {
+  longTermReview = await analyzeDividendCandidate({
+    symbol: input.symbol,
+    name: input.name,
+    fundamentals
+  });
+} else {
+  longTermReview = await analyzeLongTermCandidate({
+    symbol: input.symbol,
+    name: input.name,
+    fundamentals
+  });
+}
+```
+
+Java 감각:
+
+```java
+LongTermReview longTermReview;
+
+if (input.getCategory() == Category.SWING) {
+    longTermReview = null;
+} else if (input.getCategory() == Category.DIVIDEND) {
+    longTermReview = analyzeDividendCandidate(input.getSymbol(), input.getName(), fundamentals);
+} else {
+    longTermReview = analyzeLongTermCandidate(input.getSymbol(), input.getName(), fundamentals);
+}
+```
+
+핵심 의미:
+
+```text
+swing 종목
+-> 장기 투자 리뷰를 하지 않는다.
+-> longTermReview는 undefined
+
+dividend 종목
+-> 배당 후보 분석을 한다.
+
+그 외
+-> 장기 투자 후보 분석을 한다.
+```
+
+여기서 `undefined`는 Java의 `null`처럼 "값이 없다"는 의미로 이해하면 됩니다. 다만 TypeScript에서는 `null`과 `undefined`를 구분합니다.
+
+### 16.7 chartResult에서 quote와 points 꺼내기
+
+```ts
+const { quote, points } = chartResult;
+```
+
+이건 객체 구조 분해 할당입니다.
+
+만약 `chartResult`가 다음처럼 생겼다면:
+
+```ts
+const chartResult = {
+  quote: {...},
+  points: [...]
+};
+```
+
+아래 두 줄을:
+
+```ts
+const quote = chartResult.quote;
+const points = chartResult.points;
+```
+
+이렇게 짧게 쓴 것입니다.
+
+```ts
+const { quote, points } = chartResult;
+```
+
+Java로 치면 getter로 꺼내는 느낌입니다.
+
+```java
+Quote quote = chartResult.getQuote();
+List<Point> points = chartResult.getPoints();
+```
+
+여기서 `points`는 차트의 일자별 가격 배열입니다.
+
+```ts
+[
+  { date: "2026-05-01", close: 10000, volume: 120000 },
+  { date: "2026-05-02", close: 10300, volume: 150000 }
+]
+```
+
+### 16.8 fundamentals에 배당수익률 정보 보강
+
+```ts
+const enrichedFundamentals = enrichFundamentalsWithDividendYields(fundamentals, points);
+```
+
+뜻:
+
+```text
+기존 fundamentals 데이터에 차트 가격 정보를 이용해 배당수익률 같은 값을 보강한다.
+```
+
+배당수익률은 보통 다음 계산이 필요합니다.
+
+```text
+배당수익률 = 주당 배당금 / 현재 주가
+```
+
+즉 펀더멘털 데이터만으로는 부족하고, 최근 주가 데이터인 `points`가 필요합니다.
+
+### 16.9 차트 데이터가 없으면 에러
+
+```ts
+if (!points.length) {
+  throw new Error(`No chart data available for ${symbol}`);
+}
+```
+
+뜻:
+
+```text
+차트 데이터가 하나도 없으면 더 이상 분석할 수 없으니 에러를 던진다.
+```
+
+`points.length`는 배열 길이입니다.
+
+```ts
+points.length
+```
+
+배열이 비어 있으면:
+
+```ts
+points.length === 0
+```
+
+`!points.length`는 `points.length`가 0일 때 `true`가 됩니다.
+
+Java 감각:
+
+```java
+if (points.isEmpty()) {
+    throw new RuntimeException("No chart data available for " + symbol);
+}
+```
+
+여기서 `throw`된 에러는 라우터의 `catch`로 올라가고, 최종적으로 `next(error)`를 통해 글로벌 에러 핸들러로 전달됩니다.
+
+```text
+analyzeRecommendation에서 throw
+-> analyzeRecommendations의 Promise 실패
+-> 라우터 catch
+-> next(error)
+-> 글로벌 에러 핸들러
+```
+
+## 17. 2차 학습 기록: 기준 거래일과 거래량 배열
+
+### 17.1 추천 기준일 이후 첫 거래일 찾기
+
+```ts
+const anchorIndex = points.findIndex((point) => point.date >= input.anchorDate);
+if (anchorIndex === -1) {
+  throw new Error(`No trading session found on or after ${input.anchorDate} for ${symbol}`);
+}
+```
+
+`anchorIndex`의 의미:
+
+```text
+추천 기준일(anchorDate) 당일 또는 그 이후의 첫 거래일 위치
+```
+
+예를 들어 `anchorDate`가 `2026-05-04`인데 그날이 휴장일이면, 실제 차트에는 그 날짜가 없을 수 있습니다.
+
+```ts
+const points = [
+  { date: "2026-05-01", close: 100 },
+  { date: "2026-05-05", close: 105 },
+  { date: "2026-05-06", close: 108 }
+];
+```
+
+이때:
+
+```ts
+input.anchorDate = "2026-05-04";
+```
+
+첫 번째로 `point.date >= "2026-05-04"`를 만족하는 데이터는 다음입니다.
+
+```ts
+{ date: "2026-05-05", close: 105 }
+```
+
+그래서 `anchorIndex`는 `1`입니다.
+
+Java로 보면:
+
+```java
+int anchorIndex = -1;
+
+for (int i = 0; i < points.size(); i++) {
+    if (points.get(i).getDate().compareTo(input.getAnchorDate()) >= 0) {
+        anchorIndex = i;
+        break;
+    }
+}
+
+if (anchorIndex == -1) {
+    throw new RuntimeException("No trading session found...");
+}
+```
+
+TypeScript에서는 이 흐름을 `findIndex`로 짧게 씁니다.
+
+```ts
+points.findIndex((point) => point.date >= input.anchorDate)
+```
+
+`findIndex`는 조건을 만족하는 첫 번째 배열 index를 반환합니다. 없으면 `-1`을 반환합니다.
+
+### 17.2 기준 거래일 데이터와 최신 거래일 데이터
+
+```ts
+const anchorPoint = points[anchorIndex];
+```
+
+뜻:
+
+```text
+수익률 계산의 기준이 되는 거래일 데이터
+```
+
+즉 추천 기준일 이후 첫 실제 거래일입니다.
+
+```ts
+const anchorPoint = { date: "2026-05-05", close: 105 };
+```
+
+이후 수익률 계산은 이 가격을 기준으로 합니다.
+
+```text
+기준 가격 = anchorPoint.close
+```
+
+다음은 최신 거래일입니다.
+
+```ts
+const latestPoint = points.at(-1);
+if (!latestPoint) {
+  throw new Error(`No latest chart point available for ${symbol}`);
+}
+```
+
+`points.at(-1)`은 배열의 마지막 요소를 꺼냅니다.
+
+```ts
+const points = [
+  { date: "2026-05-01", close: 100 },
+  { date: "2026-05-05", close: 105 },
+  { date: "2026-05-06", close: 108 }
+];
+
+const latestPoint = points.at(-1);
+```
+
+결과:
+
+```ts
+{ date: "2026-05-06", close: 108 }
+```
+
+Java로 치면:
+
+```java
+Point latestPoint = points.get(points.size() - 1);
+```
+
+위에서 이미 `points.length`를 검사했기 때문에 보통 `latestPoint`가 없을 일은 거의 없습니다. 그래도 TypeScript에서는 `points.at(-1)` 결과가 `Point | undefined`일 수 있으므로 한 번 더 확인합니다.
+
+### 17.3 기준일 이후 데이터만 자르기
+
+```ts
+const afterAnchorPoints = points.slice(anchorIndex);
+```
+
+뜻:
+
+```text
+기준 거래일부터 마지막 거래일까지의 차트 데이터만 잘라낸다.
+```
+
+예:
+
+```ts
+const points = [
+  { date: "2026-05-01", close: 100 },
+  { date: "2026-05-05", close: 105 },
+  { date: "2026-05-06", close: 108 },
+  { date: "2026-05-07", close: 102 }
+];
+
+const anchorIndex = 1;
+const afterAnchorPoints = points.slice(anchorIndex);
+```
+
+결과:
+
+```ts
+[
+  { date: "2026-05-05", close: 105 },
+  { date: "2026-05-06", close: 108 },
+  { date: "2026-05-07", close: 102 }
+]
+```
+
+Java로 치면:
+
+```java
+List<Point> afterAnchorPoints = points.subList(anchorIndex, points.size());
+```
+
+### 17.4 거래량 계산용 배열 만들기
+
+```ts
+const volumesBeforeAnchor = points.slice(Math.max(0, anchorIndex - 20), anchorIndex).map((point) => point.volume);
+const volumesAfterAnchor = afterAnchorPoints.slice(0, 20).map((point) => point.volume);
+const volumesLatest = points.slice(-20).map((point) => point.volume);
+```
+
+첫 번째 줄:
+
+```ts
+points.slice(Math.max(0, anchorIndex - 20), anchorIndex)
+```
+
+뜻:
+
+```text
+기준일 직전 최대 20개 거래일
+```
+
+뒤의 `map`:
+
+```ts
+.map((point) => point.volume)
+```
+
+뜻:
+
+```text
+각 point 객체에서 volume만 꺼내 배열로 만든다.
+```
+
+예:
+
+```ts
+[
+  { date: "2026-05-01", close: 100, volume: 1000 },
+  { date: "2026-05-02", close: 101, volume: 1200 }
+].map((point) => point.volume)
+```
+
+결과:
+
+```ts
+[1000, 1200]
+```
+
+세 배열의 의미:
+
+```text
+volumesBeforeAnchor
+-> 기준일 이전 20거래일 거래량
+
+volumesAfterAnchor
+-> 기준일 이후 첫 20거래일 거래량
+
+volumesLatest
+-> 가장 최근 20거래일 거래량
+```
+
+Java stream으로 보면:
+
+```java
+List<Integer> volumesLatest = points.subList(points.size() - 20, points.size())
+    .stream()
+    .map(Point::getVolume)
+    .toList();
+```
+
+다만 실제 Java에서는 index가 0보다 작지 않게 더 조심해야 합니다. TypeScript의 `slice(-20)`은 배열 끝에서 20개를 가져오고, 데이터가 20개보다 적으면 있는 만큼만 가져옵니다.
+
+### 17.5 오늘까지 이해한 흐름
+
+```text
+1. 입력 symbol을 실제 조회용 symbol로 변환한다.
+2. 분석 시작 로그를 남긴다.
+3. 기준일보다 40일 전 날짜를 계산한다.
+4. category가 swing인지 longTerm/dividend인지에 따라 차트 조회 개수를 정한다.
+5. 차트 데이터와 펀더멘털 데이터를 Promise.all로 동시에 가져온다.
+6. category에 따라 longTermReview를 만들거나 생략한다.
+7. chartResult에서 quote와 points를 꺼낸다.
+8. fundamentals에 배당수익률 정보를 보강한다.
+9. 차트 데이터가 없으면 에러를 던진다.
+10. 추천 기준일 이후 첫 실제 거래일을 찾는다.
+11. 그 거래일을 수익률 계산의 기준점(anchorPoint)으로 잡는다.
+12. 차트의 마지막 거래일을 latestPoint로 잡는다.
+13. 기준일 이후 데이터만 afterAnchorPoints로 자른다.
+14. 기준 전/후/최근 20일 거래량 배열을 만든다.
+```
+
+다음 학습 시작 위치:
+
+```ts
+let highestPoint = anchorPoint;
+let lowestPoint = anchorPoint;
+for (const point of afterAnchorPoints) {
+  if (point.close > highestPoint.close) {
+    highestPoint = point;
+  }
+  if (point.close < lowestPoint.close) {
+    lowestPoint = point;
+  }
+}
+```
+
+다음에는 기준일 이후 최고 종가와 최저 종가를 찾고, 이를 이용해 `maxGainPercent`, `maxDrawdownPercent`를 계산하는 흐름을 봅니다.

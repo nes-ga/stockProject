@@ -41,6 +41,7 @@ const DEFAULT_MARKET_FLOW_RANGE = "6M";
 const MARKET_FLOW_CHART_RANGES = ["3M", "6M", "1Y", "2Y"];
 const APP_VIEWS = ["news", "index", "history", "analysis", "movers"];
 const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
+const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["all", "profit", "loss", "other"]);
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -486,6 +487,7 @@ let recommendationHistoryLoading = false;
 let recommendationHistoryError = "";
 let recommendationHistoryClosedMonth = "";
 let recommendationHistoryClosedSearch = "";
+let recommendationHistoryClosedOutcomeFilter = "all";
 let recommendationHistoryCurrentStageFilter = "all";
 let activeHistoryChartItem = null;
 let historyChartState = null;
@@ -1083,6 +1085,14 @@ recommendationHistoryCurrentCases?.addEventListener("keydown", (event) => {
   });
 });
 recommendationHistoryClosedCases?.addEventListener("click", (event) => {
+  const outcomeFilter = event.target.closest("[data-history-closed-outcome-filter]");
+  if (outcomeFilter) {
+    const nextFilter = outcomeFilter.dataset.historyClosedOutcomeFilter;
+    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "all";
+    renderRecommendationHistoryBoard();
+    return;
+  }
+
   const trigger = event.target.closest("[data-history-chart-symbol]");
   if (!trigger) {
     return;
@@ -1097,6 +1107,15 @@ recommendationHistoryClosedCases?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
+  const outcomeFilter = event.target.closest("[data-history-closed-outcome-filter]");
+  if (outcomeFilter) {
+    event.preventDefault();
+    const nextFilter = outcomeFilter.dataset.historyClosedOutcomeFilter;
+    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "all";
+    renderRecommendationHistoryBoard();
+    return;
+  }
+
   const trigger = event.target.closest("[data-history-chart-symbol]");
   if (!trigger) {
     return;
@@ -1871,6 +1890,37 @@ function filterHistoryClosedCases(closedCases) {
   });
 }
 
+function getHistoryClosedOutcomeGroup(item) {
+  const outcome = item?.historyOutcome ?? {};
+  const category = outcome.category;
+  const result = outcome.returnBasis?.result;
+  const type = outcome.type;
+
+  if (category === "profit" || type === "target_hit" || type === "drift_profit_exit") {
+    return "profit";
+  }
+
+  if (category === "loss" || type === "stop_broken" || type === "market_shock_stop") {
+    return "loss";
+  }
+
+  if (!category && (result === "profit" || result === "loss")) {
+    return result;
+  }
+
+  return "other";
+}
+
+function filterHistoryClosedCasesByOutcome(closedCases) {
+  const selectedOutcome = CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)
+    ? recommendationHistoryClosedOutcomeFilter
+    : "all";
+  if (selectedOutcome === "all") {
+    return closedCases;
+  }
+  return closedCases.filter((item) => getHistoryClosedOutcomeGroup(item) === selectedOutcome);
+}
+
 function shouldDisplayClosedHistoryCase(item) {
   return item?.lifecycleStatus === "closed" && getExecutedBuyCountForHistoryItem(item) > 0 && item?.entryBucket !== "watch";
 }
@@ -1880,10 +1930,11 @@ function shouldDisplayCurrentRecommendationCandidate(item) {
     return true;
   }
   return Boolean(
-    item?.hasHistoryCase &&
+      item?.hasHistoryCase &&
       item?.hasEntryAssumption &&
       item?.historyCase?.lifecycleStatus !== "closed" &&
-      item?.historyCase?.historyOutcome?.type !== "stop_broken"
+      item?.historyCase?.historyOutcome?.type !== "stop_broken" &&
+      item?.historyCase?.historyOutcome?.type !== "market_shock_stop"
   );
 }
 
@@ -1990,7 +2041,7 @@ function renderRecommendationHistoryBoard() {
   recommendationHistoryClosedCases.classList.remove("history-placeholder");
   renderHistoryClosedFilterControls(closedMonthOptions, closedCases.length, filteredClosedCases.length);
   recommendationHistoryCurrentCases.innerHTML = renderHistoryCurrentCandidateList(currentCandidates, currentCases);
-  recommendationHistoryClosedCases.innerHTML = renderHistoryCaseList(filteredClosedCases, {
+  recommendationHistoryClosedCases.innerHTML = renderHistoryClosedCasePanel(filteredClosedCases, {
     emptyText:
       closedCases.length === 0
         ? "아직 종료 케이스가 없습니다. 현재 추천 중인 종목은 왼쪽 현재 상태에서 따로 추적합니다."
@@ -2346,7 +2397,8 @@ function renderHistoryMatrix(_summary, cases, options = {}) {
   const rows = [
     ["슈팅 수익", cases.filter((item) => item.historyOutcome?.type === "target_hit").length],
     ["완만 상승", cases.filter((item) => item.historyOutcome?.type === "drift_profit_exit").length],
-    ["손절 종료", cases.filter((item) => item.historyOutcome?.type === "stop_broken").length],
+    ["시장충격 유예", cases.filter((item) => item.historyOutcome?.type === "market_shock_grace").length],
+    ["손절 종료", cases.filter((item) => item.historyOutcome?.type === "stop_broken" || item.historyOutcome?.type === "market_shock_stop").length],
     ["시간 종료", cases.filter((item) => item.historyOutcome?.type === "stale_timeout").length]
   ];
 
@@ -2494,21 +2546,28 @@ function renderHistoryCurrentStageSummary(enteredRows) {
 }
 
 function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
-  const rows = currentCandidates.length
-    ? currentCandidates
-    : currentCases
-        .filter(
-          (item) => item.currentRecommendation?.sourceBucket !== "watch" || getExecutedBuyCountForHistoryItem(item) > 0
-        )
-        .map((item) => ({
-          name: item.name,
-          symbol: item.symbol,
-          profile: item.profile,
-          bucket: item.currentRecommendation?.bucket ?? item.entryBucket,
-          sourceBucket: item.currentRecommendation?.sourceBucket ?? "execution",
-          hasHistoryCase: true,
-          historyCase: item
-        }));
+  const rowKey = (item) => `${item?.profile ?? item?.historyCase?.profile ?? ""}:${item?.symbol ?? item?.historyCase?.symbol ?? ""}`;
+  const rowsByKey = new Map(currentCandidates.map((item) => [rowKey(item), item]));
+
+  for (const item of currentCases) {
+    const key = rowKey(item);
+    if (rowsByKey.has(key) || getExecutedBuyCountForHistoryItem(item) <= 0) {
+      continue;
+    }
+
+    rowsByKey.set(key, {
+      name: item.name,
+      symbol: item.symbol,
+      profile: item.profile,
+      bucket: item.currentRecommendation?.bucket ?? item.entryBucket,
+      sourceBucket: item.currentRecommendation?.sourceBucket ?? "watch",
+      hasHistoryCase: true,
+      hasEntryAssumption: true,
+      historyCase: item
+    });
+  }
+
+  const rows = [...rowsByKey.values()];
   const enteredRows = sortCurrentHistoryRowsByRecent(rows);
   const validStageFilters = new Set(["all", "1", "2", "3"]);
   if (!validStageFilters.has(String(recommendationHistoryCurrentStageFilter))) {
@@ -2535,6 +2594,57 @@ function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
           : `<div class="history-placeholder">선택한 체결 단계의 현재 추천 후보가 없습니다.</div>`
       }
     </div>
+  `;
+}
+
+function renderHistoryClosedOutcomeTabs(cases) {
+  const activeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)
+    ? recommendationHistoryClosedOutcomeFilter
+    : "all";
+  const tabItems = [
+    { key: "all", label: "전체", description: "종료", count: cases.length },
+    { key: "profit", label: "수익", description: "목표/상승", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "profit").length },
+    { key: "loss", label: "손절", description: "손절/손실", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "loss").length },
+    { key: "other", label: "기타", description: "시간/제외", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "other").length }
+  ];
+
+  return `
+    <div class="history-closed-outcome-tabs" role="tablist" aria-label="종료 케이스 결과 필터">
+      ${tabItems
+        .map((item) => `
+          <button
+            class="history-closed-outcome-tab ${item.key} ${activeFilter === item.key ? "active" : ""}"
+            type="button"
+            role="tab"
+            aria-selected="${activeFilter === item.key ? "true" : "false"}"
+            data-history-closed-outcome-filter="${escapeHtml(item.key)}"
+          >
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${formatNumber(item.count)}</strong>
+            <em>${escapeHtml(item.description)}</em>
+          </button>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderHistoryClosedCasePanel(cases, options = {}) {
+  if (!CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)) {
+    recommendationHistoryClosedOutcomeFilter = "all";
+  }
+
+  const filteredCases = filterHistoryClosedCasesByOutcome(cases);
+  const emptyText = cases.length
+    ? "선택한 종료 유형에 맞는 케이스가 없습니다."
+    : options.emptyText;
+
+  return `
+    ${renderHistoryClosedOutcomeTabs(cases)}
+    ${renderHistoryCaseList(filteredCases, {
+      ...options,
+      emptyText
+    })}
   `;
 }
 
