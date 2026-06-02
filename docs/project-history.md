@@ -2,6 +2,21 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-06-02
+
+Naver 기반 KOSPI/KOSDAQ 지수 분봉 사용 가능성을 조사했습니다.
+
+- 현재 프로젝트의 지수 일봉은 `fchart.stock.naver.com/sise.nhn`에서 `timeframe=day`, `count=5200`으로 가져옵니다.
+- 같은 `fchart` 경로에서 `timeframe=minute`은 지수에 대해 빈 `<protocol />`을 반환했고, `timeframe=30`은 validation 실패였습니다.
+- `api.finance.naver.com/siseJson.naver`는 개별 종목 minute 데이터는 주지만, KOSPI/KOSDAQ 지수 minute 데이터는 row를 주지 않았습니다.
+- `api.stock.naver.com/chart/domestic/index/...`는 `periodType=dayCandle` 지수 일봉은 주지만, `periodType=minuteCandle`은 실패했습니다.
+- Naver 모바일 지수 페이지에는 `scriptChartTypes`에 `candleMinuteFive`가 확인되어, Naver 내부에 지수 분봉성 차트가 존재할 가능성은 높습니다.
+- 남은 작업은 ChartIQ 번들에서 실제 분봉 데이터 endpoint와 parameter를 찾는 것입니다.
+
+관련 문서:
+
+- [2026-06-02 Naver 지수 분봉 조사](./naver-index-intraday-investigation-2026-06-02.md)
+
 ## 2026-06-01
 
 스윙 히스토리에 시장 충격 손절 유예 장치를 추가했습니다.

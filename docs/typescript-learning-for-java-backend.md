@@ -1795,3 +1795,571 @@ for (const point of afterAnchorPoints) {
 ```
 
 다음에는 기준일 이후 최고 종가와 최저 종가를 찾고, 이를 이용해 `maxGainPercent`, `maxDrawdownPercent`를 계산하는 흐름을 봅니다.
+
+## 18. 3차 학습 기록: 최고/최저 종가, 응답 DTO, 거래량 요약
+
+학습일: 2026-06-02
+
+이번 학습에서는 `analyzeRecommendation(input)` 함수의 중반 이후 흐름을 읽었습니다.
+
+핵심 위치:
+
+```ts
+let highestPoint = anchorPoint;
+let lowestPoint = anchorPoint;
+for (const point of afterAnchorPoints) {
+  if (point.close > highestPoint.close) {
+    highestPoint = point;
+  }
+  if (point.close < lowestPoint.close) {
+    lowestPoint = point;
+  }
+}
+```
+
+### 18.1 기준일 이후 최고 종가와 최저 종가 찾기
+
+이 코드는 기준일 종가의 고가/저가를 찾는 것이 아닙니다.
+
+정확한 의미는 다음과 같습니다.
+
+```text
+추천 기준 거래일 이후부터 최신 거래일까지
+종가가 가장 높았던 point와
+종가가 가장 낮았던 point를 찾는다.
+```
+
+여기서 비교하는 값은 `high`, `low`가 아니라 `close`입니다.
+
+```ts
+if (point.close > highestPoint.close) {
+  highestPoint = point;
+}
+
+if (point.close < lowestPoint.close) {
+  lowestPoint = point;
+}
+```
+
+즉 일중 고가/저가가 아니라 종가 기준 최고점/최저점입니다.
+
+Java로 보면 다음과 비슷합니다.
+
+```java
+Point highestPoint = anchorPoint;
+Point lowestPoint = anchorPoint;
+
+for (Point point : afterAnchorPoints) {
+    if (point.getClose() > highestPoint.getClose()) {
+        highestPoint = point;
+    }
+
+    if (point.getClose() < lowestPoint.getClose()) {
+        lowestPoint = point;
+    }
+}
+```
+
+이 값들은 나중에 최종 응답 객체에서 다음 필드로 들어갑니다.
+
+```ts
+maxGainPercent: percentChange(highestPoint.close, anchorPoint.close) ?? 0,
+maxDrawdownPercent: percentChange(lowestPoint.close, anchorPoint.close) ?? 0,
+highestClose: {
+  date: highestPoint.date,
+  close: highestPoint.close
+},
+lowestClose: {
+  date: lowestPoint.date,
+  close: lowestPoint.close
+}
+```
+
+의미:
+
+```text
+maxGainPercent
+-> 기준일 종가 대비 이후 최고 종가까지 얼마나 올랐는지
+
+maxDrawdownPercent
+-> 기준일 종가 대비 이후 최저 종가까지 얼마나 빠졌는지
+
+highestClose
+-> 최고 종가가 나온 날짜와 가격
+
+lowestClose
+-> 최저 종가가 나온 날짜와 가격
+```
+
+주의할 점:
+
+```text
+maxDrawdownPercent는 현재 구현상 양수 drawdown이 아니라
+percentChange(lowestPoint.close, anchorPoint.close)의 결과입니다.
+따라서 하락이면 음수로 나올 수 있습니다.
+```
+
+### 18.2 `const analysis`는 메소드가 아니라 응답 DTO 객체다
+
+다음 코드는 메소드 선언이 아닙니다.
+
+```ts
+const analysis = {
+  name: input.name,
+  symbol: input.symbol,
+  resolvedSymbol: symbol,
+  ...
+};
+```
+
+이 코드는 최종 응답으로 반환할 객체를 만드는 부분입니다.
+
+Java로 보면 다음과 비슷합니다.
+
+```java
+RecommendationAnalysis analysis = new RecommendationAnalysis();
+analysis.setName(input.getName());
+analysis.setSymbol(input.getSymbol());
+analysis.setResolvedSymbol(symbol);
+analysis.setAnchorClose(anchorPoint.getClose());
+analysis.setLatestClose(latestPoint.getClose());
+
+return analysis;
+```
+
+TypeScript에서는 보통 Java처럼 DTO 클래스를 `new`로 만들기보다, 객체 리터럴로 바로 만듭니다.
+
+```ts
+const analysis = {
+  symbol: input.symbol,
+  latestClose: latestPoint.close,
+  returnSinceAnchor: percentChange(latestPoint.close, anchorPoint.close) ?? 0
+};
+
+return analysis;
+```
+
+정리:
+
+```text
+types.ts
+-> DTO의 타입 정의를 모아둔 곳
+
+const analysis = { ... }
+-> 그 타입 모양에 맞는 실제 응답 데이터 객체를 조립하는 곳
+```
+
+Java와 TypeScript 차이:
+
+```text
+Java DTO class
+-> 런타임에도 class가 존재함
+-> new로 인스턴스 생성
+-> getter/setter로 값 접근
+
+TypeScript type DTO
+-> 컴파일 타임 타입 검사 용도
+-> 런타임에는 사라짐
+-> 실제 값은 plain object
+-> .property로 값 접근
+```
+
+따라서 이 코드는 다음처럼 이해하면 됩니다.
+
+```text
+DTO 타입에 맞는 새 결과 객체를 만들고,
+input/chart/fundamentals에서 필요한 값을 꺼내 채워 넣는다.
+```
+
+### 18.3 시세 요약과 거래량 평균 계산
+
+다음 블록은 최종 응답에 들어갈 시세 요약과 거래량 평균을 계산합니다.
+
+```ts
+const summary = getQuoteSummary(quote, points);
+const avgVolume20Before = averageDefined(volumesBeforeAnchor);
+const avgVolume20After = averageDefined(volumesAfterAnchor);
+const avgVolume20Latest = averageDefined(volumesLatest);
+```
+
+`getQuoteSummary(quote, points)`는 `quote`와 차트 데이터 `points`를 이용해 기본 시세 요약을 만듭니다.
+
+```ts
+function getQuoteSummary(quote: QuoteSummary | undefined, points: ChartPoint[]) {
+  const latestPoint = points.at(-1);
+  return {
+    currency: quote?.currency,
+    exchangeName: quote?.exchangeName,
+    shortName: quote?.shortName,
+    latestClose: quote?.regularMarketPrice ?? latestPoint?.close
+  };
+}
+```
+
+여기서 배운 문법:
+
+```ts
+quote?.currency
+```
+
+`?.`는 optional chaining입니다.
+
+```text
+quote가 있으면 quote.currency를 꺼낸다.
+quote가 undefined/null이면 undefined를 반환한다.
+```
+
+Java로 치면 다음과 비슷합니다.
+
+```java
+String currency = quote != null ? quote.getCurrency() : null;
+```
+
+또 다른 문법:
+
+```ts
+quote?.regularMarketPrice ?? latestPoint?.close
+```
+
+`??`는 왼쪽 값이 `null` 또는 `undefined`일 때 오른쪽 값을 사용합니다.
+
+```text
+quote.regularMarketPrice가 있으면 그 값을 사용
+없으면 차트의 마지막 종가 latestPoint.close를 사용
+```
+
+### 18.4 `averageDefined` 함수 이해
+
+거래량 평균 계산에 쓰이는 함수입니다.
+
+```ts
+function averageDefined(values: Array<number | undefined>, count?: number): number | undefined {
+  const filtered = values.filter((value): value is number => typeof value === "number");
+  if (count != null) {
+    return average(filtered.slice(-count));
+  }
+
+  return average(filtered);
+}
+```
+
+파라미터:
+
+```ts
+values: Array<number | undefined>
+```
+
+뜻:
+
+```text
+values는 배열이다.
+각 요소는 number일 수도 있고 undefined일 수도 있다.
+```
+
+예:
+
+```ts
+[1000, 1200, undefined, 900]
+```
+
+핵심 줄:
+
+```ts
+const filtered = values.filter((value): value is number => typeof value === "number");
+```
+
+뜻:
+
+```text
+values 배열에서 진짜 number인 값만 남긴다.
+```
+
+예:
+
+```text
+원본: [1000, 1200, undefined, 900]
+필터 후: [1000, 1200, 900]
+```
+
+Java로 보면 다음과 비슷합니다.
+
+```java
+List<Integer> filtered = values.stream()
+    .filter(value -> value != null)
+    .toList();
+```
+
+### 18.5 `value is number`는 TypeScript의 타입 가드 문법이다
+
+이 부분은 TypeScript의 정식 문법입니다.
+
+```ts
+(value): value is number => typeof value === "number"
+```
+
+나누어 보면:
+
+```text
+value
+-> 필터 함수의 파라미터
+
+value is number
+-> 이 함수가 true를 반환하면 value는 number라고 TypeScript에게 알려주는 타입 가드 반환 타입
+
+typeof value === "number"
+-> 실제 런타임 검사 로직
+```
+
+Java 감각으로 나누면 다음과 같습니다.
+
+```text
+typeof value === "number"
+-> Java의 instanceof Integer 같은 실제 타입 검사 느낌
+
+value is number
+-> 검사에 성공하면 컴파일러가 이 값을 number로 좁혀 보게 하는 표시
+```
+
+즉 다음 Java 흐름과 비슷하게 이해하면 됩니다.
+
+```java
+if (value instanceof Integer) {
+    Integer number = (Integer) value;
+}
+```
+
+다만 TypeScript에서는 이 검사를 `filter` 안에서 배열 전체에 적용하고, 통과한 배열을 `number[]`로 좁힙니다.
+
+```text
+Array<number | undefined>
+-> filter 이후
+number[]
+```
+
+### 18.6 스윙 카테고리일 때만 매물대 분석 수행
+
+다음 블록은 스윙 종목일 때만 실행됩니다.
+
+```ts
+const swingVolumeProfile =
+  input.category === "swing"
+    ? analyzeSwingVolumeProfile(points, {
+        volumeScore: ratio(latestPoint.volume, avgVolume20Latest) != null ? Math.min(100, (ratio(latestPoint.volume, avgVolume20Latest) ?? 0) * 35) : undefined
+      })
+    : undefined;
+```
+
+구조:
+
+```text
+input.category === "swing"
+-> analyzeSwingVolumeProfile(...) 실행
+
+그 외
+-> undefined
+```
+
+Java로 풀면 대략 다음과 같습니다.
+
+```java
+SwingVolumeProfile swingVolumeProfile = null;
+
+if (input.getCategory() == Category.SWING) {
+    Double volumeRatio = ratio(latestPoint.getVolume(), avgVolume20Latest);
+
+    Double volumeScore = null;
+    if (volumeRatio != null) {
+        volumeScore = Math.min(100, volumeRatio * 35);
+    }
+
+    swingVolumeProfile = analyzeSwingVolumeProfile(points, volumeScore);
+}
+```
+
+여기서 `ratio(latestPoint.volume, avgVolume20Latest)`의 의미:
+
+```text
+최신 거래량 / 최근 20일 평균 거래량
+```
+
+예:
+
+```text
+최신 거래량 = 300만
+최근 20일 평균 거래량 = 100만
+ratio = 3
+```
+
+`volumeScore` 계산:
+
+```text
+ratio 1배 -> 35점
+ratio 2배 -> 70점
+ratio 3배 -> 105점이지만 최대 100점
+```
+
+그래서 `Math.min(100, ...)`으로 점수 상한을 100점으로 제한합니다.
+
+주의:
+
+```text
+현재 코드는 ratio(...)를 두 번 호출합니다.
+동작상 문제는 없지만, 읽기 쉽게 하려면 중간 변수로 빼도 됩니다.
+```
+
+예:
+
+```ts
+const latestVolumeRatio = ratio(latestPoint.volume, avgVolume20Latest);
+
+const swingVolumeProfile =
+  input.category === "swing"
+    ? analyzeSwingVolumeProfile(points, {
+        volumeScore: latestVolumeRatio != null ? Math.min(100, latestVolumeRatio * 35) : undefined
+      })
+    : undefined;
+```
+
+### 18.7 스윙/장기 매물대 분석 결과를 응답용 요약으로 변환
+
+다음 블록은 매물대 분석 결과를 최종 응답에 넣기 좋은 형태로 요약합니다.
+
+```ts
+const swingVolumeProfileSummary = summarizeSwingVolumeProfile(swingVolumeProfile);
+
+const longTermVolumeProfileSummary =
+  input.category === "longTerm" ? summarizeLongTermVolumeProfile((longTermReview as LongTermReviewAnalysis | undefined)?.candidate?.longTermVolumeProfile) : undefined;
+```
+
+스윙 쪽:
+
+```ts
+const swingVolumeProfileSummary = summarizeSwingVolumeProfile(swingVolumeProfile);
+```
+
+의미:
+
+```text
+swingVolumeProfile이 있으면 필요한 필드만 추린 요약 객체를 만든다.
+없으면 undefined를 반환한다.
+```
+
+장기 쪽:
+
+```ts
+const longTermVolumeProfileSummary =
+  input.category === "longTerm"
+    ? summarizeLongTermVolumeProfile(...)
+    : undefined;
+```
+
+의미:
+
+```text
+longTerm 카테고리일 때만 장기 매물대 요약을 만든다.
+swing/dividend이면 undefined로 둔다.
+```
+
+복잡해 보이는 부분:
+
+```ts
+(longTermReview as LongTermReviewAnalysis | undefined)?.candidate?.longTermVolumeProfile
+```
+
+여기서:
+
+```ts
+LongTermReviewAnalysis | undefined
+```
+
+뜻:
+
+```text
+LongTermReviewAnalysis 타입일 수도 있고
+undefined일 수도 있다.
+```
+
+앞에서 `longTermReview`는 이렇게 만들어졌습니다.
+
+```ts
+const longTermReview =
+  input.category === "swing"
+    ? undefined
+    : input.category === "dividend"
+      ? await analyzeDividendCandidate(...)
+      : await analyzeLongTermCandidate(...);
+```
+
+따라서:
+
+```text
+swing
+-> longTermReview = undefined
+
+dividend
+-> 배당 분석 결과
+
+longTerm
+-> 장기 분석 결과
+```
+
+`as LongTermReviewAnalysis | undefined`는 TypeScript에게 다음처럼 말하는 타입 단언입니다.
+
+```text
+이 값을 LongTermReviewAnalysis 또는 undefined로 취급하겠다.
+```
+
+그리고 뒤의 optional chaining:
+
+```ts
+?.candidate?.longTermVolumeProfile
+```
+
+뜻:
+
+```text
+longTermReview가 없으면 undefined
+candidate가 없으면 undefined
+candidate가 있으면 longTermVolumeProfile을 꺼냄
+```
+
+Java로 치면 다음 방어 코드와 비슷합니다.
+
+```java
+LongTermVolumeProfile profile = null;
+
+if (longTermReview != null && longTermReview.getCandidate() != null) {
+    profile = longTermReview.getCandidate().getLongTermVolumeProfile();
+}
+```
+
+### 18.8 오늘까지 이해한 흐름
+
+```text
+1. 기준일 이후 전체 데이터에서 최고 종가 point와 최저 종가 point를 찾는다.
+2. 이 값으로 maxGainPercent와 maxDrawdownPercent를 계산한다.
+3. const analysis는 메소드가 아니라 최종 응답 DTO 객체다.
+4. TypeScript에서는 DTO class를 new로 만들기보다 plain object로 조립하는 경우가 많다.
+5. averageDefined는 number | undefined 배열에서 number만 골라 평균을 낸다.
+6. value is number는 TypeScript 타입 가드 문법이다.
+7. swing 카테고리일 때만 analyzeSwingVolumeProfile을 실행한다.
+8. 최신 거래량 / 최근 평균 거래량을 volumeScore로 바꿔 스윙 매물대 분석에 넘긴다.
+9. 스윙/장기 매물대 분석 결과는 최종 응답용 summary 객체로 다시 정리된다.
+10. LongTermReviewAnalysis | undefined는 장기 리뷰 객체일 수도 있고 없을 수도 있다는 union type이다.
+```
+
+다음 학습 시작 위치:
+
+```ts
+const analysis = {
+  name: input.name,
+  symbol: input.symbol,
+  resolvedSymbol: symbol,
+  category: input.category,
+  anchorDate: input.anchorDate,
+  tradingAnchorDate: anchorPoint.date,
+  ...
+};
+```
+
+다음에는 최종 `analysis` 객체의 각 필드가 어디서 나온 값인지, API 응답 DTO 관점에서 하나씩 봅니다.

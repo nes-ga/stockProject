@@ -4064,16 +4064,6 @@ function renderMarketEventCalendarBoard() {
   const summariesByDate = new Map((payload.summaries ?? []).map((summary) => [summary.date, summary]));
   const highImportanceCount = payload.events.filter((event) => event.importance === "high").length;
   const upcomingCount = payload.events.filter((event) => event.date >= today).length;
-  const statusKind = marketEventCalendarError
-    ? "error"
-    : marketEventCalendarLoading && !marketEventCalendarLoaded
-      ? "loading"
-      : "done";
-  const statusText = marketEventCalendarError
-    ? "오류"
-    : marketEventCalendarLoading && !marketEventCalendarLoaded
-      ? "로딩 중"
-      : `${payload.events.length}개 일정`;
 
   marketEventCalendarBoard.innerHTML = `
     <div class="panel-head">
@@ -4081,7 +4071,6 @@ function renderMarketEventCalendarBoard() {
         <h2>Market Event Calendar</h2>
         <p class="field-help">실적, 거시지표, 정책 일정을 달력에서 훑고 선택한 날짜의 상세 이벤트를 아래 패널에서 확인합니다.</p>
       </div>
-      <span class="status-badge ${statusKind}">${escapeHtml(statusText)}</span>
     </div>
     <div class="market-event-toolbar">
       <div class="market-event-stat-list">
