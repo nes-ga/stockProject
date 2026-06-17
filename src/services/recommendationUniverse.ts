@@ -272,6 +272,81 @@ function preserveSwingPickDates(
   };
 }
 
+function formatHistoryBuyPlanText(buyPlan: SwingCarryForwardCase["buyPlan"]) {
+  if (!buyPlan?.firstBuyPrice || !buyPlan.secondBuyPrice || !buyPlan.thirdBuyPrice) {
+    return undefined;
+  }
+
+  return `매수 ${Math.round(buyPlan.firstBuyPrice)}/${Math.round(buyPlan.secondBuyPrice)}/${Math.round(buyPlan.thirdBuyPrice)}`;
+}
+
+function replaceSwingNoteBuyPlan(note: string | undefined, buyPlan: SwingCarryForwardCase["buyPlan"]) {
+  const buyPlanText = formatHistoryBuyPlanText(buyPlan);
+  if (!note || !buyPlanText) {
+    return note;
+  }
+
+  if (/매수\s+[\d,]+\/[\d,]+\/[\d,]+/.test(note)) {
+    return note.replace(/매수\s+[\d,]+\/[\d,]+\/[\d,]+/, buyPlanText);
+  }
+
+  if (/구간\s+[\d,]+~[\d,]+/.test(note)) {
+    return note.replace(/구간\s+[\d,]+~[\d,]+/, buyPlanText);
+  }
+
+  return `${note} | ${buyPlanText}`;
+}
+
+function calculateSwingReturnPct(price: number | undefined, basis: number | undefined) {
+  if (typeof price !== "number" || !Number.isFinite(price) || typeof basis !== "number" || !Number.isFinite(basis) || basis === 0) {
+    return undefined;
+  }
+
+  return Math.round(((price - basis) / basis) * 10000) / 100;
+}
+
+function preserveEnteredHistoryPlan(
+  nextPick: ReturnType<typeof toServerSwingPick>,
+  historyCase: SwingCarryForwardCase | undefined
+) {
+  if (!historyCase?.buyPlan || historyCase.executedBuyCount <= 0) {
+    return nextPick;
+  }
+
+  const latestDate = nextPick.postEntryOutcome?.latestDate ?? historyCase.dataDate ?? nextPick.latestMentionDate;
+  const executedBuys = (historyCase.executedBuys ?? [])
+    .filter(
+      (buy): buy is { stage: 1 | 2 | 3; price: number; date?: string } =>
+        (buy.stage === 1 || buy.stage === 2 || buy.stage === 3) &&
+        typeof buy.price === "number" &&
+        Number.isFinite(buy.price)
+    )
+    .map((buy) => ({
+      stage: buy.stage,
+      price: buy.price,
+      date: buy.date ?? latestDate
+    }));
+  const latestClose = nextPick.postEntryOutcome?.latestClose ?? historyCase.latestClose;
+  const averageBuyPrice = historyCase.averageBuyPrice;
+
+  return {
+    ...nextPick,
+    anchorDate: historyCase.initialSnapshot?.anchorDate ?? historyCase.openedDate ?? nextPick.anchorDate,
+    note: replaceSwingNoteBuyPlan(historyCase.initialSnapshot?.note ?? nextPick.note, historyCase.buyPlan) ?? nextPick.note,
+    postEntryOutcome: {
+      ...(nextPick.postEntryOutcome ?? {}),
+      status: "active" as const,
+      executedBuyCount: historyCase.executedBuyCount,
+      executedBuys,
+      averageBuyPrice,
+      latestClose,
+      latestDate,
+      unrealizedReturnPct: calculateSwingReturnPct(latestClose, averageBuyPrice)
+    },
+    initialStopLossPrice: historyCase.initialStopLossPrice
+  };
+}
+
 // 아직 종료 조건이 없는 체결 히스토리 케이스를 watch 후보로 되살립니다.
 // 실행 후보로 승격하는 경로가 아니라, 손절/목표/시간 종료 전까지
 // 현재 후보 파일에서 사라지지 않게 하는 생명주기 보호 장치입니다.
@@ -318,6 +393,7 @@ function toCarryForwardSwingWatchPick(historyCase: SwingCarryForwardCase, profil
       latestDate: historyCase.dataDate,
       unrealizedReturnPct: historyCase.unrealizedReturnPct
     },
+    initialStopLossPrice: historyCase.initialStopLossPrice,
     category: "swing",
     swingProfile: profile,
     source: "history-carry-forward"
@@ -625,7 +701,9 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   if (
     (probeByLocation || probeByDeepPullback || longPullbackUntilStopCandidate) &&
     !envelopeLowerBreak &&
-    (!lowScoreUnstableSupport || envelopeWidePullbackCandidate || longPullbackUntilStopCandidate)
+    // Long-pullback visibility is not an execution-promotion bypass.
+    // Low-score unstable support must stay watch-only unless the SMA20 envelope has been reclaimed.
+    (!lowScoreUnstableSupport || envelopeWidePullbackCandidate)
   ) {
     const probeReasons = dedupeStrings([
       ...(pattern.classificationReasons ?? []),
@@ -868,17 +946,25 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const filteredWatch = defaultSwingSymbols == null ? watch : watch.filter(({ item }) => !defaultSwingSymbols.has(item.code));
   const existingPayload = await readServerSwingPickPayload(profile);
   const existingPickBySymbol = new Map(existingPayload.items.map((item) => [item.symbol, item] as const));
+  const carryForwardCases = await readSwingCarryForwardCases(profile);
+  const carryForwardCaseBySymbol = new Map(carryForwardCases.map((historyCase) => [historyCase.symbol, historyCase] as const));
 
   const executionItems = filteredActionable.map(({ item, analysis }) => ({
     ...preserveSwingPickDates(
-      toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+      preserveEnteredHistoryPlan(
+        toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        carryForwardCaseBySymbol.get(item.code)
+      ),
       existingPickBySymbol.get(item.code)
     ),
     swingProfile: profile
   }));
   const engineWatchItems = filteredWatch.map(({ item, analysis }) => ({
     ...preserveSwingPickDates(
-      toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+      preserveEnteredHistoryPlan(
+        toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        carryForwardCaseBySymbol.get(item.code)
+      ),
       existingPickBySymbol.get(item.code)
     ),
     swingProfile: profile
@@ -886,7 +972,7 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const nextSymbols = new Set([...executionItems, ...engineWatchItems].map((item) => item.symbol));
   // 새 스캔에서 fresh setup이 안 잡혔다는 이유만으로 체결 케이스를
   // 덮어써서 없애면 안 됩니다. 실제 종료 조건 전까지 watchItems에 병합합니다.
-  const carryForwardWatchItems = (await readSwingCarryForwardCases(profile))
+  const carryForwardWatchItems = carryForwardCases
     .filter((historyCase) => !nextSymbols.has(historyCase.symbol))
     .filter((historyCase) => defaultSwingSymbols == null || !defaultSwingSymbols.has(historyCase.symbol))
     .map((historyCase) => toCarryForwardSwingWatchPick(historyCase, profile));

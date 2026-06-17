@@ -393,11 +393,10 @@ function resolveSetupEntryZone(params: {
       ? Math.min(params.referenceSma20, params.breakoutLevel)
       : undefined;
   if (sma20PullbackReference != null && sma20PullbackReference > 0) {
-    // Pullback entries should be staged after price comes into the 20-day line, not above it.
-    // Bias the whole buy zone below SMA20 so the displayed first area does not chase the bounce.
+    // Pullback entries begin at the 20-day line, then stage lower bids below it.
     const proximityRatio = clamp(params.filters.firstBuySma20ProximityPercent / 100, 0.005, 0.08);
-    const entryZoneHigh = sma20PullbackReference * (1 - proximityRatio);
-    const entryZoneLow = sma20PullbackReference * (1 - proximityRatio * 2);
+    const entryZoneHigh = sma20PullbackReference;
+    const entryZoneLow = sma20PullbackReference * (1 - proximityRatio);
     if (entryZoneLow < entryZoneHigh) {
       return {
         entryZoneLow,
@@ -930,9 +929,7 @@ function resolvePullbackBuyPlan(params: {
     return undefined;
   }
 
-  // Pullback buys should wait for price to come into the 20-day line from above.
-  // Keep the first staged bid below SMA20 instead of placing it directly on the moving average.
-  const firstBuyPrice = referenceSma20 * (1 - clamp(params.firstBuySma20ProximityPercent / 100, 0.005, 0.08));
+  const firstBuyPrice = referenceSma20;
   const stopLossPrice =
     params.invalidationPrice > 0 && params.invalidationPrice < firstBuyPrice
       ? params.invalidationPrice

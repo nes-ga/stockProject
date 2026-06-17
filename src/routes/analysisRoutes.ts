@@ -15,6 +15,12 @@ import {
 } from "../services/discordAlertHistory.js";
 import { analyzeKoreanMovers } from "../services/koreanMovers.js";
 import { getMarketEventCalendarPayload, searchMarketEventCalendar } from "../services/marketEventCalendar.js";
+import {
+  buildMarketOperationEventDiscordMessages,
+  filterUnsentMarketOperationEvents,
+  getMarketOperationEvents,
+  rememberMarketOperationEventAlerts
+} from "../services/marketOperationEvents.js";
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
 import { classifySwingCandidate, scanRecommendationUniverse } from "../services/recommendationUniverse.js";
@@ -66,6 +72,14 @@ const realtimeStockSchema = z.object({
 
 const realtimeStockBatchSchema = z.object({
   items: z.array(realtimeStockSchema).min(1).max(100)
+});
+
+const marketOperationDiscordSchema = z.object({
+  forceRefresh: z.coerce.boolean().optional().default(false),
+  resend: z.coerce.boolean().optional().default(false),
+  webhookUrl: z.string().url().optional(),
+  username: z.string().min(1).max(80).optional(),
+  mention: z.string().min(1).max(200).optional()
 });
 
 const onlinePresenceHeartbeatSchema = z.object({
@@ -321,6 +335,7 @@ const serverSwingPickSchema = z.object({
     .optional(),
   haltCategory: z.string().min(1).optional(),
   haltAction: z.string().min(1).optional(),
+  initialStopLossPrice: z.coerce.number().min(0).optional(),
   category: z.literal("swing"),
   swingProfile: z.enum(["default", "smallcap"]).optional(),
   source: z.string().min(1).max(100).optional()
@@ -984,6 +999,7 @@ function startRecommendationUniverseScanJob(input: RecommendationUniverseScanInp
     });
 
   job.promise = promise;
+  void promise.catch(() => undefined);
   recommendationUniverseScanJobs.set(scopeKey, job);
   return job;
 }
@@ -1179,6 +1195,77 @@ analysisRoutes.get("/market-watch", async (request, response, next) => {
     response.json(payload);
   } catch (error) {
     logger.error("market-watch:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.post("/market-operation-events/discord", async (request, response, next) => {
+  try {
+    const input = marketOperationDiscordSchema.parse(request.body ?? {});
+    const payload = await getMarketOperationEvents({ forceRefresh: input.forceRefresh });
+    const eventsToSend = input.resend ? payload.events : await filterUnsentMarketOperationEvents(payload.events);
+    const messages = buildMarketOperationEventDiscordMessages({
+      events: eventsToSend,
+      mention: input.mention
+    });
+
+    if (!messages.length) {
+      response.json({
+        ok: true,
+        sent: 0,
+        count: eventsToSend.length,
+        totalCount: payload.events.length,
+        fetchedAt: payload.fetchedAt,
+        events: []
+      });
+      return;
+    }
+
+    const username = input.username ?? "Stock Alert Bot";
+    await sendDiscordMessages({
+      messages,
+      webhookUrl: input.webhookUrl,
+      username
+    });
+
+    await rememberMarketOperationEventAlerts(eventsToSend);
+    await appendDiscordAlertHistoryRecords(
+      eventsToSend.map((event) => ({
+        alertType: "market-operation",
+        source: "kind",
+        username,
+        messageCount: messages.length,
+        category: event.eventType,
+        symbol: event.market,
+        name: event.title,
+        changeType: event.status,
+        referenceDate: event.occurredAt?.slice(0, 10),
+        metadata: {
+          id: event.id,
+          occurredAt: event.occurredAt,
+          submitter: event.submitter,
+          sourceUrl: event.sourceUrl
+        }
+      }))
+    );
+
+    logger.info("market-operation-events-discord:success", {
+      count: eventsToSend.length,
+      totalCount: payload.events.length,
+      messageCount: messages.length,
+      fetchedAt: payload.fetchedAt
+    });
+
+    response.json({
+      ok: true,
+      sent: messages.length,
+      count: eventsToSend.length,
+      totalCount: payload.events.length,
+      fetchedAt: payload.fetchedAt,
+      events: eventsToSend
+    });
+  } catch (error) {
+    logger.error("market-operation-events-discord:failed", toErrorContext(error));
     next(error);
   }
 });

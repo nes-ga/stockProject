@@ -5,7 +5,8 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
-  createChart
+  createChart,
+  createSeriesMarkers
 } from "/vendor/lightweight-charts/lightweight-charts.standalone.production.mjs";
 
 const STORAGE_KEY = "stock-project-recommendations-v2";
@@ -26,6 +27,10 @@ const CHART_RIGHT_ANCHOR_OFFSET = 0.5;
 const MIN_VISIBLE_TRADING_SESSIONS = 12;
 const WHEEL_ZOOM_STEP = 1.18;
 const DEFAULT_VISIBLE_MARKET_WATCH_SESSIONS = {
+  minute1: 90,
+  minute5: 78,
+  minute30: 26,
+  minute60: 20,
   daily: 45,
   weekly: 52,
   yearly: 8
@@ -383,8 +388,15 @@ const timeframeLabels = {
   weekly: "주봉",
   monthly: "월봉"
 };
-const marketWatchTimeframes = ["daily", "weekly", "yearly"];
+const marketWatchMinuteTimeframes = ["minute1", "minute5", "minute30", "minute60"];
+const marketWatchTimeframes = [...marketWatchMinuteTimeframes, "daily", "weekly", "yearly"];
+const marketWatchPrimaryTimeframeGroups = ["minute", "daily", "weekly", "yearly"];
 const marketWatchTimeframeLabels = {
+  minute: "분봉",
+  minute1: "1분",
+  minute5: "5분",
+  minute30: "30분",
+  minute60: "1시간",
   daily: "일봉",
   weekly: "주봉",
   yearly: "연봉"
@@ -463,6 +475,7 @@ let marketWatchTimeframeByKey = new Map(indexWatchSeed.map((item) => [item.key, 
 let activeMarketWatchKey = null;
 let marketWatchRefreshTimer = null;
 let marketWatchFetchedAt = "";
+const marketOperationEventToastIds = new Set();
 let marketEventCalendarPayload = null;
 let marketEventCalendarLoaded = false;
 let marketEventCalendarLoading = false;
@@ -755,6 +768,24 @@ marketEventCalendarBoard?.addEventListener("click", (event) => {
 });
 
 indexChartModalToolbar?.addEventListener("click", (event) => {
+  const groupButton = event.target.closest("[data-index-timeframe-group]");
+  if (groupButton && activeMarketWatchKey) {
+    const group = groupButton.dataset.indexTimeframeGroup;
+    if (group !== "minute") {
+      return;
+    }
+
+    const snapshot = marketWatchItems.get(activeMarketWatchKey);
+    const minuteTimeframe = getDefaultMarketWatchMinuteTimeframe(snapshot, marketWatchTimeframeByKey.get(activeMarketWatchKey));
+    if (!minuteTimeframe || marketWatchTimeframeByKey.get(activeMarketWatchKey) === minuteTimeframe) {
+      return;
+    }
+
+    marketWatchTimeframeByKey.set(activeMarketWatchKey, minuteTimeframe);
+    renderIndexChartModal();
+    return;
+  }
+
   const button = event.target.closest("[data-index-timeframe]");
   if (!button || !activeMarketWatchKey) {
     return;
@@ -1922,7 +1953,49 @@ function filterHistoryClosedCasesByOutcome(closedCases) {
 }
 
 function shouldDisplayClosedHistoryCase(item) {
-  return item?.lifecycleStatus === "closed" && getExecutedBuyCountForHistoryItem(item) > 0 && item?.entryBucket !== "watch";
+  return item?.lifecycleStatus === "closed" && getExecutedBuyCountForHistoryItem(item) > 0 && item?.historyOutcome?.includeInReturnStats !== false;
+}
+
+function getClosedHistoryCasePriority(item) {
+  return [
+    item?.profile === "default" ? 1 : 0,
+    item?.entryBucket !== "watch" ? 1 : 0,
+    item?.closedDate ?? "",
+    item?.openedDate ?? ""
+  ];
+}
+
+function compareClosedHistoryCasePriority(left, right) {
+  const leftPriority = getClosedHistoryCasePriority(left);
+  const rightPriority = getClosedHistoryCasePriority(right);
+  for (let index = 0; index < leftPriority.length; index += 1) {
+    if (rightPriority[index] !== leftPriority[index]) {
+      return String(rightPriority[index]).localeCompare(String(leftPriority[index]));
+    }
+  }
+  return String(left?.name ?? "").localeCompare(String(right?.name ?? ""), "ko");
+}
+
+function dedupeClosedHistoryCases(cases) {
+  const grouped = new Map();
+  for (const item of cases) {
+    const key = item?.symbol ?? item?.id;
+    if (!key) {
+      continue;
+    }
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+
+  return [...grouped.values()]
+    .map((items) => [...items].sort(compareClosedHistoryCasePriority)[0])
+    .filter(Boolean);
+}
+
+function getDisplayClosedHistoryCases(payload, cases) {
+  const serverClosedCases = Array.isArray(payload?.closedCases) ? payload.closedCases : null;
+  return serverClosedCases?.length
+    ? serverClosedCases.filter(shouldDisplayClosedHistoryCase)
+    : dedupeClosedHistoryCases(cases.filter(shouldDisplayClosedHistoryCase));
 }
 
 function shouldDisplayCurrentRecommendationCandidate(item) {
@@ -2007,7 +2080,7 @@ function renderRecommendationHistoryBoard() {
     ? payload.currentCandidates.filter(shouldDisplayCurrentRecommendationCandidate)
     : [];
   const currentCases = cases.filter((item) => item.lifecycleStatus === "current");
-  const closedCases = cases.filter(shouldDisplayClosedHistoryCase);
+  const closedCases = getDisplayClosedHistoryCases(payload, cases);
   const closedMonthOptions = getHistoryClosedMonthOptions(payload, closedCases);
   ensureHistoryClosedMonthSelection(closedMonthOptions);
   const filteredClosedCases = filterHistoryClosedCases(closedCases);
@@ -2356,7 +2429,7 @@ function renderHistoryMatrixModalBody() {
 
   const payload = recommendationHistoryPayload;
   const cases = Array.isArray(payload?.cases) ? payload.cases : [];
-  const closedCases = cases.filter(shouldDisplayClosedHistoryCase);
+  const closedCases = getDisplayClosedHistoryCases(payload, cases);
   const closedMonthOptions = getHistoryClosedMonthOptions(payload, closedCases);
   ensureHistoryClosedMonthSelection(closedMonthOptions);
   const filteredClosedCases = filterHistoryClosedCases(closedCases);
@@ -2841,6 +2914,14 @@ function formatUnsignedPercent(value) {
 }
 
 function getMarketWatchMovingAverageConfig(timeframe) {
+  if (isMarketWatchMinuteTimeframe(timeframe)) {
+    return [
+      { key: "fast", label: "5봉선", period: 5, className: "fast-line", color: "#177245" },
+      { key: "short", label: "20봉선", period: 20, className: "short-line", color: "#d84c3f" },
+      { key: "long", label: "60봉선", period: 60, className: "long-line", color: "#2563eb" }
+    ];
+  }
+
   if (timeframe === "weekly") {
     return [
       { key: "fast", label: "5주선", period: 5, className: "fast-line", color: "#177245" },
@@ -4618,6 +4699,36 @@ function switchAppView(view) {
   }
 }
 
+function getMarketOperationEventTone(event) {
+  return event?.status === "active" ? "negative" : "neutral";
+}
+
+function getMarketOperationEventLabel(event) {
+  const typeLabel = event?.eventType === "sidecar" ? "사이드카" : "서킷브레이커";
+  const marketLabel = event?.market || "시장";
+  return `${marketLabel} ${typeLabel}`;
+}
+
+function notifyMarketOperationEvents(events) {
+  if (!Array.isArray(events) || !events.length) {
+    return;
+  }
+
+  for (const event of events.slice(0, 5)) {
+    if (!event?.id || marketOperationEventToastIds.has(event.id)) {
+      continue;
+    }
+
+    marketOperationEventToastIds.add(event.id);
+    showAppToast({
+      title: getMarketOperationEventLabel(event),
+      message: [event.title, event.occurredAt].filter(Boolean).join(" / "),
+      tone: getMarketOperationEventTone(event),
+      duration: 9000
+    });
+  }
+}
+
 async function loadMarketWatch(options = {}) {
   if (marketWatchLoading) {
     return;
@@ -4640,6 +4751,7 @@ async function loadMarketWatch(options = {}) {
     const items = Array.isArray(payload.items) ? payload.items : [];
     marketWatchFetchedAt = typeof payload.fetchedAt === "string" ? payload.fetchedAt : "";
     marketWatchItems = new Map(items.map((item) => [item.key, item]));
+    notifyMarketOperationEvents(payload.events);
     marketWatchLoaded = true;
   } catch (error) {
     console.error(error);
@@ -4690,6 +4802,13 @@ function cleanupMarketWatchCharts() {
     }
 
     marketWatchChartState.resizeObserver?.disconnect();
+    clearMarketWatchExtremaMarkers(marketWatchChartState);
+    if (marketWatchChartState.visibleRangeHandler) {
+      marketWatchChartState.chart?.timeScale().unsubscribeVisibleLogicalRangeChange?.(marketWatchChartState.visibleRangeHandler);
+    }
+    if (marketWatchChartState.wheelTarget && marketWatchChartState.wheelHandler) {
+      marketWatchChartState.wheelTarget.removeEventListener("wheel", marketWatchChartState.wheelHandler);
+    }
     marketWatchChartState.chart?.remove();
     marketWatchChartState = null;
   }
@@ -4697,6 +4816,57 @@ function cleanupMarketWatchCharts() {
 
 function getMarketWatchViewportKey(snapshotKey, timeframe) {
   return `${snapshotKey}:${timeframe}`;
+}
+
+function isMarketWatchMinuteTimeframe(timeframe) {
+  return marketWatchMinuteTimeframes.includes(timeframe);
+}
+
+function getAvailableMarketWatchTimeframes(snapshot) {
+  return marketWatchTimeframes.filter((option) => snapshot?.chartSets?.[option]?.points?.length);
+}
+
+function getDefaultMarketWatchMinuteTimeframe(snapshot, preferredTimeframe) {
+  const availableMinuteTimeframes = marketWatchMinuteTimeframes.filter((option) => snapshot?.chartSets?.[option]?.points?.length);
+  if (!availableMinuteTimeframes.length) {
+    return null;
+  }
+
+  if (availableMinuteTimeframes.includes(preferredTimeframe)) {
+    return preferredTimeframe;
+  }
+
+  if (availableMinuteTimeframes.includes("minute30")) {
+    return "minute30";
+  }
+
+  return availableMinuteTimeframes[0];
+}
+
+function getMarketWatchPrimaryTimeframeGroups(snapshot) {
+  return marketWatchPrimaryTimeframeGroups.filter((option) =>
+    option === "minute"
+      ? marketWatchMinuteTimeframes.some((timeframe) => snapshot?.chartSets?.[timeframe]?.points?.length)
+      : snapshot?.chartSets?.[option]?.points?.length
+  );
+}
+
+function getMarketWatchChartTime(point) {
+  const intradayMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(point?.date ?? ""));
+  if (intradayMatch) {
+    const [, year, month, day, hour, minute] = intradayMatch;
+    return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)) / 1000;
+  }
+
+  return point.date;
+}
+
+function getChartTimeKey(time) {
+  if (time && typeof time === "object" && "year" in time && "month" in time && "day" in time) {
+    return `${time.year}-${String(time.month).padStart(2, "0")}-${String(time.day).padStart(2, "0")}`;
+  }
+
+  return String(time);
 }
 
 function buildIndexMovingAverage(points, period) {
@@ -4710,7 +4880,7 @@ function buildIndexMovingAverage(points, period) {
     const window = points.slice(index - period + 1, index + 1);
     const average = window.reduce((sum, point) => sum + point.close, 0) / period;
     result.push({
-      time: points[index].date,
+      time: getMarketWatchChartTime(points[index]),
       value: average
     });
   }
@@ -4731,6 +4901,84 @@ function buildMarketWatchChartSignature(points, timeframe, movingAverageConfig) 
       point.volume
     ])
   });
+}
+
+function clearMarketWatchExtremaMarkers(state) {
+  state.extremaMarkers?.setMarkers([]);
+}
+
+function getMarketWatchVisiblePoints(points, range) {
+  if (!Array.isArray(points) || !points.length || !range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) {
+    return [];
+  }
+
+  const from = Math.max(0, Math.floor(range.from));
+  const to = Math.min(points.length - 1, Math.ceil(range.to));
+  if (to < from) {
+    return [];
+  }
+
+  return points.slice(from, to + 1).filter((point) => Number.isFinite(point?.high) && Number.isFinite(point?.low));
+}
+
+function getMarketWatchPercentChange(currentPrice, basePrice) {
+  if (!Number.isFinite(currentPrice) || !Number.isFinite(basePrice) || basePrice === 0) {
+    return null;
+  }
+
+  return ((currentPrice - basePrice) / basePrice) * 100;
+}
+
+function updateMarketWatchVisibleExtremaLines(state) {
+  const range = state.chart?.timeScale().getVisibleLogicalRange?.();
+  const visiblePoints = getMarketWatchVisiblePoints(state.points, range);
+  const referencePrice = state.points.at(-1)?.close;
+  if (!visiblePoints.length || !Number.isFinite(referencePrice) || referencePrice === 0) {
+    clearMarketWatchExtremaMarkers(state);
+    return;
+  }
+
+  let highPoint = visiblePoints[0];
+  let lowPoint = visiblePoints[0];
+  for (const point of visiblePoints) {
+    if ((point.high ?? point.close) > (highPoint.high ?? highPoint.close)) {
+      highPoint = point;
+    }
+    if ((point.low ?? point.close) < (lowPoint.low ?? lowPoint.close)) {
+      lowPoint = point;
+    }
+  }
+
+  const highPrice = highPoint.high ?? highPoint.close;
+  const lowPrice = lowPoint.low ?? lowPoint.close;
+  const highDrawdownPercent = getMarketWatchPercentChange(referencePrice, highPrice);
+  const lowReboundPercent = getMarketWatchPercentChange(referencePrice, lowPrice);
+  const markers = [];
+
+  if (Number.isFinite(highPrice) && Number.isFinite(highDrawdownPercent)) {
+    markers.push({
+      time: getMarketWatchChartTime(highPoint),
+      position: "atPriceTop",
+      price: highPrice,
+      color: "rgba(216, 76, 63, 0.95)",
+      shape: "arrowDown",
+      text: `고점 대비 ${formatPercent(highDrawdownPercent)}`
+    });
+  }
+
+  if (Number.isFinite(lowPrice) && Number.isFinite(lowReboundPercent)) {
+    markers.push({
+      time: getMarketWatchChartTime(lowPoint),
+      position: "atPriceBottom",
+      price: lowPrice,
+      color: "rgba(47, 110, 229, 0.95)",
+      shape: "arrowUp",
+      text: `저점 대비 ${formatPercent(lowReboundPercent)}`
+    });
+  }
+
+  markers.sort((left, right) => String(left.time).localeCompare(String(right.time)));
+  state.extremaMarkers?.setMarkers(markers);
 }
 
 function createMarketWatchChartState(container, tooltip) {
@@ -4773,13 +5021,13 @@ function createMarketWatchChartState(container, tooltip) {
       secondsVisible: false
     },
     handleScroll: {
-      mouseWheel: true,
+      mouseWheel: false,
       pressedMouseMove: true,
       horzTouchDrag: true,
       vertTouchDrag: false
     },
     handleScale: {
-      mouseWheel: true,
+      mouseWheel: false,
       pinch: true,
       axisPressedMouseMove: true
     }
@@ -4849,8 +5097,22 @@ function createMarketWatchChartState(container, tooltip) {
     container,
     tooltip,
     points: [],
-    viewportKey: null
+    pointByTimeKey: new Map(),
+    extremaMarkers: createSeriesMarkers(candleSeries, [], { autoScale: true }),
+    viewportKey: null,
+    wheelTarget: container,
+    wheelHandler: null,
+    visibleRangeHandler: null
   };
+
+  state.wheelHandler = (event) => {
+    applyLatestAnchoredWheelZoom(event, state.chart, state.points);
+  };
+  container.addEventListener("wheel", state.wheelHandler, { passive: false });
+  state.visibleRangeHandler = () => {
+    updateMarketWatchVisibleExtremaLines(state);
+  };
+  state.chart.timeScale().subscribeVisibleLogicalRangeChange(state.visibleRangeHandler);
 
   chart.subscribeCrosshairMove((param) => {
     if (!state.tooltip || !param.point || !param.time || !param.seriesData.size) {
@@ -4864,7 +5126,7 @@ function createMarketWatchChartState(container, tooltip) {
       return;
     }
 
-    const point = state.points.find((candidate) => candidate.date === String(param.time));
+    const point = state.pointByTimeKey.get(getChartTimeKey(param.time)) ?? state.points.find((candidate) => candidate.date === String(param.time));
     if (!point) {
       state.tooltip.classList.add("hidden");
       return;
@@ -4883,7 +5145,7 @@ function createMarketWatchChartState(container, tooltip) {
       .join("");
 
     state.tooltip.innerHTML = `
-      <div class="tooltip-date">${escapeHtml(formatKoreanChartDate(String(param.time)))}</div>
+      <div class="tooltip-date">${escapeHtml(formatKoreanChartDate(point.date))}</div>
       <div>시가 ${formatDecimal(candleData.open)}</div>
       <div>고가 ${formatDecimal(candleData.high)}</div>
       <div>저가 ${formatDecimal(candleData.low)}</div>
@@ -4943,6 +5205,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchChartState.container = container;
   marketWatchChartState.tooltip = tooltip;
   marketWatchChartState.points = points;
+  marketWatchChartState.pointByTimeKey = new Map(points.map((point) => [String(getMarketWatchChartTime(point)), point]));
   marketWatchChartState.viewportKey = viewportKey;
   marketWatchChartState.movingAverageConfig = movingAverageConfig;
 
@@ -4952,7 +5215,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   }
 
   const candleSeriesData = points.map((point) => ({
-    time: point.date,
+    time: getMarketWatchChartTime(point),
     open: point.open ?? point.close,
     high: point.high ?? point.close,
     low: point.low ?? point.close,
@@ -4961,7 +5224,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   marketWatchChartState.candleSeries.setData(candleSeriesData);
 
   const volumeSeriesData = points.map((point) => ({
-    time: point.date,
+    time: getMarketWatchChartTime(point),
     value: point.volume ?? 0,
     color:
       (point.close ?? 0) >= (point.open ?? point.close ?? 0) ? "rgba(216,76,63,0.34)" : "rgba(47,110,229,0.3)"
@@ -4997,6 +5260,7 @@ function syncMarketWatchChart({ container, tooltip, snapshot, timeframe }) {
   } else {
     setDefaultMarketWatchVisibleRange(marketWatchChartState.chart, chartPointCount, timeframe);
   }
+  updateMarketWatchVisibleExtremaLines(marketWatchChartState);
   marketWatchChartState.dataSignature = dataSignature;
 }
 
@@ -5087,7 +5351,9 @@ function renderIndexChartModal() {
     return;
   }
 
-  const timeframe = marketWatchTimeframeByKey.get(activeMarketWatchKey) ?? "daily";
+  const requestedTimeframe = marketWatchTimeframeByKey.get(activeMarketWatchKey) ?? "daily";
+  const availableTimeframes = getAvailableMarketWatchTimeframes(snapshot);
+  const timeframe = availableTimeframes.includes(requestedTimeframe) ? requestedTimeframe : availableTimeframes[0] ?? "daily";
   const chartWindow = snapshot.chartSets?.[timeframe] ?? snapshot.chartSets?.daily;
   const movingAverageConfig = getMarketWatchMovingAverageConfig(timeframe);
   const displayMetrics = getMarketWatchDisplayMetrics(snapshot, timeframe);
@@ -5108,19 +5374,46 @@ function renderIndexChartModal() {
     indexChartModalChange.textContent = `${formatPercent(displayMetrics.changePercent)} / ${formatSignedDecimal(displayMetrics.changeAmount)}`;
   }
   if (indexChartModalToolbar) {
-    indexChartModalToolbar.innerHTML = marketWatchTimeframes
-      .map(
-        (option) => `
+    const primaryOptions = getMarketWatchPrimaryTimeframeGroups(snapshot);
+    const minuteOptions = marketWatchMinuteTimeframes.filter((option) => snapshot.chartSets?.[option]?.points?.length);
+    const primaryButtons = primaryOptions
+      .map((option) => {
+        const active = option === "minute" ? isMarketWatchMinuteTimeframe(timeframe) : option === timeframe;
+        const dataAttribute = option === "minute" ? `data-index-timeframe-group="minute"` : `data-index-timeframe="${option}"`;
+        return `
           <button
-            class="timeframe-tab ${option === timeframe ? "active" : ""}"
+            class="timeframe-tab ${active ? "active" : ""}"
             type="button"
-            data-index-timeframe="${option}"
+            ${dataAttribute}
           >
             ${marketWatchTimeframeLabels[option]}
           </button>
-        `
-      )
+        `;
+      })
       .join("");
+    const minuteButtons = isMarketWatchMinuteTimeframe(timeframe)
+      ? `
+        <div class="market-watch-sub-toolbar">
+          ${minuteOptions
+            .map(
+              (option) => `
+                <button
+                  class="timeframe-tab sub-tab ${option === timeframe ? "active" : ""}"
+                  type="button"
+                  data-index-timeframe="${option}"
+                >
+                  ${marketWatchTimeframeLabels[option]}
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+      `
+      : "";
+    indexChartModalToolbar.innerHTML = `
+      <div class="market-watch-main-toolbar">${primaryButtons}</div>
+      ${minuteButtons}
+    `;
   }
   if (indexChartModalLegend) {
     indexChartModalLegend.innerHTML = movingAverageConfig
@@ -9316,7 +9609,7 @@ function getSwingTradeOverlay(note, pattern) {
       : pattern && (typeof pattern.entryZoneLow === "number" || typeof pattern.entryZoneHigh === "number")
         ? [pattern.entryZoneHigh, pattern.entryZoneLow]
         : [];
-  const buyPrices = patternBuyPrices.length ? patternBuyPrices : notePlan.buyPrices;
+  const buyPrices = notePlan.buyPrices.length ? notePlan.buyPrices : patternBuyPrices;
   const stopPriceRaw = notePlan.stopPrice;
   const stopPriceFromNote =
     Number.isFinite(stopPriceRaw) && stopPriceRaw > 0
@@ -9328,7 +9621,7 @@ function getSwingTradeOverlay(note, pattern) {
       : pattern && typeof pattern.invalidationPrice === "number" && pattern.invalidationPrice > 0
         ? Math.round(pattern.invalidationPrice * 100) / 100
         : undefined;
-  const sanitized = sanitizeSwingTradeLevels(buyPrices, stopPriceFromPattern ?? stopPriceFromNote);
+  const sanitized = sanitizeSwingTradeLevels(buyPrices, stopPriceFromNote ?? stopPriceFromPattern);
 
   return {
     buyPrices: sanitized.buyPrices,
@@ -10561,6 +10854,24 @@ function formatKoreanEok(value) {
 function formatKoreanChartDate(value) {
   if (!value) {
     return "-";
+  }
+
+  const intradayMatch = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(value));
+  if (intradayMatch) {
+    const [, year, month, day, hour, minute] = intradayMatch;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
+    if (!Number.isNaN(date.getTime())) {
+      return new Intl.DateTimeFormat("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "UTC"
+      }).format(date);
+    }
   }
 
   const date = new Date(`${value}T00:00:00Z`);

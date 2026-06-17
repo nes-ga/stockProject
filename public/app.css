@@ -3328,6 +3328,18 @@ body {
   flex-wrap: wrap;
 }
 
+.market-watch-main-toolbar,
+.market-watch-sub-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.market-watch-sub-toolbar {
+  margin-top: 8px;
+}
+
 .index-watch-legend {
   display: flex;
   flex-wrap: wrap;
@@ -3375,7 +3387,7 @@ body {
 }
 
 .index-chart-modal-panel {
-  width: min(100%, 1100px);
+  width: min(96vw, 1360px);
 }
 
 .index-chart-modal-summary {
@@ -3416,7 +3428,7 @@ body {
 }
 
 .index-chart-modal-container {
-  height: 420px;
+  height: 460px;
 }
 
 .index-watch-note {
@@ -4649,6 +4661,11 @@ body {
   border-color: rgba(47, 143, 217, 0.3);
   background: rgba(47, 143, 217, 0.12);
   color: var(--accent-strong);
+}
+
+.timeframe-tab.sub-tab {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .chart-box {

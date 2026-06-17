@@ -23,6 +23,7 @@ export type ServerSwingPick = {
   envelope?: SmartMoneyEnvelopeAnalysis;
   haltCategory?: string;
   haltAction?: string;
+  initialStopLossPrice?: number;
   category: "swing";
   swingProfile?: SwingEngineProfile;
   source?: string;
@@ -114,6 +115,10 @@ function normalizeServerSwingPick(
         : undefined,
     haltCategory: typeof candidate.haltCategory === "string" ? candidate.haltCategory : undefined,
     haltAction: typeof candidate.haltAction === "string" ? candidate.haltAction : undefined,
+    initialStopLossPrice:
+      typeof candidate.initialStopLossPrice === "number" && Number.isFinite(candidate.initialStopLossPrice)
+        ? candidate.initialStopLossPrice
+        : undefined,
     category: "swing",
     swingProfile: typeof candidate.swingProfile === "string" ? resolveSwingEngineProfile(candidate.swingProfile) : profile,
     source: typeof candidate.source === "string" ? candidate.source : undefined

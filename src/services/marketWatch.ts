@@ -1,7 +1,8 @@
 import { formatDateInTimeZone, formatDateTimeInTimeZone, getCurrentIsoDate, SEOUL_TIME_ZONE } from "../lib/dates.js";
 import { readJson } from "../lib/http.js";
 import { createLogger, toErrorContext } from "../lib/logger.js";
-import type { ChartPoint, MarketWatchChartWindow, MarketWatchSnapshot } from "../types.js";
+import type { ChartPoint, MarketOperationEvent, MarketWatchChartWindow, MarketWatchSnapshot } from "../types.js";
+import { getMarketOperationEvents } from "./marketOperationEvents.js";
 
 type ChartResponse = {
   chart: {
@@ -36,6 +37,22 @@ type MarketWatchDefinition = {
   naverSymbol?: string;
 };
 
+type NaverIntradayChartRecord = {
+  localDateTime?: string;
+  currentPrice?: number;
+  openPrice?: number;
+  highPrice?: number;
+  lowPrice?: number;
+  accumulatedTradingVolume?: number;
+};
+
+type NaverIndexIntradayTimeframe = "minute1" | "minute5" | "minute30" | "minute60";
+
+type NaverIndexIntradayInterval = {
+  timeframe: NaverIndexIntradayTimeframe;
+  interval: "minute" | "minute5" | "minute30" | "minute60";
+};
+
 const requestHeaders = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
@@ -50,6 +67,13 @@ const naverRequestHeaders = {
 };
 
 const cacheTtlMs = 2 * 1000;
+const NAVER_INDEX_INTRADAY_LOOKBACK_DAYS = 10;
+const naverIndexIntradayIntervals = [
+  { timeframe: "minute1", interval: "minute" },
+  { timeframe: "minute5", interval: "minute5" },
+  { timeframe: "minute30", interval: "minute30" },
+  { timeframe: "minute60", interval: "minute60" }
+] satisfies NaverIndexIntradayInterval[];
 const logger = createLogger("marketWatch");
 const marketWatchDefinitions: MarketWatchDefinition[] = [
   { key: "KOSPI", name: "KOSPI", symbol: "^KS11", category: "index", source: "naver", naverSymbol: "KOSPI" },
@@ -65,6 +89,7 @@ let cachedPayload:
       fetchedAt: string;
       expiresAt: number;
       items: MarketWatchSnapshot[];
+      events: MarketOperationEvent[];
     }
   | null = null;
 
@@ -189,6 +214,23 @@ function parseNaverChartXml(xml: string): ChartPoint[] {
   }
 
   return points;
+}
+
+function formatNaverDateTime(value: string) {
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)} ${value.slice(8, 10)}:${value.slice(10, 12)}`;
+}
+
+function parseNaverIntradayChartRecords(records: NaverIntradayChartRecord[]): ChartPoint[] {
+  return records
+    .filter((record) => record.localDateTime && typeof record.currentPrice === "number")
+    .map((record) => ({
+      date: formatNaverDateTime(record.localDateTime ?? ""),
+      open: record.openPrice,
+      high: record.highPrice,
+      low: record.lowPrice,
+      close: record.currentPrice ?? 0,
+      volume: record.accumulatedTradingVolume
+    }));
 }
 
 function buildChartWindow(points: ChartPoint[]): MarketWatchChartWindow | undefined {
@@ -370,33 +412,85 @@ async function fetchNaverChartPoints(symbol: string, count: number) {
   return parseNaverChartXml(xml);
 }
 
+async function fetchNaverIndexIntradayPoints(symbol: string, interval: NaverIndexIntradayInterval["interval"]) {
+  const now = new Date();
+  const start = new Date(now.getTime() - NAVER_INDEX_INTRADAY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const startDate = formatDateInTimeZone(start, SEOUL_TIME_ZONE).replaceAll("-", "");
+  const endDate = formatDateInTimeZone(now, SEOUL_TIME_ZONE).replaceAll("-", "");
+  const url = new URL(`https://api.stock.naver.com/chart/domestic/index/${symbol}/${interval}`);
+  url.searchParams.set("startDateTime", `${startDate}0900`);
+  url.searchParams.set("endDateTime", `${endDate}1600`);
+
+  const response = await fetch(url, {
+    headers: {
+      ...naverRequestHeaders,
+      "Referer": `https://m.stock.naver.com/fchart/domestic/index/${symbol}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Naver intraday chart request failed with status ${response.status} for ${symbol}`);
+  }
+
+  return parseNaverIntradayChartRecords((await readJson<NaverIntradayChartRecord[]>(response)) ?? []);
+}
+
+async function fetchNaverIndexIntradayChartSets(symbol: string): Promise<Partial<Record<NaverIndexIntradayTimeframe, MarketWatchChartWindow>>> {
+  const entries = await Promise.all(
+    naverIndexIntradayIntervals.map(async (definition) => {
+      const points = await fetchNaverIndexIntradayPoints(symbol, definition.interval);
+      return [definition.timeframe, buildChartWindow(points)] as const;
+    })
+  );
+
+  return Object.fromEntries(entries.filter(([, window]) => window != null));
+}
+
 async function fetchNaverIndexMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
   const naverSymbol = definition.naverSymbol;
   if (!naverSymbol) {
     throw new Error(`Missing Naver symbol for ${definition.key}`);
   }
 
-  const dailyPoints = await fetchNaverChartPoints(naverSymbol, 5200);
+  const [dailyPoints, intradayChartSets] = await Promise.all([
+    fetchNaverChartPoints(naverSymbol, 5200),
+    fetchNaverIndexIntradayChartSets(naverSymbol).catch((error) => {
+      logger.warn("item:intraday-load:failed", {
+        key: definition.key,
+        symbol: naverSymbol,
+        ...toErrorContext(error)
+      });
+      return {} as Partial<Record<NaverIndexIntradayTimeframe, MarketWatchChartWindow>>;
+    })
+  ]);
   if (!dailyPoints.length) {
     throw new Error(`${definition.name} chart data is unavailable.`);
   }
 
   const latestPoint = getLatestPoint(dailyPoints);
+  const latestIntradayPoint =
+    getLatestPoint(intradayChartSets.minute1?.points ?? []) ??
+    getLatestPoint(intradayChartSets.minute5?.points ?? []) ??
+    getLatestPoint(intradayChartSets.minute30?.points ?? []) ??
+    getLatestPoint(intradayChartSets.minute60?.points ?? []);
   const previousPoint = dailyPoints.at(-2);
   const weeklyPoints = aggregateWeeklyPoints(dailyPoints);
   const yearlyPoints = aggregateYearlyPoints(dailyPoints);
+  const hasFreshIntradayPoint =
+    latestIntradayPoint != null && latestPoint?.date != null && latestIntradayPoint.date.slice(0, 10) >= latestPoint.date;
+  const displayPoint = hasFreshIntradayPoint ? latestIntradayPoint : latestPoint;
 
   const snapshot = {
     key: definition.key,
     name: definition.name,
     symbol: definition.symbol,
     category: definition.category,
-    price: latestPoint?.close,
+    price: displayPoint?.close,
     previousClose: previousPoint?.close,
-    changeAmount: latestPoint && previousPoint ? latestPoint.close - previousPoint.close : undefined,
-    changePercent: latestPoint && previousPoint ? percentChange(latestPoint.close, previousPoint.close) : undefined,
-    latestDate: latestPoint?.date,
+    changeAmount: displayPoint && previousPoint ? displayPoint.close - previousPoint.close : undefined,
+    changePercent: displayPoint && previousPoint ? percentChange(displayPoint.close, previousPoint.close) : undefined,
+    latestDate: displayPoint?.date,
     chartSets: {
+      ...intradayChartSets,
       daily: buildChartWindow(dailyPoints),
       weekly: buildChartWindow(weeklyPoints),
       yearly: buildChartWindow(yearlyPoints)
@@ -543,7 +637,8 @@ export async function getMarketWatchSnapshots() {
     return {
       fetchedAt: cachedPayload.fetchedAt,
       count: cachedPayload.items.length,
-      items: cachedPayload.items
+      items: cachedPayload.items,
+      events: cachedPayload.events
     };
   }
 
@@ -573,15 +668,18 @@ export async function getMarketWatchSnapshots() {
     } satisfies MarketWatchSnapshot;
   });
 
+  const marketOperationEvents = await getMarketOperationEvents();
   const fetchedAt = formatDateTimeInTimeZone(new Date(), SEOUL_TIME_ZONE);
   cachedPayload = {
     fetchedAt,
     expiresAt: Date.now() + cacheTtlMs,
-    items
+    items,
+    events: marketOperationEvents.events
   };
 
   logger.info("snapshot:ready", {
     count: items.length,
+    eventCount: marketOperationEvents.events.length,
     errors: items.filter((item) => item.error).length,
     fetchedAt
   });
@@ -589,6 +687,7 @@ export async function getMarketWatchSnapshots() {
   return {
     fetchedAt,
     count: items.length,
-    items
+    items,
+    events: marketOperationEvents.events
   };
 }

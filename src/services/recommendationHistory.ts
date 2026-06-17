@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { fetchQuoteAndChart } from "./stockAnalysis.js";
 import { readServerSwingPickPayload } from "./serverSwingPicks.js";
 import { getMarketWatchSnapshots } from "./marketWatch.js";
+import { discordAlertHistoryPath } from "./discordAlertHistory.js";
 import type { ChartPoint, MarketWatchSnapshot } from "../types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,7 @@ type SwingCandidate = {
   category?: string;
   swingProfile?: string;
   source?: string;
+  initialStopLossPrice?: number;
   postEntryOutcome?: {
     status?: string;
     executedBuyCount?: number;
@@ -88,6 +90,7 @@ type SwingHistoryCase = {
   latestClose?: number;
   latestLow?: number;
   unrealizedReturnPct?: number;
+  initialStopLossPrice?: number;
   maxFavorablePrice?: number;
   maxFavorableDate?: string;
   maxFavorableReturnPct?: number;
@@ -158,6 +161,16 @@ type SwingHistoryPayload = {
   [key: string]: unknown;
 };
 
+type SwingInitialAlertSnapshot = {
+  anchorDate?: string;
+  latestMentionDate?: string;
+  note?: string;
+  tags?: string[];
+  reasons?: string[];
+  source?: string;
+  sentAt?: string;
+};
+
 type MarketShockLevel = "shock" | "crash";
 
 type MarketShockContext = {
@@ -201,6 +214,7 @@ export type SwingCarryForwardCase = {
     date?: string;
   }>;
   buyPlan?: SwingHistoryCase["buyPlan"];
+  initialStopLossPrice?: number;
   initialSnapshot?: SwingHistoryCase["initialSnapshot"];
 };
 
@@ -219,6 +233,80 @@ async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined>
     }
     throw error;
   }
+}
+
+async function readInitialSwingAlertSnapshots(): Promise<Map<string, SwingInitialAlertSnapshot>> {
+  let raw = "";
+  try {
+    raw = await readFile(discordAlertHistoryPath, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("ENOENT")) {
+      return new Map();
+    }
+    throw error;
+  }
+
+  const snapshots = new Map<string, SwingInitialAlertSnapshot>();
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    if (record.alertType !== "recommendation-universe" || record.category !== "swing") {
+      continue;
+    }
+
+    const profile = typeof record.profile === "string" ? record.profile : undefined;
+    const symbol = typeof record.symbol === "string" ? record.symbol : undefined;
+    if (!profile || !symbol) {
+      continue;
+    }
+
+    const metadata = record.metadata && typeof record.metadata === "object"
+      ? (record.metadata as Record<string, unknown>)
+      : {};
+    const note = typeof metadata.note === "string" ? metadata.note : undefined;
+    if (!note) {
+      continue;
+    }
+
+    const key = getHistoryCaseKey(profile, symbol);
+    const existing = snapshots.get(key);
+    const sentAt = typeof record.sentAt === "string" ? record.sentAt : "";
+    if (existing?.sentAt && sentAt && existing.sentAt <= sentAt) {
+      continue;
+    }
+
+    snapshots.set(key, {
+      anchorDate: typeof record.anchorDate === "string"
+        ? record.anchorDate
+        : typeof metadata.anchorDate === "string"
+          ? metadata.anchorDate
+          : undefined,
+      latestMentionDate: typeof record.latestMentionDate === "string"
+        ? record.latestMentionDate
+        : typeof metadata.latestMentionDate === "string"
+          ? metadata.latestMentionDate
+          : undefined,
+      note,
+      tags: Array.isArray(metadata.tags) ? metadata.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      reasons: Array.isArray(metadata.reasons)
+        ? metadata.reasons.filter((reason): reason is string => typeof reason === "string")
+        : [],
+      source: typeof metadata.source === "string" ? metadata.source : typeof record.source === "string" ? record.source : undefined,
+      sentAt
+    });
+  }
+
+  return snapshots;
 }
 
 function getCandidateKey(profile: string | undefined, symbol: string | undefined) {
@@ -526,6 +614,24 @@ function parseBuyPlan(
     secondBuyPrice,
     thirdBuyPrice,
     stopLossPrice
+  };
+}
+
+function getInitialStopLossPrice(historyCase: SwingHistoryCase) {
+  return isFiniteNumber(historyCase.initialStopLossPrice) ? historyCase.initialStopLossPrice : undefined;
+}
+
+function freezeBuyPlanStopLoss(
+  buyPlan: SwingHistoryCase["buyPlan"] | undefined,
+  initialStopLossPrice: number | undefined
+) {
+  if (!buyPlan || !isFiniteNumber(initialStopLossPrice)) {
+    return buyPlan;
+  }
+
+  return {
+    ...buyPlan,
+    stopLossPrice: initialStopLossPrice
   };
 }
 
@@ -964,7 +1070,9 @@ function normalizeHistoryCaseWeightedBuys(historyCase: SwingHistoryCase): SwingH
   const averageBuyPrice = getWeightedAverageBuyPrice(executedBuys);
   const latestClose = historyCase.latestClose;
   const fallbackLatestClose = isFiniteNumber(latestClose) ? latestClose : isFiniteNumber(historyCase.latestLow) ? historyCase.latestLow : undefined;
-  const buyPlan = historyCase.buyPlan ?? parseBuyPlan(historyCase.initialSnapshot?.note, executedBuys);
+  const parsedBuyPlan = parseBuyPlan(historyCase.initialSnapshot?.note, executedBuys);
+  const initialStopLossPrice = getInitialStopLossPrice(historyCase) ?? historyCase.buyPlan?.stopLossPrice ?? parsedBuyPlan?.stopLossPrice;
+  const buyPlan = freezeBuyPlanStopLoss(historyCase.buyPlan ?? parsedBuyPlan, initialStopLossPrice);
   const unrealizedReturnPct =
     isFiniteNumber(averageBuyPrice) && isFiniteNumber(fallbackLatestClose) && averageBuyPrice !== 0
       ? round(((fallbackLatestClose - averageBuyPrice) / averageBuyPrice) * 100)
@@ -975,6 +1083,7 @@ function normalizeHistoryCaseWeightedBuys(historyCase: SwingHistoryCase): SwingH
   return {
     ...historyCase,
     assumption: getWeightedBuyAssumption(historyCase.assumption),
+    initialStopLossPrice,
     buyPlan,
     executedBuyCount: getExecutedBuyStageFromBuys(executedBuys),
     executedBuys,
@@ -1009,32 +1118,106 @@ function getHistoryCaseKey(profile: string | undefined, symbol: string | undefin
 }
 
 function isExecutionHistoryCase(historyCase: SwingHistoryCase) {
-  return historyCase.entryBucket !== "watch";
+  return historyCase.entryBucket !== "watch" || getExecutedBuyStage(historyCase) > 0;
 }
 
 function isActionableSwingCandidate(candidate: SwingCandidate) {
   return candidate.bucket !== "watch";
 }
 
+function compareClosedHistoryCasePriority(left: SwingHistoryCase, right: SwingHistoryCase) {
+  const leftDefaultProfile = left.profile === "default" ? 1 : 0;
+  const rightDefaultProfile = right.profile === "default" ? 1 : 0;
+  if (rightDefaultProfile !== leftDefaultProfile) {
+    return rightDefaultProfile - leftDefaultProfile;
+  }
+
+  const leftExecutionBucket = left.entryBucket !== "watch" ? 1 : 0;
+  const rightExecutionBucket = right.entryBucket !== "watch" ? 1 : 0;
+  if (rightExecutionBucket !== leftExecutionBucket) {
+    return rightExecutionBucket - leftExecutionBucket;
+  }
+
+  const leftClosedDate = getValidDateText(left.closedDate) ?? "";
+  const rightClosedDate = getValidDateText(right.closedDate) ?? "";
+  if (rightClosedDate !== leftClosedDate) {
+    return rightClosedDate.localeCompare(leftClosedDate);
+  }
+
+  const leftOpenedDate = getValidDateText(left.openedDate) ?? "";
+  const rightOpenedDate = getValidDateText(right.openedDate) ?? "";
+  return rightOpenedDate.localeCompare(leftOpenedDate);
+}
+
+function dedupeClosedHistoryCases(cases: SwingHistoryCase[]) {
+  const grouped = new Map<string, SwingHistoryCase[]>();
+  for (const historyCase of cases) {
+    const key = historyCase.symbol ?? historyCase.id ?? "";
+    if (!key) {
+      continue;
+    }
+    grouped.set(key, [...(grouped.get(key) ?? []), historyCase]);
+  }
+
+  return [...grouped.values()]
+    .map((items) => [...items].sort(compareClosedHistoryCasePriority)[0])
+    .filter((item): item is SwingHistoryCase => Boolean(item))
+    .sort((left, right) => {
+      const leftClosedDate = getValidDateText(left.closedDate) ?? "";
+      const rightClosedDate = getValidDateText(right.closedDate) ?? "";
+      if (rightClosedDate !== leftClosedDate) {
+        return rightClosedDate.localeCompare(leftClosedDate);
+      }
+      return String(left.name ?? "").localeCompare(String(right.name ?? ""), "ko");
+    });
+}
+
 function buildCurrentHistoryCase(
   candidate: SwingCandidate & { profile: "default" | "smallcap"; sourceBucket: "execution" | "watch" },
   existingCase: SwingHistoryCase | undefined,
-  now: Date
+  now: Date,
+  initialAlertSnapshot?: SwingInitialAlertSnapshot
 ): SwingHistoryCase | undefined {
   if (!candidate.symbol || !candidate.name) {
     return undefined;
   }
 
   const asOfDate = formatDateInSeoul(now);
-  const openedDate = existingCase?.openedDate ?? asOfDate;
+  const openedDate = existingCase?.openedDate ?? initialAlertSnapshot?.anchorDate ?? asOfDate;
   const openedAt = existingCase?.openedAt ?? now.toISOString();
-  const recommendationStartDate = candidate.anchorDate ?? existingCase?.initialSnapshot?.anchorDate ?? openedDate;
+  const initialSnapshot =
+    existingCase?.initialSnapshot ??
+    (initialAlertSnapshot?.note
+      ? {
+          anchorDate: initialAlertSnapshot.anchorDate,
+          latestMentionDate: initialAlertSnapshot.latestMentionDate,
+          note: initialAlertSnapshot.note,
+          tags: initialAlertSnapshot.tags ?? [],
+          reasons: initialAlertSnapshot.reasons ?? [],
+          source: initialAlertSnapshot.source
+        }
+      : undefined);
+  const recommendationStartDate = initialSnapshot?.anchorDate ?? candidate.anchorDate ?? openedDate;
   const sourceExecutedBuys = filterExecutedBuysAfterRecommendationStart(
     candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [],
     recommendationStartDate
   );
   const latestClose = candidate.postEntryOutcome?.latestClose;
-  const buyPlan = parseBuyPlan(candidate.note, sourceExecutedBuys) ?? existingCase?.buyPlan;
+  const buyPlanSourceBuys = initialSnapshot?.note ? existingCase?.executedBuys : sourceExecutedBuys;
+  const parsedBuyPlan = parseBuyPlan(initialSnapshot?.note ?? candidate.note, buyPlanSourceBuys);
+  const candidateInitialStopLossPrice = isFiniteNumber(candidate.initialStopLossPrice)
+    ? candidate.initialStopLossPrice
+    : undefined;
+  const initialStopLossPrice =
+    (existingCase ? getInitialStopLossPrice(existingCase) : undefined) ??
+    parseBuyPlan(initialSnapshot?.note, buyPlanSourceBuys)?.stopLossPrice ??
+    candidateInitialStopLossPrice ??
+    existingCase?.buyPlan?.stopLossPrice ??
+    parsedBuyPlan?.stopLossPrice;
+  const buyPlan = freezeBuyPlanStopLoss(
+    getExecutedBuyStage(existingCase) > 0 ? existingCase?.buyPlan ?? parsedBuyPlan : parsedBuyPlan ?? existingCase?.buyPlan,
+    initialStopLossPrice
+  );
   const dataDate = candidate.postEntryOutcome?.latestDate ?? candidate.latestMentionDate ?? candidate.anchorDate ?? asOfDate;
   const latestLow = isFiniteNumber(candidate.postEntryOutcome?.maxAdversePrice)
     ? candidate.postEntryOutcome.maxAdversePrice
@@ -1074,6 +1257,7 @@ function buildCurrentHistoryCase(
     entryBucket: candidate.bucket ?? candidate.sourceBucket,
     status: "active",
     assumption: getWeightedBuyAssumption(existingCase?.assumption),
+    initialStopLossPrice,
     outcomeStatus: candidate.postEntryOutcome?.status ?? existingCase?.outcomeStatus,
     executedBuyCount: getExecutedBuyStageFromBuys(executedBuys),
     executedBuys,
@@ -1083,7 +1267,7 @@ function buildCurrentHistoryCase(
     unrealizedReturnPct,
     buyPlan,
     initialSnapshot:
-      existingCase?.initialSnapshot ??
+      initialSnapshot ??
       {
         anchorDate: candidate.anchorDate,
         latestMentionDate: candidate.latestMentionDate,
@@ -1479,6 +1663,7 @@ export async function readSwingCarryForwardCases(profile?: string): Promise<Swin
       executedBuyCount: getExecutedBuyStage(historyCase),
       executedBuys: historyCase.executedBuys,
       buyPlan: historyCase.buyPlan,
+      initialStopLossPrice: historyCase.initialStopLossPrice,
       initialSnapshot: historyCase.initialSnapshot
     }));
 }
@@ -1491,6 +1676,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
         .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
   const currentCandidates = await readCurrentSwingCandidates();
+  const initialAlertSnapshotByKey = await readInitialSwingAlertSnapshots();
   const existingCaseByKey = new Map(
     existingCases.map((historyCase) => [getHistoryCaseKey(historyCase.profile, historyCase.symbol), historyCase])
   );
@@ -1506,7 +1692,7 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       continue;
     }
 
-    const nextCase = buildCurrentHistoryCase(candidate, existingCase, now);
+    const nextCase = buildCurrentHistoryCase(candidate, existingCase, now, initialAlertSnapshotByKey.get(key));
     if (!nextCase) {
       continue;
     }
@@ -1544,9 +1730,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
   const currentEnteredRecommendationCount = casesWithOutcome.filter(
     (historyCase) => currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) && getExecutedBuyStage(historyCase) > 0
   ).length;
-  const closedCases = casesWithOutcome.filter(
+  const closedCases = dedupeClosedHistoryCases(casesWithOutcome.filter(
     (historyCase) => historyCase.status === "closed" && getExecutedBuyStage(historyCase) > 0 && isExecutionHistoryCase(historyCase)
-  );
+  ));
   const output: SwingHistoryPayload = {
     ...(existingPayload ?? {}),
     schemaVersion: 1,
@@ -1655,10 +1841,10 @@ export async function readSwingRecommendationHistory() {
   const pendingEntryCandidates = enrichedCurrentCandidates.filter((candidate) => !candidate.hasEntryAssumption);
 
   const currentCaseCount = enrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "current").length;
-  const closedCases = enrichedCases.filter(
+  const closedCases = dedupeClosedHistoryCases(enrichedCases.filter(
     (historyCase) =>
       historyCase.lifecycleStatus === "closed" && getExecutedBuyStage(historyCase) > 0 && isExecutionHistoryCase(historyCase)
-  );
+  ));
   const closedCaseCount = closedCases.length;
 
   return {

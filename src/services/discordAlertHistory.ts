@@ -7,6 +7,7 @@ export type DiscordAlertHistoryAlertType =
   | "recommendation-universe"
   | "korean-movers"
   | "price-spike"
+  | "market-operation"
   | "smart-money-watchlist";
 
 export type DiscordAlertHistoryRecordInput = {

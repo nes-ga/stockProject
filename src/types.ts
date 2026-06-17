@@ -844,12 +844,28 @@ export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "B
 
 export type MarketWatchCategory = "index" | "fx" | "commodity" | "crypto";
 
-export type MarketWatchTimeframe = "daily" | "weekly" | "yearly";
+export type MarketWatchTimeframe = "minute1" | "minute5" | "minute30" | "minute60" | "daily" | "weekly" | "yearly";
 
 export type MarketWatchChartWindow = {
   startDate: string;
   endDate: string;
   points: ChartPoint[];
+};
+
+export type MarketOperationEventType = "circuit-breaker" | "sidecar";
+
+export type MarketOperationEventStatus = "active" | "resolved" | "notice";
+
+export type MarketOperationEvent = {
+  id: string;
+  eventType: MarketOperationEventType;
+  status: MarketOperationEventStatus;
+  market?: "KOSPI" | "KOSDAQ" | "DERIVATIVES";
+  title: string;
+  submitter?: string;
+  occurredAt?: string;
+  source: "kind";
+  sourceUrl?: string;
 };
 
 export type MarketWatchSnapshot = {

@@ -97,6 +97,54 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
 
 - `src/services/recommendationHistory.ts`: `readSwingCarryForwardCases`, `shouldCarryForwardSwingCase`
 - `src/services/recommendationUniverse.ts`: `carryForwardWatchItems` 병합
+
+## 스윙 최초 기준 고정 원칙
+
+스윙 후보가 한 번 히스토리 체결 케이스가 되면 매수가, 손절가, 최초 판정 노트는 최초 유효 스윙 판단 기준으로 고정합니다. 이후 universe scan에서 SMA20, 전저점, envelope, 점수가 바뀌어도 기존 체결 케이스의 기준 가격을 새 스캔 값으로 덮어쓰면 안 됩니다.
+
+핵심 규칙:
+
+- 매수 시작은 최초 스윙 엔진 기준의 SMA20 부근 1차 매수가에서 시작합니다.
+- 손절가는 최초 판정 당시 정한 전저점 또는 엔진 invalidation 기준으로 고정합니다.
+- 2차/3차 매수가는 최초 노트에 `매수 a/b/c`가 있으면 그 값을 그대로 사용합니다.
+- 최초 노트가 `구간 high~low`만 가진 경우에만 1차를 SMA20/구간 상단 근처로 두고, 손절가와의 risk band 안에서 2차/3차를 산출합니다.
+- 이미 체결된 케이스는 이후 `pattern.buyPlan`, `pattern.invalidationPrice`, 최신 SMA20로 매수계획을 재계산하지 않습니다.
+- 서버 픽, 히스토리, 화면 오버레이는 모두 히스토리의 `buyPlan`과 `initialStopLossPrice`를 우선합니다.
+- 신규 히스토리 케이스 생성 시 현재 서버 픽보다 `data/discord-alert-history.jsonl`의 최초 스윙 알림을 먼저 기준으로 확인합니다.
+
+주의할 사례:
+
+- 레이 `228670`: 2026-04-09 계열의 최초 엔진 판단을 기준으로 1차 매수는 약 7,900원대 SMA20 부근이어야 합니다. 최신 하락 후 SMA20로 되돌리면 안 됩니다.
+- 오픈베이스 `049480`: 레이와 같은 방식으로 최초 기준의 SMA20/손절가를 유지합니다.
+- 삼륭물산 `014970`: 최초 스윙 판정 시 전저점 5,390원이 손절 기준이면 이후 유예/종료 표시는 이 가격을 기반으로 해야 합니다.
+
+수정 위치:
+
+- `src/services/recommendationHistory.ts`: `initialSnapshot`, `initialStopLossPrice`, `parseBuyPlan`, `readInitialSwingAlertSnapshots`
+- `src/services/recommendationUniverse.ts`: `preserveEnteredHistoryPlan`, `replaceSwingNoteBuyPlan`
+- `public/app.js`: 히스토리 노트의 매수계획을 화면 오버레이에서 우선 표시
+
+## Watch 후보와 히스토리 승격 금지
+
+`watch`는 관찰군이지 체결 통계 대상이 아닙니다. watch 후보에 `postEntryOutcome`이 있더라도, 그것만으로 신규 히스토리 체결 케이스를 열면 안 됩니다.
+
+히스토리 체결로 열 수 없는 대표 조건:
+
+- `bucket === "watch"`이고 기존 히스토리 케이스가 없음
+- `watch_low_quality` 태그가 있음
+- `quality_not_ready` reason이 있음
+- `envelope_lower_break` reason이 있음
+- 저점이 시뮬레이션 매수가를 터치했더라도 최초부터 watch-only였음
+
+대표 사례:
+
+- 와이어블 `065530`: 2026-06-01 최초 알림부터 `watch`, `envelope_lower_break`, `quality_not_ready`였습니다. 이 종목은 실행 후보나 체결 히스토리로 승격하지 않고 관찰 후보로만 유지해야 합니다.
+
+수정 위치:
+
+- `src/services/recommendationUniverse.ts`: 낮은 점수와 불안정 지지를 가진 긴 눌림이 `long_pullback_until_stop`만으로 `execution_probe`로 승격되지 않게 분류
+- `src/services/recommendationHistory.ts`: 기존 케이스 없는 watch 후보는 히스토리를 새로 열지 않음
+
 ## 매물대 반영 원칙
 
 스윙 매물대는 BUY를 공격적으로 늘리는 지표가 아닙니다.
@@ -201,3 +249,4 @@ npm run scan:swing-universe
 - 2026-05-08: 스윙 매물대 분석 추가
 - 2026-05-08: 매물대 양수 가산을 BUY 직접 승격에서 제외하고 ranking support로 보수화
 - 2026-06-01: 시장 충격 손절 유예와 `market_shock_grace`/`market_shock_stop` outcome 추가
+- 2026-06-17: 스윙 최초 기준 고정, watch 후보의 체결 히스토리 승격 금지, 와이어블 watch-only 기준 명문화

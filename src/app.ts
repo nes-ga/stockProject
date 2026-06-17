@@ -10,6 +10,7 @@ import { config } from "./config.js";
 import { marketFlowRoutes } from "./routes/marketFlowRoutes.js";
 
 export const app = express();
+app.set("etag", false);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, "../public");
 const lightweightChartsDir = path.resolve(currentDir, "../node_modules/lightweight-charts/dist");
@@ -20,6 +21,10 @@ void initializeNewsSignalCollector().catch((error) => {
 });
 
 function setUtf8StaticHeaders(response: express.Response, filePath: string) {
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Pragma", "no-cache");
+  response.setHeader("Expires", "0");
+
   if (filePath.endsWith(".html")) {
     response.setHeader("Content-Type", "text/html; charset=utf-8");
     return;
@@ -83,6 +88,13 @@ app.get("/health", (_request, response) => {
 app.get("/", (_request, response) => {
   response.setHeader("Content-Type", "text/html; charset=utf-8");
   response.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.use(["/analysis", "/api", "/alerts"], (_request, response, next) => {
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Pragma", "no-cache");
+  response.setHeader("Expires", "0");
+  next();
 });
 
 app.use("/analysis", analysisRoutes);

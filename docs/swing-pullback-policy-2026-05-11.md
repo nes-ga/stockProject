@@ -84,3 +84,38 @@ The long-pullback rule is now reflected in final candidate classification.
 - Confirmed stop break, structural failure, or a failed post-spike shape can still remove or demote the candidate.
 
 This keeps cases such as 제이오, 씨아이에스, SK오션플랜트, and 삼륭물산 aligned with the intended rule: after a valid swing candidate appears, a long pullback remains valid until the stop is broken.
+
+## 2026-06-17 Update
+
+The long-pullback rule is a visibility rule, not an execution-promotion rule.
+
+`stop_valid_extended_pullback` and `long_pullback_until_stop_probe` may keep a mature pullback visible, but they must not override quality gates by themselves. In particular, a candidate should remain watch-only when the setup has low score, unstable support, or a confirmed SMA20 lower-envelope break.
+
+Additional operating rules:
+
+- Do not promote a low-score unstable-support setup to `execution_probe` only because it is still above stop.
+- `envelope_lower_break` keeps the candidate watch-only until the lower envelope is reclaimed.
+- `quality_not_ready` and `watch_low_quality` must not open a new entered recommendation-history case.
+- A watch-only candidate can be visible in `watchItems`, but it is not a buy candidate and should not be counted as a live entered trade.
+- If a candidate later becomes a true entered case, its buy plan and stop must be based on the first valid swing basis, not the latest scan.
+
+Reference case:
+
+와이어블 `065530`:
+
+- First alert: 2026-06-01.
+- Bucket: `watch`.
+- Reasons included `envelope_lower_break` and `quality_not_ready`.
+- The first alert note was `SMA20 1896 | 구간 1826~1779 | 손절 1504`.
+- Later scans must not turn this into an active entered history case just because simulated lows touched staged prices.
+- If it stays visible, it should remain a watch-only long-pullback candidate until it clears the quality/envelope gate.
+
+Code references:
+
+- `src/services/recommendationUniverse.ts`
+  - `classifySwingCandidate`
+  - `isEnvelopeWidePullbackCandidate`
+  - `longPullbackUntilStopCandidate`
+- `src/services/recommendationHistory.ts`
+  - `shouldUpsertCurrentHistoryCase`
+  - `readInitialSwingAlertSnapshots`
