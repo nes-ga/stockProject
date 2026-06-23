@@ -193,6 +193,19 @@ export type SmartMoneyBuyPlan = {
   secondBuyPrice: number;
   thirdBuyPrice: number;
   stopLossPrice: number;
+  originalThirdBuyPrice?: number;
+  adjustedThirdBuyPrice?: number;
+  thirdBuyAdjustment?: {
+    policy: "market_stability_floor_confirmed";
+    adjustedDate?: string;
+    marketContextScore?: number;
+    regimeScore?: number;
+    supportStabilityScore?: number;
+    volumeContractionScore?: number;
+    candleQualityScore?: number;
+    stopBufferPct?: number;
+    reason: string;
+  };
 };
 
 export type SmartMoneyPostEntryOutcome = {
@@ -361,6 +374,9 @@ export type SmartMoneyClassificationTag =
   | "tag_envelope_lower_hold"
   | "tag_envelope_lower_break"
   | "tag_envelope_upper_extension"
+  | "tag_history_loss_cluster"
+  | "tag_history_win_rate_caution"
+  | "tag_third_buy_confirmation_required"
   | "watch_extended_leader"
   | "watch_pullback_pending"
   | "watch_low_quality"

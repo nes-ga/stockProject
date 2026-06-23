@@ -970,6 +970,74 @@ function resolvePullbackBuyPlan(params: {
   };
 }
 
+function adjustThirdBuyPlanForConfirmedFloor(params: {
+  buyPlan?: SmartMoneyBuyPlan;
+  referencePoint: ChartPoint;
+  marketContext?: SmartMoneyMarketContext;
+  supportStabilityScore: number;
+  volumeContractionScore: number;
+  candleQualityScore: number;
+  envelope?: SmartMoneyEnvelopeAnalysis;
+  pricingContext?: SmartMoneyPricingContext;
+}): SmartMoneyBuyPlan | undefined {
+  const buyPlan = params.buyPlan;
+  if (!buyPlan || params.referencePoint.close == null || params.referencePoint.close <= 0) {
+    return buyPlan;
+  }
+
+  const originalThirdBuyPrice = buyPlan.originalThirdBuyPrice ?? buyPlan.thirdBuyPrice;
+  const referenceClose = params.referencePoint.close;
+  const inDeepThirdBuyBand = referenceClose <= originalThirdBuyPrice * 1.01 && referenceClose > buyPlan.stopLossPrice;
+  if (!inDeepThirdBuyBand) {
+    return buyPlan;
+  }
+
+  const marketContextScore = params.marketContext?.marketContextScore ?? 50;
+  const regimeScore = params.marketContext?.regimeScore ?? 50;
+  const marketStable =
+    params.marketContext?.riskOff !== true &&
+    marketContextScore >= 50 &&
+    regimeScore >= 45 &&
+    params.marketContext?.momentumCondition !== "weak";
+  const floorConfirmed =
+    params.supportStabilityScore >= 65 &&
+    params.volumeContractionScore >= 55 &&
+    params.candleQualityScore >= 55 &&
+    params.envelope?.position !== "below_lower";
+  const stopBufferPct = ((referenceClose - buyPlan.stopLossPrice) / referenceClose) * 100;
+  if (!marketStable || !floorConfirmed || stopBufferPct < 6) {
+    return buyPlan;
+  }
+
+  const minimumRiskTick = resolveSmartMoneyTickSize(referenceClose, params.pricingContext);
+  const adjustedThirdBuyPrice = Math.max(
+    roundPriceLevel(referenceClose, params.pricingContext, "down"),
+    roundPriceLevel(buyPlan.stopLossPrice + minimumRiskTick, params.pricingContext, "up")
+  );
+  if (adjustedThirdBuyPrice >= buyPlan.secondBuyPrice || adjustedThirdBuyPrice <= buyPlan.stopLossPrice) {
+    return buyPlan;
+  }
+
+  return {
+    ...buyPlan,
+    originalThirdBuyPrice,
+    thirdBuyPrice: adjustedThirdBuyPrice,
+    adjustedThirdBuyPrice,
+    thirdBuyAdjustment: {
+      policy: "market_stability_floor_confirmed",
+      adjustedDate: params.referencePoint.date,
+      marketContextScore: Math.round(marketContextScore),
+      regimeScore: Math.round(regimeScore),
+      supportStabilityScore: Math.round(params.supportStabilityScore),
+      volumeContractionScore: Math.round(params.volumeContractionScore),
+      candleQualityScore: Math.round(params.candleQualityScore),
+      stopBufferPct: Math.round(stopBufferPct * 100) / 100,
+      reason:
+        "3rd staged buy was repriced to the confirmed floor because market context is stable and the stock has held support above the stop."
+    }
+  };
+}
+
 function isPullbackBuySetup(params: {
   setupType?: SmartMoneySetupType;
   leadInPriceChangePercent: number;
@@ -1935,7 +2003,7 @@ export function evaluateSmartMoneyPattern(
             ? getLowestPointReference(points, Math.max(0, leadInIndex - filters.breakoutLookbackDays), leadInIndex)
             : undefined;
         const stopLossReference = pickHigherStopLossReference(rawStopLossReference, anchorStructureStopReference);
-        const pullbackBuyPlan =
+        const basePullbackBuyPlan =
           pullbackBuyEligible
             ? resolvePullbackBuyPlan({
                 referenceSma20,
@@ -1946,6 +2014,24 @@ export function evaluateSmartMoneyPattern(
                 pricingContext: options?.pricingContext
               })
             : undefined;
+        const volumeContractionScore = deriveVolumeContractionScore(setupPullback);
+        const supportStabilityScore = deriveSupportStabilityScore({
+          pullback: setupPullback,
+          referenceClose: referencePoint.close,
+          referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
+          invalidationPrice: stopLossReference.price,
+          setupType: setupPullback.setupType
+        });
+        const pullbackBuyPlan = adjustThirdBuyPlanForConfirmedFloor({
+          buyPlan: basePullbackBuyPlan,
+          referencePoint,
+          marketContext: market.appliedContext,
+          supportStabilityScore,
+          volumeContractionScore,
+          candleQualityScore: leadInCandleQuality.candleQualityScore,
+          envelope,
+          pricingContext: options?.pricingContext
+        });
         const adjustedSetupEntryZone = pullbackBuyPlan
           ? {
               entryZoneLow: pullbackBuyPlan.thirdBuyPrice,
@@ -1977,14 +2063,6 @@ export function evaluateSmartMoneyPattern(
         );
         const pullbackBuyStillValid =
           pullbackBuyPlan != null && referencePoint.close > pullbackBuyPlan.stopLossPrice;
-        const volumeContractionScore = deriveVolumeContractionScore(setupPullback);
-        const supportStabilityScore = deriveSupportStabilityScore({
-          pullback: setupPullback,
-          referenceClose: referencePoint.close,
-          referenceCloseVsBreakoutLevelPercent: setupDistancePercent,
-          invalidationPrice: stopLossReference.price,
-          setupType: setupPullback.setupType
-        });
         const sma20SlopePercent = getSma20SlopePercent(points, referenceIndex);
         const sma20SlopeScore =
           sma20SlopePercent == null ? 58 : sma20SlopePercent >= 1 ? 90 : sma20SlopePercent >= 0 ? 74 : sma20SlopePercent >= -1 ? 46 : 24;

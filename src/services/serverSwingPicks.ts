@@ -3,6 +3,27 @@ import path from "node:path";
 import type { SmartMoneyEnvelopeAnalysis, SmartMoneyPostEntryOutcome } from "../types.js";
 import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
+export type ServerSwingBuyPlan = {
+  firstBuyPrice?: number;
+  secondBuyPrice?: number;
+  thirdBuyPrice?: number;
+  stopLossPrice?: number;
+  originalThirdBuyPrice?: number;
+  adjustedThirdBuyPrice?: number;
+  thirdBuyAdjustment?: {
+    policy?: "market_stability_floor_confirmed";
+    adjustedDate?: string;
+    marketContextScore?: number;
+    regimeScore?: number;
+    supportStabilityScore?: number;
+    volumeContractionScore?: number;
+    candleQualityScore?: number;
+    stopBufferPct?: number;
+    supportHoldDays?: number;
+    reason?: string;
+  };
+};
+
 export type ServerSwingPick = {
   key: string;
   name: string;
@@ -19,6 +40,7 @@ export type ServerSwingPick = {
     impact: number;
     reason: string;
   }>;
+  buyPlan?: ServerSwingBuyPlan;
   postEntryOutcome?: SmartMoneyPostEntryOutcome;
   envelope?: SmartMoneyEnvelopeAnalysis;
   haltCategory?: string;
@@ -105,6 +127,10 @@ function normalizeServerSwingPick(
             typeof (item as { reason?: unknown }).reason === "string"
         )
       : undefined,
+    buyPlan:
+      candidate.buyPlan && typeof candidate.buyPlan === "object"
+        ? (candidate.buyPlan as ServerSwingBuyPlan)
+        : undefined,
     postEntryOutcome:
       candidate.postEntryOutcome && typeof candidate.postEntryOutcome === "object"
         ? (candidate.postEntryOutcome as SmartMoneyPostEntryOutcome)

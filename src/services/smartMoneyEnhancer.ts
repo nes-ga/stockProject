@@ -50,7 +50,8 @@ const EXECUTION_GUARD_SETTINGS = {
 const POST_ENTRY_OUTCOME_SETTINGS = {
   firstBuyTargetReturnPct: 10,
   secondBuyTargetReturnPct: 10,
-  thirdBuyTargetReturnPct: 8
+  thirdBuyTargetReturnPct: 8,
+  thirdBuyMinStopBufferPct: 6
 } as const;
 
 function clamp(value: number, min: number, max: number): number {
@@ -263,6 +264,29 @@ function getTargetHitStatus(executedBuyCount: number): SmartMoneyPostEntryOutcom
   return "target_hit_after_first_buy";
 }
 
+function getThirdBuyStopBufferPct(point: ChartPoint, buyPlan: SmartMoneyBuyPlan) {
+  if (!point.close || !Number.isFinite(point.close) || !buyPlan.stopLossPrice) {
+    return undefined;
+  }
+
+  return ((point.close - buyPlan.stopLossPrice) / point.close) * 100;
+}
+
+function isThirdBuyConfirmationPoint(point: ChartPoint, previousPoint: ChartPoint | undefined, buyPlan: SmartMoneyBuyPlan) {
+  if (!buyPlan.thirdBuyPrice || point.close < buyPlan.thirdBuyPrice) {
+    return false;
+  }
+
+  const stopBufferPct = getThirdBuyStopBufferPct(point, buyPlan);
+  if (stopBufferPct == null || stopBufferPct < POST_ENTRY_OUTCOME_SETTINGS.thirdBuyMinStopBufferPct) {
+    return false;
+  }
+
+  const greenCandle = typeof point.open === "number" && Number.isFinite(point.open) && point.close >= point.open;
+  const closeRecovered = typeof previousPoint?.close === "number" && Number.isFinite(previousPoint.close) && point.close > previousPoint.close;
+  return greenCandle || closeRecovered;
+}
+
 function calculatePostEntryOutcome(
   match: SmartMoneyPatternMatch,
   points: ChartPoint[],
@@ -289,13 +313,13 @@ function calculatePostEntryOutcome(
           : 0
   );
   const endIndex = Math.min(referenceIndex, points.length - 1);
-  const stageDefinitions: Array<{ stage: 1 | 2 | 3; price: number }> = [
+  const stageDefinitions: Array<{ stage: 1 | 2; price: number }> = [
     { stage: 1, price: buyPlan.firstBuyPrice },
-    { stage: 2, price: buyPlan.secondBuyPrice },
-    { stage: 3, price: buyPlan.thirdBuyPrice }
+    { stage: 2, price: buyPlan.secondBuyPrice }
   ];
   const executedBuys: SmartMoneyPostEntryOutcome["executedBuys"] = [];
   const executedStageSet = new Set<number>();
+  let thirdBuyTouched = false;
   let maxFavorablePrice: number | undefined;
   let maxFavorableDate: string | undefined;
   let maxFavorableReturnPct: number | undefined;
@@ -314,6 +338,10 @@ function calculatePostEntryOutcome(
     const rawLow = getPointLow(point);
     const low = rawLow > 0 ? rawLow : point.close;
     let executedNewStage = false;
+    if (low <= buyPlan.thirdBuyPrice) {
+      thirdBuyTouched = true;
+    }
+
     for (const buy of stageDefinitions) {
       if (!executedStageSet.has(buy.stage) && low <= buy.price) {
         executedStageSet.add(buy.stage);
@@ -324,6 +352,16 @@ function calculatePostEntryOutcome(
           date: point.date
         });
       }
+    }
+
+    if (thirdBuyTouched && !executedStageSet.has(3) && isThirdBuyConfirmationPoint(point, points[index - 1], buyPlan)) {
+      executedStageSet.add(3);
+      executedNewStage = true;
+      executedBuys.push({
+        stage: 3,
+        price: buyPlan.thirdBuyPrice,
+        date: point.date
+      });
     }
 
     if (!executedBuys.length) {

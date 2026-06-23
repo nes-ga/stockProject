@@ -2002,6 +2002,11 @@ function shouldDisplayCurrentRecommendationCandidate(item) {
   if (item?.sourceBucket !== "watch") {
     return true;
   }
+  // Existing history cases stay visible after an execution -> watch downgrade.
+  // Otherwise live but not-yet-entered names disappear from the current board.
+  if (item?.hasHistoryCase && item?.historyCase?.lifecycleStatus !== "closed") {
+    return true;
+  }
   return Boolean(
       item?.hasHistoryCase &&
       item?.hasEntryAssumption &&
@@ -2543,6 +2548,7 @@ function renderHistoryCurrentCandidateCard(item) {
     : "";
   const bucketLabel = item.sourceBucket === "watch" ? "관찰 후보" : "매수 후보";
   const startDate = getHistoryRecommendationStartDate(item);
+  const thirdBuyStatusHtml = renderThirdBuyExecutionStatus(historyCase ?? item, item);
 
   return `
     <article
@@ -2573,7 +2579,12 @@ function renderHistoryCurrentCandidateCard(item) {
             <span>${escapeHtml(displayBuyPriceLabel)} ${formatNumber(displayBuyPrice)}</span>
           </div>
         </div>
-        ${renderHistoryBuyLevels(buyPlan, executedBuys, { highlightMode: "deepest" })}
+        ${renderHistoryBuyLevels(buyPlan, executedBuys, {
+          highlightMode: "deepest",
+          stagedBuyDiagnostics: historyCase?.stagedBuyDiagnostics,
+          recommendation: item
+        })}
+        ${thirdBuyStatusHtml}
       </div>
     </article>
   `;
@@ -2734,16 +2745,20 @@ function renderHistoryCaseList(cases, options = {}) {
       ${cases
         .slice(0, limit)
         .map((item) => {
-          const returnClass = (item.unrealizedReturnPct ?? 0) > 0 ? "positive" : (item.unrealizedReturnPct ?? 0) < 0 ? "negative" : "neutral";
-          const returnValue = Number(item.unrealizedReturnPct);
           const outcome = item.historyOutcome ?? getActiveHistoryOutcome(item.executedBuyCount);
+          const displayReturnValue =
+            mode === "closed" && Number.isFinite(Number(outcome?.returnBasis?.returnPct))
+              ? Number(outcome.returnBasis.returnPct)
+              : Number(item.unrealizedReturnPct);
+          const returnClass = displayReturnValue > 0 ? "positive" : displayReturnValue < 0 ? "negative" : "neutral";
           const statusLabel = mode === "closed" ? outcome.label : item.lifecycleStatus === "current" ? "현재" : "기록";
           const statusClass = mode === "closed" ? "closed" : item.lifecycleStatus === "current" ? "current" : "neutral";
           const openedDate = item.openedDate ?? item.initialSnapshot?.anchorDate;
           const closedDate = item.closedDate ?? item.dataDate;
+          const priceLabel = mode === "closed" ? "종료가" : "현재가";
           const metricsHtml = `
             <div class="history-case-metrics">
-              <span>현재가 ${formatNumber(item.latestClose)}</span>
+              <span>${priceLabel} ${formatNumber(item.latestClose)}</span>
               <span>평균 ${formatNumber(item.averageBuyPrice)}</span>
               ${mode === "closed" ? `<span>추천 ${escapeHtml(openedDate ?? "-")} / 종료 ${escapeHtml(closedDate ?? "-")}</span>` : ""}
               ${renderHistoryOutcomeChip(outcome)}
@@ -2770,12 +2785,16 @@ function renderHistoryCaseList(cases, options = {}) {
                     </div>
                     <div class="history-case-tail">
                       <span class="history-status-pill ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
-                      ${Number.isFinite(returnValue) ? `<span class="history-case-return ${returnClass}">${formatPercent(returnValue)}</span>` : ""}
+                      ${Number.isFinite(displayReturnValue) ? `<span class="history-case-return ${returnClass}">${formatPercent(displayReturnValue)}</span>` : ""}
                     </div>
                   </div>
                   ${mode === "closed" ? "" : metricsHtml}
                 </div>
-                ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys)}
+                ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys, {
+                  stagedBuyDiagnostics: item.stagedBuyDiagnostics,
+                  recommendation: item.currentRecommendation
+                })}
+                ${renderThirdBuyExecutionStatus(item, item.currentRecommendation)}
                 ${mode === "closed" ? metricsHtml : ""}
                 ${mode === "closed" ? renderHistoryOutcomeBasis(outcome) : ""}
                 ${mode === "closed" ? renderHistoryClosedReason(outcome) : ""}
@@ -2863,6 +2882,115 @@ function renderHistoryClosedReason(outcome) {
   `;
 }
 
+function getReasonList(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+
+function hasReason(value, reason) {
+  return getReasonList(value).some((item) => item === reason || item.startsWith(`${reason}:`));
+}
+
+function getStageDiagnostic(stagedBuyDiagnostics, stage) {
+  const touches = Array.isArray(stagedBuyDiagnostics?.stageTouches) ? stagedBuyDiagnostics.stageTouches : [];
+  return touches.find((item) => Number(item?.stage) === Number(stage));
+}
+
+function formatHistoryBuyDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ""));
+  return match ? `${match[2]}-${match[3]}` : "";
+}
+
+function getThirdBuyExecutionStatus(historyCase, recommendation) {
+  const stagedBuyDiagnostics = historyCase?.stagedBuyDiagnostics;
+  const thirdTouch = getStageDiagnostic(stagedBuyDiagnostics, 3);
+  const recommendationReasons = [
+    ...getReasonList(recommendation?.reasons),
+    ...getReasonList(historyCase?.currentRecommendation?.reasons),
+    ...getReasonList(historyCase?.decisionSnapshot?.reasons)
+  ];
+  const blockedByEngine = recommendationReasons.some((reason) =>
+    reason === "third_buy_confirmation_required" ||
+    reason === "third_buy_not_confirmed" ||
+    reason === "execution_blocked_by_deep_entry_policy"
+  );
+  const effectiveBuyPlan = stagedBuyDiagnostics?.buyPlan ?? historyCase?.buyPlan;
+  const thirdPrice = thirdTouch?.price ?? effectiveBuyPlan?.thirdBuyPrice;
+  const originalThirdPrice = effectiveBuyPlan?.originalThirdBuyPrice;
+  const adjustedThirdPrice = effectiveBuyPlan?.adjustedThirdBuyPrice;
+
+  if (Number(thirdTouch?.stage) !== 3 && !Number.isFinite(Number(thirdPrice)) && !blockedByEngine) {
+    return undefined;
+  }
+
+  if (blockedByEngine) {
+    return {
+      tone: "blocked",
+      label: "3차 보류",
+      detail: "지지/캔들/거래량/ENV 확인 전"
+    };
+  }
+
+  if (thirdTouch?.status === "executed") {
+    return {
+      tone: "executed",
+      label: "3차 체결",
+      detail: thirdTouch.confirmedDate ?? thirdTouch.touchedDate ?? "체결 기록"
+    };
+  }
+
+  if (thirdTouch?.mode === "confirmation_required") {
+    return {
+      tone: "pending",
+      label: "3차 확인 필요",
+      detail: Number.isFinite(Number(thirdPrice)) ? `${formatNumber(thirdPrice)} 기준` : "가격 도달 전"
+    };
+  }
+
+  if (thirdTouch?.mode === "not_reached") {
+    return {
+      tone: "waiting",
+      label: "3차 대기",
+      detail: Number.isFinite(Number(thirdPrice)) ? `${formatNumber(thirdPrice)} 미도달` : "계획가 없음"
+    };
+  }
+
+  if (thirdTouch?.mode === "waiting_reclaim") {
+    return {
+      tone: "blocked",
+      label: "3차 회복 대기",
+      detail: Number.isFinite(Number(thirdPrice)) ? `${formatNumber(thirdPrice)} 회복 전` : "회복 확인 전"
+    };
+  }
+
+  if (thirdTouch?.mode === "stop_zone") {
+    return {
+      tone: "blocked",
+      label: "3차 중단",
+      detail: "손절 구간 우선"
+    };
+  }
+
+  return {
+    tone: "waiting",
+    label: "3차 대기",
+    detail: Number.isFinite(Number(thirdPrice)) ? `${formatNumber(thirdPrice)} 기준` : "계획가 없음"
+  };
+}
+
+function renderThirdBuyExecutionStatus(historyCase, recommendation) {
+  const status = getThirdBuyExecutionStatus(historyCase, recommendation);
+  if (!status) {
+    return "";
+  }
+
+  return `
+    <div class="history-third-buy-status ${escapeHtml(status.tone)}">
+      <span>${escapeHtml(status.label)}</span>
+      <strong>${escapeHtml(status.detail)}</strong>
+    </div>
+  `;
+}
+
 function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
   const rawExecutedStages = (Array.isArray(executedBuys) ? executedBuys : [])
     .map((buy) => Number(buy?.stage))
@@ -2871,11 +2999,21 @@ function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
   const executedStages = new Set(
     options.highlightMode === "deepest" && deepestExecutedStage > 0 ? [deepestExecutedStage] : rawExecutedStages
   );
+  const executedByStage = new Map(
+    (Array.isArray(executedBuys) ? executedBuys : [])
+      .filter((buy) => Number.isFinite(Number(buy?.stage)))
+      .map((buy) => [Number(buy.stage), buy])
+  );
   const plannedBuys = buyPlan
     ? [
         { stage: 1, price: buyPlan.firstBuyPrice },
         { stage: 2, price: buyPlan.secondBuyPrice },
-        { stage: 3, price: buyPlan.thirdBuyPrice }
+        {
+          stage: 3,
+          price: buyPlan.thirdBuyPrice,
+          originalPrice: buyPlan.originalThirdBuyPrice,
+          adjusted: Number.isFinite(Number(buyPlan.adjustedThirdBuyPrice))
+        }
       ].filter((buy) => Number.isFinite(Number(buy.price)))
     : [];
   const fallbackBuys = Array.isArray(executedBuys)
@@ -2885,6 +3023,10 @@ function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
   if (!buys.length) {
     return "";
   }
+  const thirdBuyAdjustmentNote =
+    buyPlan?.adjustedThirdBuyPrice && Number.isFinite(Number(buyPlan.originalThirdBuyPrice))
+      ? `<div class="history-buy-adjustment-note">3차 조정 ${formatNumber(buyPlan.originalThirdBuyPrice)} -> ${formatNumber(buyPlan.adjustedThirdBuyPrice)}</div>`
+      : "";
 
   return `
     <div class="history-buy-levels">
@@ -2892,16 +3034,42 @@ function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
         .sort((left, right) => Number(left.stage ?? 0) - Number(right.stage ?? 0))
         .map((buy) => {
           const stage = Number(buy.stage ?? 0);
+          const diagnostic = getStageDiagnostic(options.stagedBuyDiagnostics, stage);
+          const thirdStatus = stage === 3 ? getThirdBuyExecutionStatus(
+            {
+              buyPlan,
+              stagedBuyDiagnostics: options.stagedBuyDiagnostics
+            },
+            options.recommendation
+          ) : undefined;
           const stageClass = stage >= 1 && stage <= 3 ? `stage-${stage}` : "stage-extra";
           const executionClass = executedStages.has(stage) ? "executed" : "pending";
+          const confirmationClass = thirdStatus?.tone === "blocked"
+            ? "confirmation-blocked"
+            : thirdStatus?.tone === "pending"
+              ? "confirmation-required"
+              : "";
+          const statusLabel =
+            stage === 3 && thirdStatus?.tone === "blocked"
+              ? "보류"
+              : stage === 3 && thirdStatus?.tone === "pending"
+                ? "확인"
+                : diagnostic?.touchedDate && executionClass === "pending"
+                  ? "터치"
+                  : "";
+          const executedBuy = executedByStage.get(stage);
+          const buyDate = formatHistoryBuyDate(
+            executedBuy?.date ?? diagnostic?.executedDate ?? diagnostic?.confirmedDate ?? diagnostic?.touchedDate
+          );
           return `
-            <span class="history-buy-level ${escapeHtml(stageClass)} ${executionClass}">
-              <em>${formatNumber(stage)}차 매수가</em>
-              <strong>${formatNumber(buy.price)}</strong>
+            <span class="history-buy-level ${escapeHtml(stageClass)} ${executionClass} ${escapeHtml(confirmationClass)}">
+              <em>${formatNumber(stage)}차 매수가${statusLabel ? ` · ${escapeHtml(statusLabel)}` : ""}</em>
+              <strong><span>${formatNumber(buy.price)}</span>${buyDate ? `<small>${escapeHtml(buyDate)}</small>` : ""}</strong>
             </span>
           `;
         })
         .join("")}
+      ${thirdBuyAdjustmentNote}
     </div>
   `;
 }
@@ -5896,6 +6064,26 @@ function renderInfoIcon(text, label = "안내") {
   return `<span class="inline-info-icon" data-tooltip="${escapeHtml(text)}" aria-label="${escapeHtml(label)}" tabindex="0">i</span>`;
 }
 
+function isThirdBuyExecutionBlockedRecommendation(item) {
+  return (
+    hasReason(item?.reasons, "third_buy_confirmation_required") ||
+    hasReason(item?.reasons, "third_buy_not_confirmed") ||
+    hasReason(item?.reasons, "execution_blocked_by_deep_entry_policy")
+  );
+}
+
+function renderSwingExecutionGuardBadge(item) {
+  if (item?.category !== "swing" || !isThirdBuyExecutionBlockedRecommendation(item)) {
+    return "";
+  }
+
+  return `
+    <span class="stock-card-guard-pill blocked">
+      3차 보류 · 지지 확인 전
+    </span>
+  `;
+}
+
 function getSectorLabel(symbol) {
   const item = stockSearchUniverse.find((candidate) => candidate.code === symbol);
   if (!item || typeof item.sector !== "string" || !item.sector.trim()) {
@@ -5965,12 +6153,20 @@ function renderSelector() {
             </span>
           `
           : "";
+      const swingGuardHtml = renderSwingExecutionGuardBadge(item);
       const swingStatusHtml =
-        item.category === "swing" && swingAssessment
+        item.category === "swing" && (swingAssessment || swingGuardHtml)
           ? `
             <span class="stock-card-badges">
-              <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
-              <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
+              ${
+                swingAssessment
+                  ? `
+                    <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
+                    <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
+                  `
+                  : ""
+              }
+              ${swingGuardHtml}
             </span>
           `
           : "";

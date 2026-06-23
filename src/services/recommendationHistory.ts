@@ -5,7 +5,7 @@ import { fetchQuoteAndChart } from "./stockAnalysis.js";
 import { readServerSwingPickPayload } from "./serverSwingPicks.js";
 import { getMarketWatchSnapshots } from "./marketWatch.js";
 import { discordAlertHistoryPath } from "./discordAlertHistory.js";
-import type { ChartPoint, MarketWatchSnapshot } from "../types.js";
+import type { ChartPoint, MarketWatchSnapshot, SmartMoneyEnvelopeAnalysis, SmartMoneyPenaltyFactor } from "../types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, "../..");
@@ -18,6 +18,8 @@ const SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT = 7;
 const SWING_STALE_TIMEOUT_BUSINESS_DAYS = 20;
 const CLOSED_CASE_MARKET_REFRESH_SESSIONS = 80;
 const MARKET_SHOCK_GRACE_SESSIONS = 1;
+const THIRD_BUY_MIN_STOP_BUFFER_PCT = 6;
+const THIRD_BUY_RECLAIM_TIMEOUT_BUSINESS_DAYS = 5;
 const swingSourceFiles = [
   { profile: "default", file: "server-swing-picks.json" },
   { profile: "smallcap", file: "server-smallcap-swing-picks.json" }
@@ -33,10 +35,13 @@ type SwingCandidate = {
   note?: string;
   tags?: string[];
   reasons?: string[];
+  penaltyFactors?: SmartMoneyPenaltyFactor[];
+  envelope?: SmartMoneyEnvelopeAnalysis;
   category?: string;
   swingProfile?: string;
   source?: string;
   initialStopLossPrice?: number;
+  buyPlan?: SwingHistoryCase["buyPlan"];
   postEntryOutcome?: {
     status?: string;
     executedBuyCount?: number;
@@ -100,11 +105,21 @@ type SwingHistoryCase = {
   outcomeStatus?: string;
   historyOutcome?: SwingHistoryOutcome;
   marketStopGrace?: MarketStopGraceState;
+  thirdBuyMonitor?: SwingThirdBuyMonitor;
   buyPlan?: {
     firstBuyPrice?: number;
     secondBuyPrice?: number;
     thirdBuyPrice?: number;
     stopLossPrice?: number;
+    originalThirdBuyPrice?: number;
+    adjustedThirdBuyPrice?: number;
+    thirdBuyAdjustment?: {
+      policy?: "market_stability_floor_confirmed";
+      adjustedDate?: string;
+      stopBufferPct?: number;
+      supportHoldDays?: number;
+      reason?: string;
+    };
   };
   initialSnapshot?: {
     anchorDate?: string;
@@ -112,9 +127,89 @@ type SwingHistoryCase = {
     note?: string;
     tags?: string[];
     reasons?: string[];
+    penaltyFactors?: SmartMoneyPenaltyFactor[];
+    envelope?: SmartMoneyEnvelopeAnalysis;
     source?: string;
   };
+  decisionSnapshot?: SwingDecisionSnapshot;
+  stagedBuyDiagnostics?: SwingStagedBuyDiagnostics;
+  outcomeDiagnostics?: SwingOutcomeDiagnostics;
   [key: string]: unknown;
+};
+
+type SwingDecisionSnapshot = {
+  version: 1;
+  capturedAt?: string;
+  sourceBucket?: "execution" | "watch";
+  entryBucket?: string;
+  score?: number;
+  referenceSma20?: number;
+  envelope?: SmartMoneyEnvelopeAnalysis;
+  tags: string[];
+  reasons: string[];
+  penaltyFactors: SmartMoneyPenaltyFactor[];
+  source?: string;
+  note?: string;
+};
+
+type SwingStagedBuyDiagnostics = {
+  version: 1;
+  executionModel: "weighted_staged_buy";
+  weights: {
+    stage1: 1;
+    stage2: 2;
+    stage3: 4;
+  };
+  buyPlan?: SwingHistoryCase["buyPlan"];
+  riskBands?: {
+    firstToStopPct?: number;
+    secondToStopPct?: number;
+    thirdToStopPct?: number;
+    averageToStopPct?: number;
+  };
+  stageTouches: Array<{
+    stage: 1 | 2 | 3;
+    price?: number;
+    touchedDate?: string;
+    confirmedDate?: string;
+    executedDate?: string;
+    status: "executed" | "pending";
+    mode: "low_touch" | "not_reached" | "confirmation_required" | "waiting_reclaim" | "stop_zone";
+  }>;
+  deepEntryPolicy: {
+    thirdBuyRequiresConfirmation: boolean;
+    thirdBuyMinStopBufferPct: number;
+    blockThirdBuyOnMarketShock: boolean;
+  };
+};
+
+type SwingThirdBuyMonitor = {
+  version: 1;
+  touchedDate?: string;
+  confirmedDate?: string;
+  adjustedThirdBuyPrice?: number;
+  originalThirdBuyPrice?: number;
+  adjustmentReason?: string;
+  latestDate?: string;
+  latestClose?: number;
+  status: "not_reached" | "waiting_reclaim" | "confirmation_required" | "confirmed" | "stop_zone";
+  reason: string;
+};
+
+type SwingOutcomeDiagnostics = {
+  version: 1;
+  latestDate?: string;
+  latestClose?: number;
+  executedBuyCount: number;
+  averageBuyPrice?: number;
+  unrealizedReturnPct?: number;
+  maxFavorablePrice?: number;
+  maxFavorableDate?: string;
+  maxFavorableReturnPct?: number;
+  maxAdversePrice?: number;
+  maxAdverseDate?: string;
+  maxAdverseReturnPct?: number;
+  currentOutcome?: SwingHistoryOutcomeType;
 };
 
 type SwingHistoryOutcomeType =
@@ -122,10 +217,12 @@ type SwingHistoryOutcomeType =
   | "active_no_entry"
   | "market_shock_grace"
   | "target_hit"
+  | "deep_zone_rebound_exit"
   | "drift_profit_exit"
   | "entry_missed_upside"
   | "stop_broken"
   | "market_shock_stop"
+  | "deep_zone_timeout_exit"
   | "stale_timeout"
   | "closed_unknown";
 
@@ -167,6 +264,8 @@ type SwingInitialAlertSnapshot = {
   note?: string;
   tags?: string[];
   reasons?: string[];
+  penaltyFactors?: SmartMoneyPenaltyFactor[];
+  envelope?: SmartMoneyEnvelopeAnalysis;
   source?: string;
   sentAt?: string;
 };
@@ -218,6 +317,47 @@ export type SwingCarryForwardCase = {
   initialSnapshot?: SwingHistoryCase["initialSnapshot"];
 };
 
+export type SwingHistoryWinRateGuardCandidate = {
+  profile?: string;
+  score?: number;
+  tags?: string[];
+  reasons?: string[];
+  penaltyFactors?: SmartMoneyPenaltyFactor[];
+  envelope?: SmartMoneyEnvelopeAnalysis;
+  buyPlan?: SwingHistoryCase["buyPlan"];
+  referenceClose?: number;
+};
+
+export type SwingHistoryWinRateConditionStats = {
+  key: string;
+  label: string;
+  sampleSize: number;
+  profitCount: number;
+  lossCount: number;
+  winRatePct: number;
+  lossRatePct: number;
+  avgReturnPct?: number;
+  worstReturnPct?: number;
+};
+
+export type SwingHistoryWinRateGuardSignal = SwingHistoryWinRateConditionStats & {
+  severity: "block" | "caution";
+  reason: string;
+};
+
+export type SwingHistoryWinRateGuardEvaluation = {
+  matchedSignals: SwingHistoryWinRateGuardSignal[];
+  shouldBlockExecution: boolean;
+  shouldCautionExecution: boolean;
+  worstSignal?: SwingHistoryWinRateGuardSignal;
+};
+
+export type SwingHistoryWinRateGuardModel = {
+  builtAt: string;
+  closedSampleSize: number;
+  conditions: Record<string, SwingHistoryWinRateConditionStats>;
+};
+
 async function readJsonFile<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, "utf8");
   return JSON.parse(raw) as T;
@@ -233,6 +373,34 @@ async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined>
     }
     throw error;
   }
+}
+
+function normalizePenaltyFactors(value: unknown): SmartMoneyPenaltyFactor[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is SmartMoneyPenaltyFactor =>
+          Boolean(item) &&
+          typeof item === "object" &&
+          typeof (item as { code?: unknown }).code === "string" &&
+          typeof (item as { label?: unknown }).label === "string" &&
+          isFiniteNumber((item as { impact?: unknown }).impact) &&
+          typeof (item as { reason?: unknown }).reason === "string"
+      )
+    : [];
+}
+
+function normalizeEnvelope(value: unknown): SmartMoneyEnvelopeAnalysis | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const envelope = value as Partial<SmartMoneyEnvelopeAnalysis>;
+  return typeof envelope.position === "string" &&
+    isFiniteNumber(envelope.basis) &&
+    isFiniteNumber(envelope.upper) &&
+    isFiniteNumber(envelope.lower)
+    ? (envelope as SmartMoneyEnvelopeAnalysis)
+    : undefined;
 }
 
 async function readInitialSwingAlertSnapshots(): Promise<Map<string, SwingInitialAlertSnapshot>> {
@@ -301,6 +469,8 @@ async function readInitialSwingAlertSnapshots(): Promise<Map<string, SwingInitia
       reasons: Array.isArray(metadata.reasons)
         ? metadata.reasons.filter((reason): reason is string => typeof reason === "string")
         : [],
+      penaltyFactors: normalizePenaltyFactors(metadata.penaltyFactors),
+      envelope: normalizeEnvelope(metadata.envelope),
       source: typeof metadata.source === "string" ? metadata.source : typeof record.source === "string" ? record.source : undefined,
       sentAt
     });
@@ -377,11 +547,337 @@ function averageNumbers(values: Array<number | undefined>) {
   return validValues.length ? validValues.reduce((sum, value) => sum + value, 0) / validValues.length : undefined;
 }
 
+const HISTORY_GUARD_REASON_KEYS = new Set([
+  "deep_pullback_probe",
+  "long_pullback_until_stop_probe",
+  "execution_gate_overridden_by_envelope",
+  "envelope_lower_break",
+  "envelope_lower_hold",
+  "unstable_support",
+  "quality_not_ready",
+  "probe_demoted_low_score_unstable_support",
+  "risk_reward_thin",
+  "sma20_slope_negative",
+  "weak_candle_structure",
+  "weak_volume_contraction"
+]);
+
+function getScoreBand(score: number | undefined) {
+  if (!isFiniteNumber(score)) {
+    return undefined;
+  }
+
+  if (score < 40) {
+    return "score:<40";
+  }
+
+  if (score < 50) {
+    return "score:40-49";
+  }
+
+  if (score < 60) {
+    return "score:50-59";
+  }
+
+  if (score < 70) {
+    return "score:60-69";
+  }
+
+  return "score:70+";
+}
+
+function labelHistoryGuardKey(key: string) {
+  if (key.startsWith("tag:")) {
+    return `tag ${key.slice("tag:".length)}`;
+  }
+
+  if (key.startsWith("reason:")) {
+    return `reason ${key.slice("reason:".length)}`;
+  }
+
+  if (key.startsWith("penalty:")) {
+    return `penalty ${key.slice("penalty:".length)}`;
+  }
+
+  if (key.startsWith("envelope:")) {
+    return `envelope ${key.slice("envelope:".length)}`;
+  }
+
+  if (key.startsWith("combo:")) {
+    return `combo ${key.slice("combo:".length).replace(/\+/g, " + ")}`;
+  }
+
+  if (key.startsWith("stage:")) {
+    return `stage ${key.slice("stage:".length)}`;
+  }
+
+  return key;
+}
+
+function addHistoryGuardKey(keys: Set<string>, key: string | undefined) {
+  if (key) {
+    keys.add(key);
+  }
+}
+
+function getCandidateStageLocation(candidate: Pick<SwingHistoryWinRateGuardCandidate, "buyPlan" | "referenceClose">) {
+  const close = candidate.referenceClose;
+  const buyPlan = candidate.buyPlan;
+  if (!isFiniteNumber(close) || !buyPlan) {
+    return undefined;
+  }
+
+  const thirdBuyPrice = buyPlan.thirdBuyPrice;
+  const secondBuyPrice = buyPlan.secondBuyPrice;
+  if (isFiniteNumber(thirdBuyPrice) && close <= thirdBuyPrice * 1.01) {
+    return "stage:third_buy_reached";
+  }
+
+  if (isFiniteNumber(secondBuyPrice) && close <= secondBuyPrice * 1.01) {
+    return "stage:second_buy_reached";
+  }
+
+  return undefined;
+}
+
+function buildHistoryGuardKeysFromSignals(input: {
+  score?: number;
+  entryBucket?: string;
+  tags?: string[];
+  reasons?: string[];
+  penaltyFactors?: SmartMoneyPenaltyFactor[];
+  envelope?: SmartMoneyEnvelopeAnalysis;
+  stageKey?: string;
+}) {
+  const keys = new Set<string>();
+  const tags = new Set(input.tags ?? []);
+  const reasons = new Set(input.reasons ?? []);
+
+  addHistoryGuardKey(keys, input.entryBucket ? `entry:${input.entryBucket}` : undefined);
+  addHistoryGuardKey(keys, getScoreBand(input.score));
+  addHistoryGuardKey(keys, input.envelope?.position ? `envelope:${input.envelope.position}` : undefined);
+  addHistoryGuardKey(keys, input.stageKey);
+
+  for (const tag of tags) {
+    addHistoryGuardKey(keys, `tag:${tag}`);
+  }
+
+  for (const reason of reasons) {
+    if (HISTORY_GUARD_REASON_KEYS.has(reason)) {
+      addHistoryGuardKey(keys, `reason:${reason}`);
+    }
+  }
+
+  for (const factor of input.penaltyFactors ?? []) {
+    addHistoryGuardKey(keys, `penalty:${factor.code}`);
+  }
+
+  if (tags.has("tag_support_unstable") && reasons.has("long_pullback_until_stop_probe")) {
+    addHistoryGuardKey(keys, "combo:unstable_support+long_pullback_until_stop");
+  }
+
+  if (tags.has("tag_support_unstable") && reasons.has("deep_pullback_probe")) {
+    addHistoryGuardKey(keys, "combo:unstable_support+deep_pullback");
+  }
+
+  if (tags.has("tag_support_unstable") && input.envelope?.position === "below_lower") {
+    addHistoryGuardKey(keys, "combo:unstable_support+below_lower_envelope");
+  }
+
+  if (input.stageKey === "stage:third_buy_reached" && tags.has("tag_support_unstable")) {
+    addHistoryGuardKey(keys, "combo:third_buy+unstable_support");
+  }
+
+  if ((input.score ?? 100) < 60 && tags.has("tag_support_unstable")) {
+    addHistoryGuardKey(keys, "combo:low_score+unstable_support");
+  }
+
+  return [...keys];
+}
+
+function buildHistoryGuardKeysFromCase(historyCase: SwingHistoryCase) {
+  const snapshot = historyCase.decisionSnapshot;
+  const executedStage = getExecutedBuyStage(historyCase);
+  const stageKey = executedStage >= 3
+    ? "stage:third_buy_reached"
+    : executedStage >= 2
+      ? "stage:second_buy_reached"
+      : executedStage >= 1
+        ? "stage:first_buy_reached"
+        : undefined;
+
+  return buildHistoryGuardKeysFromSignals({
+    score: snapshot?.score,
+    entryBucket: historyCase.entryBucket ?? snapshot?.entryBucket,
+    tags: snapshot?.tags ?? historyCase.initialSnapshot?.tags,
+    reasons: snapshot?.reasons ?? historyCase.initialSnapshot?.reasons,
+    penaltyFactors: snapshot?.penaltyFactors ?? historyCase.initialSnapshot?.penaltyFactors,
+    envelope: snapshot?.envelope ?? historyCase.initialSnapshot?.envelope,
+    stageKey
+  });
+}
+
+function buildHistoryGuardKeysFromCandidate(candidate: SwingHistoryWinRateGuardCandidate) {
+  return buildHistoryGuardKeysFromSignals({
+    score: candidate.score,
+    tags: candidate.tags,
+    reasons: candidate.reasons,
+    penaltyFactors: candidate.penaltyFactors,
+    envelope: candidate.envelope,
+    stageKey: getCandidateStageLocation(candidate)
+  });
+}
+
+function getHistoryGuardReturnPct(historyCase: SwingHistoryCase) {
+  const returnBasisPct = historyCase.historyOutcome?.returnBasis?.returnPct;
+  if (isFiniteNumber(returnBasisPct)) {
+    return returnBasisPct;
+  }
+
+  return historyCase.outcomeDiagnostics?.unrealizedReturnPct ?? historyCase.unrealizedReturnPct;
+}
+
+export async function buildSwingHistoryWinRateGuardModel(): Promise<SwingHistoryWinRateGuardModel> {
+  const payload = (await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath)) ?? {};
+  const conditions = new Map<
+    string,
+    {
+      key: string;
+      profitCount: number;
+      lossCount: number;
+      returns: number[];
+    }
+  >();
+  let closedSampleSize = 0;
+
+  for (const historyCase of payload.cases ?? []) {
+    const category = historyCase.historyOutcome?.category;
+    if (category !== "profit" && category !== "loss") {
+      continue;
+    }
+
+    closedSampleSize += 1;
+    const result = category === "profit" ? "profitCount" : "lossCount";
+    const returnPct = getHistoryGuardReturnPct(historyCase);
+
+    for (const key of buildHistoryGuardKeysFromCase(historyCase)) {
+      const stats = conditions.get(key) ?? {
+        key,
+        profitCount: 0,
+        lossCount: 0,
+        returns: []
+      };
+      stats[result] += 1;
+      if (isFiniteNumber(returnPct)) {
+        stats.returns.push(returnPct);
+      }
+      conditions.set(key, stats);
+    }
+  }
+
+  return {
+    builtAt: new Date().toISOString(),
+    closedSampleSize,
+    conditions: Object.fromEntries(
+      [...conditions.values()].map((stats) => {
+        const sampleSize = stats.profitCount + stats.lossCount;
+        const avgReturnPct = averageNumbers(stats.returns);
+        const value: SwingHistoryWinRateConditionStats = {
+          key: stats.key,
+          label: labelHistoryGuardKey(stats.key),
+          sampleSize,
+          profitCount: stats.profitCount,
+          lossCount: stats.lossCount,
+          winRatePct: sampleSize > 0 ? round((stats.profitCount / sampleSize) * 100, 1) : 0,
+          lossRatePct: sampleSize > 0 ? round((stats.lossCount / sampleSize) * 100, 1) : 0,
+          avgReturnPct: avgReturnPct == null ? undefined : round(avgReturnPct, 2),
+          worstReturnPct: stats.returns.length ? round(Math.min(...stats.returns), 2) : undefined
+        };
+        return [stats.key, value] as const;
+      })
+    )
+  };
+}
+
+function toHistoryGuardSignal(stats: SwingHistoryWinRateConditionStats): SwingHistoryWinRateGuardSignal | undefined {
+  const severeLossCluster =
+    stats.sampleSize >= 4 &&
+    stats.lossRatePct >= 65 &&
+    (stats.avgReturnPct == null || stats.avgReturnPct <= -2);
+  const smallButCleanLossCluster =
+    stats.sampleSize >= 3 &&
+    stats.lossRatePct >= 75 &&
+    (stats.avgReturnPct == null || stats.avgReturnPct <= -4);
+  const cautionCluster =
+    stats.sampleSize >= 3 &&
+    stats.lossRatePct >= 55 &&
+    (stats.avgReturnPct == null || stats.avgReturnPct <= 0);
+
+  if (severeLossCluster || smallButCleanLossCluster) {
+    return {
+      ...stats,
+      severity: "block",
+      reason: `${stats.label} 과거 표본 ${stats.sampleSize}건 중 손실 ${stats.lossCount}건, 승률 ${stats.winRatePct}%입니다.`
+    };
+  }
+
+  if (cautionCluster) {
+    return {
+      ...stats,
+      severity: "caution",
+      reason: `${stats.label} 과거 표본 ${stats.sampleSize}건의 승률이 ${stats.winRatePct}%라 실행 강도를 낮춥니다.`
+    };
+  }
+
+  return undefined;
+}
+
+export function evaluateSwingHistoryWinRateGuard(
+  model: SwingHistoryWinRateGuardModel | undefined,
+  candidate: SwingHistoryWinRateGuardCandidate
+): SwingHistoryWinRateGuardEvaluation {
+  if (!model || model.closedSampleSize < 8) {
+    return {
+      matchedSignals: [],
+      shouldBlockExecution: false,
+      shouldCautionExecution: false
+    };
+  }
+
+  const matchedSignals = buildHistoryGuardKeysFromCandidate(candidate)
+    .map((key) => model.conditions[key])
+    .filter((stats): stats is SwingHistoryWinRateConditionStats => Boolean(stats))
+    .map(toHistoryGuardSignal)
+    .filter((signal): signal is SwingHistoryWinRateGuardSignal => Boolean(signal))
+    .sort((left, right) => {
+      if (left.severity !== right.severity) {
+        return left.severity === "block" ? -1 : 1;
+      }
+      if (left.lossRatePct !== right.lossRatePct) {
+        return right.lossRatePct - left.lossRatePct;
+      }
+      return right.sampleSize - left.sampleSize;
+    })
+    .slice(0, 4);
+  const worstSignal = matchedSignals[0];
+
+  return {
+    matchedSignals,
+    shouldBlockExecution: matchedSignals.some((signal) => signal.severity === "block"),
+    shouldCautionExecution: matchedSignals.some((signal) => signal.severity === "caution"),
+    worstSignal
+  };
+}
+
 function percentChange(current: number | undefined, previous: number | undefined) {
   if (!isFiniteNumber(current) || !isFiniteNumber(previous) || previous === 0) {
     return undefined;
   }
   return ((current - previous) / previous) * 100;
+}
+
+function roundOptionalPercent(value: number | undefined) {
+  return isFiniteNumber(value) ? round(value, 2) : undefined;
 }
 
 function getMovingAverageAt(points: ChartPoint[], endIndex: number, period: number) {
@@ -635,6 +1131,26 @@ function freezeBuyPlanStopLoss(
   };
 }
 
+function mergeBuyPlanAdjustment(
+  basePlan: SwingHistoryCase["buyPlan"] | undefined,
+  incomingPlan: SwingHistoryCase["buyPlan"] | undefined
+) {
+  if (!basePlan) {
+    return incomingPlan;
+  }
+  if (!incomingPlan?.adjustedThirdBuyPrice && !incomingPlan?.thirdBuyAdjustment) {
+    return basePlan;
+  }
+
+  return {
+    ...basePlan,
+    originalThirdBuyPrice: basePlan.originalThirdBuyPrice ?? incomingPlan.originalThirdBuyPrice ?? basePlan.thirdBuyPrice,
+    thirdBuyPrice: incomingPlan.adjustedThirdBuyPrice ?? incomingPlan.thirdBuyPrice ?? basePlan.thirdBuyPrice,
+    adjustedThirdBuyPrice: incomingPlan.adjustedThirdBuyPrice ?? incomingPlan.thirdBuyPrice,
+    thirdBuyAdjustment: incomingPlan.thirdBuyAdjustment
+  };
+}
+
 function getStagedBuyWeight(stage: unknown): number {
   if (stage === 3) {
     return 4;
@@ -666,8 +1182,7 @@ function inferExecutedBuysFromLowTouch(
 
   return [
     { stage: 1, price: buyPlan.firstBuyPrice },
-    { stage: 2, price: buyPlan.secondBuyPrice },
-    { stage: 3, price: buyPlan.thirdBuyPrice }
+    { stage: 2, price: buyPlan.secondBuyPrice }
   ]
     .filter((buy): buy is { stage: number; price: number } => isFiniteNumber(buy.price) && latestLow <= buy.price)
     .map((buy) => ({
@@ -676,12 +1191,227 @@ function inferExecutedBuysFromLowTouch(
     }));
 }
 
+function inferExecutedBuysFromMarketPath(
+  buyPlan: SwingHistoryCase["buyPlan"] | undefined,
+  points: ChartPoint[]
+): Array<{ stage: number; price: number; date?: string }> {
+  if (!buyPlan) {
+    return [];
+  }
+
+  const stageDefinitions = [
+    { stage: 1, price: buyPlan.firstBuyPrice },
+    { stage: 2, price: buyPlan.secondBuyPrice }
+  ].filter((buy): buy is { stage: number; price: number } => isFiniteNumber(buy.price));
+  const executedBuys: Array<{ stage: number; price: number; date?: string }> = [];
+  const executedStageSet = new Set<number>();
+
+  for (const point of points) {
+    const low = getPointLow(point);
+    if (!isFiniteNumber(low)) {
+      continue;
+    }
+
+    for (const buy of stageDefinitions) {
+      if (!executedStageSet.has(buy.stage) && low <= buy.price) {
+        executedStageSet.add(buy.stage);
+        executedBuys.push({
+          ...buy,
+          date: point.date
+        });
+      }
+    }
+  }
+
+  const thirdBuyMonitor = buildThirdBuyMonitor(buyPlan, points);
+  if (thirdBuyMonitor?.status === "confirmed" && isFiniteNumber(buyPlan.thirdBuyPrice)) {
+    executedBuys.push({
+      stage: 3,
+      price: thirdBuyMonitor.adjustedThirdBuyPrice ?? buyPlan.thirdBuyPrice,
+      date: thirdBuyMonitor.confirmedDate
+    });
+  }
+
+  return executedBuys;
+}
+
+function mergeExecutedBuysByStage(
+  existingBuys: Array<{ stage?: number; price?: number; date?: string }> | undefined,
+  inferredBuys: Array<{ stage?: number; price?: number; date?: string }>
+) {
+  const byStage = new Map<number, { stage: number; price: number; date?: string }>();
+
+  for (const buy of inferredBuys) {
+    if (isFiniteNumber(buy.stage) && isFiniteNumber(buy.price)) {
+      byStage.set(Number(buy.stage), {
+        stage: Number(buy.stage),
+        price: buy.price,
+        date: buy.date
+      });
+    }
+  }
+
+  for (const buy of existingBuys ?? []) {
+    if (isFiniteNumber(buy.stage) && isFiniteNumber(buy.price) && Number(buy.stage) < 3) {
+      byStage.set(Number(buy.stage), {
+        stage: Number(buy.stage),
+        price: buy.price,
+        date: buy.date
+      });
+    }
+  }
+
+  return [...byStage.values()].sort((left, right) => left.stage - right.stage);
+}
+
+function parseNumberFromNote(note: string | undefined, pattern: RegExp) {
+  const matched = note?.match(pattern);
+  return parsePriceText(matched?.[1]);
+}
+
+function getBuyPlanStagePrice(buyPlan: SwingHistoryCase["buyPlan"] | undefined, stage: 1 | 2 | 3) {
+  if (stage === 1) {
+    return buyPlan?.firstBuyPrice;
+  }
+  if (stage === 2) {
+    return buyPlan?.secondBuyPrice;
+  }
+  return buyPlan?.thirdBuyPrice;
+}
+
+function buildDecisionSnapshot(
+  historyCase: SwingHistoryCase,
+  currentCandidate?: SwingCandidate & { sourceBucket: "execution" | "watch" }
+): SwingDecisionSnapshot {
+  const initialSnapshot = historyCase.initialSnapshot;
+  const note = currentCandidate?.note ?? initialSnapshot?.note ?? historyCase.decisionSnapshot?.note;
+  return {
+    version: 1,
+    capturedAt: currentCandidate?.latestMentionDate ?? initialSnapshot?.latestMentionDate ?? historyCase.openedDate,
+    sourceBucket: currentCandidate?.sourceBucket ?? historyCase.decisionSnapshot?.sourceBucket,
+    entryBucket: historyCase.entryBucket,
+    score: parseNumberFromNote(note, /점수\s+([\d,]+)/) ?? historyCase.decisionSnapshot?.score,
+    referenceSma20: parseNumberFromNote(note, /SMA20\s+([\d,]+)/) ?? historyCase.decisionSnapshot?.referenceSma20,
+    envelope: normalizeEnvelope(currentCandidate?.envelope) ?? initialSnapshot?.envelope ?? historyCase.decisionSnapshot?.envelope,
+    tags: [
+      ...new Set([
+        ...(currentCandidate?.tags ?? []),
+        ...(initialSnapshot?.tags ?? []),
+        ...(historyCase.decisionSnapshot?.tags ?? [])
+      ])
+    ],
+    reasons: [
+      ...new Set([
+        ...(currentCandidate?.reasons ?? []),
+        ...(initialSnapshot?.reasons ?? []),
+        ...(historyCase.decisionSnapshot?.reasons ?? [])
+      ])
+    ],
+    penaltyFactors:
+      normalizePenaltyFactors(currentCandidate?.penaltyFactors).length > 0
+        ? normalizePenaltyFactors(currentCandidate?.penaltyFactors)
+        : normalizePenaltyFactors(initialSnapshot?.penaltyFactors).length > 0
+          ? normalizePenaltyFactors(initialSnapshot?.penaltyFactors)
+          : normalizePenaltyFactors(historyCase.decisionSnapshot?.penaltyFactors),
+    source: currentCandidate?.source ?? initialSnapshot?.source ?? historyCase.decisionSnapshot?.source,
+    note
+  };
+}
+
+function buildStagedBuyDiagnostics(historyCase: SwingHistoryCase): SwingStagedBuyDiagnostics {
+  const buyPlan = historyCase.buyPlan;
+  const stopLossPrice = buyPlan?.stopLossPrice;
+  const executedByStage = new Map(
+    (historyCase.executedBuys ?? [])
+      .filter((buy) => isFiniteNumber(buy.stage))
+      .map((buy) => [Number(buy.stage), buy])
+  );
+
+  return {
+    version: 1,
+    executionModel: "weighted_staged_buy",
+    weights: {
+      stage1: 1,
+      stage2: 2,
+      stage3: 4
+    },
+    buyPlan,
+    riskBands:
+      buyPlan && isFiniteNumber(stopLossPrice)
+        ? {
+            firstToStopPct: roundOptionalPercent(percentChange(stopLossPrice, buyPlan.firstBuyPrice)),
+            secondToStopPct: roundOptionalPercent(percentChange(stopLossPrice, buyPlan.secondBuyPrice)),
+            thirdToStopPct: roundOptionalPercent(percentChange(stopLossPrice, buyPlan.thirdBuyPrice)),
+            averageToStopPct: roundOptionalPercent(percentChange(stopLossPrice, historyCase.averageBuyPrice))
+          }
+        : undefined,
+    stageTouches: ([1, 2, 3] as const).map((stage) => {
+      const executedBuy = executedByStage.get(stage);
+      const price = isFiniteNumber(executedBuy?.price) ? executedBuy.price : getBuyPlanStagePrice(buyPlan, stage);
+      const thirdBuyMonitor = stage === 3 ? historyCase.thirdBuyMonitor : undefined;
+      const thirdPendingMode =
+        thirdBuyMonitor?.status === "not_reached"
+          ? "not_reached"
+          : thirdBuyMonitor?.status === "waiting_reclaim"
+          ? "waiting_reclaim"
+          : thirdBuyMonitor?.status === "stop_zone"
+            ? "stop_zone"
+            : "confirmation_required";
+      return {
+        stage,
+        price,
+        touchedDate: executedBuy?.date ?? thirdBuyMonitor?.touchedDate,
+        confirmedDate: executedBuy?.date,
+        executedDate: executedBuy?.date,
+        status: executedBuy ? "executed" : "pending",
+        mode: stage === 3 && !executedBuy ? thirdPendingMode : "low_touch"
+      };
+    }),
+    deepEntryPolicy: {
+      thirdBuyRequiresConfirmation: true,
+      thirdBuyMinStopBufferPct: 6,
+      blockThirdBuyOnMarketShock: true
+    }
+  };
+}
+
+function buildOutcomeDiagnostics(historyCase: SwingHistoryCase): SwingOutcomeDiagnostics {
+  return {
+    version: 1,
+    latestDate: historyCase.dataDate,
+    latestClose: historyCase.latestClose,
+    executedBuyCount: getExecutedBuyStage(historyCase),
+    averageBuyPrice: historyCase.averageBuyPrice,
+    unrealizedReturnPct: historyCase.unrealizedReturnPct,
+    maxFavorablePrice: historyCase.maxFavorablePrice,
+    maxFavorableDate: historyCase.maxFavorableDate,
+    maxFavorableReturnPct: historyCase.maxFavorableReturnPct,
+    maxAdversePrice: historyCase.maxAdversePrice,
+    maxAdverseDate: historyCase.maxAdverseDate,
+    maxAdverseReturnPct: historyCase.maxAdverseReturnPct,
+    currentOutcome: historyCase.historyOutcome?.type
+  };
+}
+
+function attachHistoryDiagnostics(
+  historyCase: SwingHistoryCase,
+  currentCandidate?: SwingCandidate & { sourceBucket: "execution" | "watch" }
+): SwingHistoryCase {
+  return {
+    ...historyCase,
+    decisionSnapshot: buildDecisionSnapshot(historyCase, currentCandidate),
+    stagedBuyDiagnostics: buildStagedBuyDiagnostics(historyCase),
+    outcomeDiagnostics: buildOutcomeDiagnostics(historyCase)
+  };
+}
+
 function getWeightedBuyAssumption(existing?: SwingHistoryCase["assumption"]) {
   return {
     ...(existing ?? {}),
     executionModel: "weighted_staged_buy",
-    trigger: existing?.trigger ?? "daily_low_touched_buy_price",
-    note: "일봉 저가가 각 분할 매수가를 터치하면 1차:2차:3차 = 1:2:4 금액 비중으로 체결된 것으로 가정합니다."
+    trigger: "stage_1_2_low_touch_stage_3_reclaim_confirmation",
+    note:
+      "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
   };
 }
 
@@ -747,12 +1477,245 @@ function getMaxFavorableReturnPct(historyCase: SwingHistoryCase) {
   return isFiniteNumber(historyCase.maxFavorableReturnPct) ? historyCase.maxFavorableReturnPct : undefined;
 }
 
+function isTargetHitHistoryCase(historyCase: SwingHistoryCase) {
+  const targetReturnPct = getTargetReturnPct(getExecutedBuyStage(historyCase));
+  const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
+  const returnPct = getReturnPct(historyCase);
+  return (
+    getExecutedBuyStage(historyCase) > 0 &&
+    (historyCase.outcomeStatus?.startsWith("target_hit_after") ||
+      (isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct) ||
+      (isFiniteNumber(returnPct) && returnPct >= targetReturnPct))
+  );
+}
+
+function getTargetHitClosedDate(historyCase: SwingHistoryCase) {
+  const targetReturnPct = getTargetReturnPct(getExecutedBuyStage(historyCase));
+  const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
+  if (isFiniteNumber(maxFavorableReturnPct) && maxFavorableReturnPct >= targetReturnPct) {
+    return getValidDateText(historyCase.maxFavorableDate);
+  }
+
+  return getValidDateText(historyCase.dataDate);
+}
+
+function isThirdBuyUnconfirmedZone(historyCase: SwingHistoryCase) {
+  return (
+    getExecutedBuyStage(historyCase) === 2 &&
+    (
+      historyCase.thirdBuyMonitor?.status === "waiting_reclaim" ||
+      historyCase.thirdBuyMonitor?.status === "confirmation_required" ||
+      historyCase.thirdBuyMonitor?.status === "stop_zone"
+    )
+  );
+}
+
+function isDeepZoneReboundExit(historyCase: SwingHistoryCase) {
+  const targetReturnPct = getTargetReturnPct(getExecutedBuyStage(historyCase));
+  const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
+  return (
+    isThirdBuyUnconfirmedZone(historyCase) &&
+    isFiniteNumber(targetReturnPct) &&
+    isFiniteNumber(maxFavorableReturnPct) &&
+    maxFavorableReturnPct >= targetReturnPct
+  );
+}
+
+function getThirdBuyReclaimWaitDays(historyCase: SwingHistoryCase) {
+  return countBusinessDaysBetween(historyCase.thirdBuyMonitor?.touchedDate, historyCase.dataDate);
+}
+
+function isDeepZoneTimeoutExit(historyCase: SwingHistoryCase) {
+  return (
+    isThirdBuyUnconfirmedZone(historyCase) &&
+    !isDeepZoneReboundExit(historyCase) &&
+    getThirdBuyReclaimWaitDays(historyCase) >= THIRD_BUY_RECLAIM_TIMEOUT_BUSINESS_DAYS
+  );
+}
+
 function getPointHigh(point: ChartPoint) {
   return isFiniteNumber(point.high) && point.high > 0 ? point.high : point.close;
 }
 
 function getPointLow(point: ChartPoint) {
   return isFiniteNumber(point.low) && point.low > 0 ? point.low : point.close;
+}
+
+function getThirdBuyStopBufferPct(point: ChartPoint, buyPlan: SwingHistoryCase["buyPlan"]) {
+  if (!isFiniteNumber(point.close) || !isFiniteNumber(buyPlan?.stopLossPrice) || point.close <= 0) {
+    return undefined;
+  }
+
+  return ((point.close - buyPlan.stopLossPrice) / point.close) * 100;
+}
+
+function isThirdBuyConfirmationPoint(
+  point: ChartPoint,
+  previousPoint: ChartPoint | undefined,
+  buyPlan: SwingHistoryCase["buyPlan"]
+) {
+  const thirdBuyPrice = buyPlan?.thirdBuyPrice;
+  if (!isFiniteNumber(thirdBuyPrice) || !isFiniteNumber(point.close) || point.close < thirdBuyPrice) {
+    return false;
+  }
+
+  const stopBufferPct = getThirdBuyStopBufferPct(point, buyPlan);
+  if (!isFiniteNumber(stopBufferPct) || stopBufferPct < THIRD_BUY_MIN_STOP_BUFFER_PCT) {
+    return false;
+  }
+
+  const greenCandle = isFiniteNumber(point.open) && point.close >= point.open;
+  const closeRecovered = isFiniteNumber(previousPoint?.close) && point.close > previousPoint.close;
+  return greenCandle || closeRecovered;
+}
+
+function getAdaptiveThirdBuyPrice(point: ChartPoint, buyPlan: SwingHistoryCase["buyPlan"]) {
+  if (!isFiniteNumber(point.close) || !isFiniteNumber(buyPlan?.stopLossPrice)) {
+    return undefined;
+  }
+
+  const minimumRiskTick = getKrxTickSize(point.close);
+  return Math.max(roundPriceDownToTick(point.close), buyPlan.stopLossPrice + minimumRiskTick);
+}
+
+function isAdaptiveThirdBuyConfirmationPoint(
+  point: ChartPoint,
+  previousPoint: ChartPoint | undefined,
+  recentPoints: ChartPoint[],
+  buyPlan: SwingHistoryCase["buyPlan"]
+) {
+  const originalThirdBuyPrice = buyPlan?.originalThirdBuyPrice ?? buyPlan?.thirdBuyPrice;
+  if (
+    !isFiniteNumber(originalThirdBuyPrice) ||
+    !isFiniteNumber(point.close) ||
+    !isFiniteNumber(buyPlan?.stopLossPrice) ||
+    point.close >= originalThirdBuyPrice ||
+    point.close <= buyPlan.stopLossPrice
+  ) {
+    return false;
+  }
+
+  const adaptiveThirdBuyPrice = getAdaptiveThirdBuyPrice(point, buyPlan);
+  if (!isFiniteNumber(adaptiveThirdBuyPrice) || !isFiniteNumber(buyPlan.secondBuyPrice)) {
+    return false;
+  }
+  if (adaptiveThirdBuyPrice >= buyPlan.secondBuyPrice || adaptiveThirdBuyPrice <= buyPlan.stopLossPrice) {
+    return false;
+  }
+
+  const stopBufferPct = getThirdBuyStopBufferPct(point, buyPlan);
+  if (!isFiniteNumber(stopBufferPct) || stopBufferPct < THIRD_BUY_MIN_STOP_BUFFER_PCT) {
+    return false;
+  }
+
+  const greenCandle = isFiniteNumber(point.open) && point.close >= point.open;
+  const closeRecovered = isFiniteNumber(previousPoint?.close) && point.close > previousPoint.close;
+  const supportWindow = recentPoints.slice(-3);
+  const supportLows = supportWindow.map(getPointLow).filter(isFiniteNumber);
+  const supportHeld =
+    supportLows.length >= 3 &&
+    Math.min(...supportLows) > buyPlan.stopLossPrice &&
+    getPointLow(point) >= Math.min(...supportLows) * 0.985;
+
+  return supportHeld && (greenCandle || closeRecovered);
+}
+
+function buildThirdBuyMonitor(
+  buyPlan: SwingHistoryCase["buyPlan"] | undefined,
+  points: ChartPoint[]
+): SwingThirdBuyMonitor | undefined {
+  if (!buyPlan || !isFiniteNumber(buyPlan.thirdBuyPrice)) {
+    return undefined;
+  }
+
+  let touchedDate: string | undefined;
+  let confirmedDate: string | undefined;
+  let adjustedThirdBuyPrice: number | undefined;
+  let adjustmentReason: string | undefined;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    if (!point) {
+      continue;
+    }
+
+    if (!touchedDate && getPointLow(point) <= buyPlan.thirdBuyPrice) {
+      touchedDate = point.date;
+    }
+
+    if (touchedDate && !confirmedDate && isThirdBuyConfirmationPoint(point, points[index - 1], buyPlan)) {
+      confirmedDate = point.date;
+    }
+
+    if (
+      touchedDate &&
+      !confirmedDate &&
+      isAdaptiveThirdBuyConfirmationPoint(point, points[index - 1], points.slice(Math.max(0, index - 2), index + 1), buyPlan)
+    ) {
+      confirmedDate = point.date;
+      adjustedThirdBuyPrice = getAdaptiveThirdBuyPrice(point, buyPlan);
+      adjustmentReason =
+        "3차 원래 가격을 회복하지 못했지만 손절가 위에서 바닥 다짐과 반등 캔들이 확인되어 3차 매수가를 조정했습니다.";
+    }
+  }
+
+  const latestPoint = points.at(-1);
+  const latestClose = latestPoint?.close;
+  if (confirmedDate) {
+    return {
+      version: 1,
+      touchedDate,
+      confirmedDate,
+      adjustedThirdBuyPrice,
+      originalThirdBuyPrice: adjustedThirdBuyPrice ? buyPlan.originalThirdBuyPrice ?? buyPlan.thirdBuyPrice : undefined,
+      adjustmentReason,
+      latestDate: latestPoint?.date,
+      latestClose,
+      status: "confirmed",
+      reason: "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
+    };
+  }
+
+  if (!touchedDate) {
+    return {
+      version: 1,
+      latestDate: latestPoint?.date,
+      latestClose,
+      status: "not_reached",
+      reason: "3차 매수가를 아직 터치하지 않았습니다."
+    };
+  }
+
+  if (isFiniteNumber(latestClose) && isFiniteNumber(buyPlan.stopLossPrice) && latestClose <= buyPlan.stopLossPrice) {
+    return {
+      version: 1,
+      touchedDate,
+      latestDate: latestPoint?.date,
+      latestClose,
+      status: "stop_zone",
+      reason: "3차 확인 전에 손절가 구간까지 밀려 3차 매수 실행을 막습니다."
+    };
+  }
+
+  if (isFiniteNumber(latestClose) && latestClose < buyPlan.thirdBuyPrice) {
+    return {
+      version: 1,
+      touchedDate,
+      latestDate: latestPoint?.date,
+      latestClose,
+      status: "waiting_reclaim",
+      reason: "3차 가격은 터치했지만 종가가 3차 매수가를 회복하지 못해 실행을 보류합니다."
+    };
+  }
+
+  return {
+    version: 1,
+    touchedDate,
+    latestDate: latestPoint?.date,
+    latestClose,
+    status: "confirmation_required",
+    reason: "3차 가격은 터치했지만 반등 확인 조건이 부족해 실행을 보류합니다."
+  };
 }
 
 function getMarketRefreshStartDate(historyCase: SwingHistoryCase) {
@@ -943,6 +1906,32 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     );
   }
 
+  if (isDeepZoneReboundExit(historyCase)) {
+    return buildHistoryOutcome(
+      "deep_zone_rebound_exit",
+      "딥존 반등 청산",
+      "profit",
+      true,
+      `3차 매수가와 손절가 사이에서 3차 체결 확인 전 반등이 발생했습니다. 3차 비중은 넣지 않고 평균 매수가 ${formatKrw(historyCase.averageBuyPrice ?? 0)} 기준 기간 중 최고가 ${formatKrw(historyCase.maxFavorablePrice ?? 0)}에서 ${formatSignedPercentText(maxFavorableReturnPct ?? 0)}를 기록해 청산 수익으로 분류합니다.`,
+      isFiniteNumber(maxFavorableReturnPct) && isFiniteNumber(historyCase.averageBuyPrice) && isFiniteNumber(historyCase.maxFavorablePrice)
+        ? {
+            result: "profit",
+            basisPriceLabel: "2차 평균 매수가",
+            basisPrice: historyCase.averageBuyPrice,
+            comparePriceLabel: "기간 중 최고가",
+            comparePrice: historyCase.maxFavorablePrice,
+            returnPct: maxFavorableReturnPct,
+            thresholdLabel: "딥존 반등 청산 기준",
+            thresholdPct: targetReturnPct
+          }
+        : undefined,
+      {
+        ...closeBasis,
+        rule: "3차 매수 확인 전 딥존에서 목표 수익 반등이 나와 현재 후보 잔류 여부와 무관하게 종료합니다."
+      }
+    );
+  }
+
   if (isFiniteNumber(stopLossPrice) && isFiniteNumber(latestClose) && latestClose <= stopLossPrice) {
     if (marketStopGrace?.status === "expired") {
       return buildHistoryOutcome(
@@ -980,7 +1969,31 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
             stopLossPrice
           }
         : undefined,
-      closeBasis
+      {
+        ...closeBasis,
+        rule: "평균 매수가 기준 목표 수익률을 충족한 고가 경로가 확인되어 현재 후보 잔류 여부와 무관하게 슈팅 수익으로 종료합니다."
+      }
+    );
+  }
+
+  if (isDeepZoneTimeoutExit(historyCase)) {
+    return buildHistoryOutcome(
+      "deep_zone_timeout_exit",
+      "딥존 장기체류",
+      "loss",
+      true,
+      `3차 매수가와 손절가 사이에서 ${THIRD_BUY_RECLAIM_TIMEOUT_BUSINESS_DAYS}거래일 이상 회복하지 못했습니다. 3차 비중은 넣지 않고 2차 평균 기준 위험 종료로 분류합니다. ${returnDescription}`,
+      latestCloseReturnBasis
+        ? {
+            ...latestCloseReturnBasis,
+            result: latestCloseReturnBasis.result === "profit" ? "neutral" : "loss",
+            thresholdLabel: `3차 회복 대기 한도 ${THIRD_BUY_RECLAIM_TIMEOUT_BUSINESS_DAYS}거래일`
+          }
+        : undefined,
+      {
+        ...closeBasis,
+        rule: "3차 매수 확인 없이 딥존 체류가 길어져 현재 후보 잔류 여부와 무관하게 종료합니다."
+      }
     );
   }
 
@@ -1014,7 +2027,10 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
             thresholdPct: targetReturnPct
           }
         : undefined,
-      closeBasis
+      {
+        ...closeBasis,
+        rule: "평균 매수가 기준 목표 수익률을 충족한 고가 경로가 확인되어 현재 후보 잔류 여부와 무관하게 슈팅 수익으로 종료합니다."
+      }
     );
   }
 
@@ -1194,6 +2210,8 @@ function buildCurrentHistoryCase(
           note: initialAlertSnapshot.note,
           tags: initialAlertSnapshot.tags ?? [],
           reasons: initialAlertSnapshot.reasons ?? [],
+          penaltyFactors: initialAlertSnapshot.penaltyFactors ?? [],
+          envelope: initialAlertSnapshot.envelope,
           source: initialAlertSnapshot.source
         }
       : undefined);
@@ -1201,8 +2219,8 @@ function buildCurrentHistoryCase(
   const sourceExecutedBuys = filterExecutedBuysAfterRecommendationStart(
     candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [],
     recommendationStartDate
-  );
-  const latestClose = candidate.postEntryOutcome?.latestClose;
+  ).filter((buy) => Number(buy.stage) < 3 || existingCase?.thirdBuyMonitor?.status === "confirmed");
+  const latestClose = candidate.postEntryOutcome?.latestClose ?? existingCase?.latestClose;
   const buyPlanSourceBuys = initialSnapshot?.note ? existingCase?.executedBuys : sourceExecutedBuys;
   const parsedBuyPlan = parseBuyPlan(initialSnapshot?.note ?? candidate.note, buyPlanSourceBuys);
   const candidateInitialStopLossPrice = isFiniteNumber(candidate.initialStopLossPrice)
@@ -1215,15 +2233,25 @@ function buildCurrentHistoryCase(
     existingCase?.buyPlan?.stopLossPrice ??
     parsedBuyPlan?.stopLossPrice;
   const buyPlan = freezeBuyPlanStopLoss(
-    getExecutedBuyStage(existingCase) > 0 ? existingCase?.buyPlan ?? parsedBuyPlan : parsedBuyPlan ?? existingCase?.buyPlan,
+    mergeBuyPlanAdjustment(
+      getExecutedBuyStage(existingCase) > 0
+        ? existingCase?.buyPlan ?? candidate.buyPlan ?? parsedBuyPlan
+        : candidate.buyPlan ?? parsedBuyPlan ?? existingCase?.buyPlan,
+      candidate.buyPlan
+    ),
     initialStopLossPrice
   );
   const dataDate = candidate.postEntryOutcome?.latestDate ?? candidate.latestMentionDate ?? candidate.anchorDate ?? asOfDate;
   const latestLow = isFiniteNumber(candidate.postEntryOutcome?.maxAdversePrice)
     ? candidate.postEntryOutcome.maxAdversePrice
-    : existingCase?.latestLow;
+    : isFiniteNumber(existingCase?.latestLow)
+      ? existingCase.latestLow
+      : latestClose;
+  // Once a history case exists, staged-buy execution must continue even if the
+  // current scan demotes the name to watch. Watch is a bucket downgrade, not a
+  // reason to stop checking whether frozen 1/2/3 buy levels were touched.
   const inferredExecutedBuys =
-    candidate.sourceBucket === "execution"
+    candidate.sourceBucket === "execution" || existingCase
       ? inferExecutedBuysFromLowTouch(buyPlan, latestLow, dataDate)
       : [];
   const executedBuys = sourceExecutedBuys.length ? sourceExecutedBuys : inferredExecutedBuys;
@@ -1266,6 +2294,7 @@ function buildCurrentHistoryCase(
     latestLow,
     unrealizedReturnPct,
     buyPlan,
+    thirdBuyMonitor: existingCase?.thirdBuyMonitor,
     initialSnapshot:
       initialSnapshot ??
       {
@@ -1274,6 +2303,8 @@ function buildCurrentHistoryCase(
         note: candidate.note,
         tags: Array.isArray(candidate.tags) ? candidate.tags : [],
         reasons: Array.isArray(candidate.reasons) ? candidate.reasons : [],
+        penaltyFactors: normalizePenaltyFactors(candidate.penaltyFactors),
+        envelope: normalizeEnvelope(candidate.envelope),
         source: candidate.source
       }
   };
@@ -1326,10 +2357,18 @@ function buildSwingHistorySummary(
     targetHitCases: cases.filter((item) => item.historyOutcome?.type === "target_hit").length,
     driftProfitExitCases: cases.filter((item) => item.historyOutcome?.type === "drift_profit_exit").length,
     profitExitCases: cases.filter(
-      (item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit"
+      (item) =>
+        item.historyOutcome?.type === "target_hit" ||
+        item.historyOutcome?.type === "deep_zone_rebound_exit" ||
+        item.historyOutcome?.type === "drift_profit_exit"
     ).length,
     entryMissedUpsideCases: cases.filter((item) => item.historyOutcome?.type === "entry_missed_upside").length,
-    stopBrokenCases: cases.filter((item) => item.historyOutcome?.type === "stop_broken" || item.historyOutcome?.type === "market_shock_stop").length,
+    stopBrokenCases: cases.filter(
+      (item) =>
+        item.historyOutcome?.type === "stop_broken" ||
+        item.historyOutcome?.type === "market_shock_stop" ||
+        item.historyOutcome?.type === "deep_zone_timeout_exit"
+    ).length,
     marketShockGraceCases: cases.filter((item) => item.historyOutcome?.type === "market_shock_grace").length,
     marketShockStopCases: cases.filter((item) => item.historyOutcome?.type === "market_shock_stop").length,
     staleTimeoutCases: cases.filter((item) => item.historyOutcome?.type === "stale_timeout").length,
@@ -1357,6 +2396,8 @@ function enrichClosedDateFields(
 
   const closedDate =
     getValidDateText(historyCase.closedDate) ??
+    (isDeepZoneReboundExit(historyCase) ? getValidDateText(historyCase.maxFavorableDate) : undefined) ??
+    (isTargetHitHistoryCase(historyCase) ? getTargetHitClosedDate(historyCase) : undefined) ??
     getValidDateText(fallbackClosedDate) ??
     getValidDateText(historyCase.dataDate) ??
     getValidDateText(historyCase.openedDate);
@@ -1474,6 +2515,12 @@ function getEffectiveLifecycleStatus(
     }
     return "closed";
   }
+  if (isDeepZoneReboundExit(historyCase) || isDeepZoneTimeoutExit(historyCase)) {
+    return "closed";
+  }
+  if (isTargetHitHistoryCase(historyCase)) {
+    return "closed";
+  }
   return currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) ? "current" : "closed";
 }
 
@@ -1504,18 +2551,56 @@ async function refreshCaseMarketPrice(historyCase: SwingHistoryCase, asOfDate: s
     if (!latestPoint || !isFiniteNumber(latestPoint.close)) {
       return historyCase;
     }
+    const scopedPoints = sliceCaseMarketWindow(points, historyCase, asOfDate);
+    // Price refresh is also an execution refresh. A live case may be demoted to
+    // watch and lose postEntryOutcome from the current pick payload, so replay
+    // the market path against the frozen buy plan before deriving outcome.
+    const thirdBuyMonitor = buildThirdBuyMonitor(historyCase.buyPlan, scopedPoints);
+    const inferredExecutedBuys = inferExecutedBuysFromMarketPath(historyCase.buyPlan, scopedPoints);
+    const executedBuys = mergeExecutedBuysByStage(historyCase.executedBuys, inferredExecutedBuys);
+    const averageBuyPrice = getWeightedAverageBuyPrice(executedBuys);
+    const effectiveAverageBuyPrice = averageBuyPrice ?? historyCase.averageBuyPrice;
+    const buyPlan =
+      thirdBuyMonitor?.adjustedThirdBuyPrice && historyCase.buyPlan
+        ? {
+            ...historyCase.buyPlan,
+            originalThirdBuyPrice: historyCase.buyPlan.originalThirdBuyPrice ?? historyCase.buyPlan.thirdBuyPrice,
+            thirdBuyPrice: thirdBuyMonitor.adjustedThirdBuyPrice,
+            adjustedThirdBuyPrice: thirdBuyMonitor.adjustedThirdBuyPrice,
+            thirdBuyAdjustment: {
+              policy: "market_stability_floor_confirmed" as const,
+              adjustedDate: thirdBuyMonitor.confirmedDate,
+              stopBufferPct:
+                isFiniteNumber(latestPoint.close) && isFiniteNumber(historyCase.buyPlan.stopLossPrice)
+                  ? round(((latestPoint.close - historyCase.buyPlan.stopLossPrice) / latestPoint.close) * 100)
+                  : undefined,
+              supportHoldDays: 3,
+              reason: thirdBuyMonitor.adjustmentReason
+            }
+          }
+        : historyCase.buyPlan;
 
     return {
       ...historyCase,
       dataDate: latestPoint.date ?? historyCase.dataDate,
       latestClose: latestPoint.close,
-      unrealizedReturnPct: calculateReturnPct(latestPoint.close, historyCase.averageBuyPrice),
+      latestLow: marketPath.maxAdversePrice,
+      buyPlan,
+      thirdBuyMonitor,
+      executedBuyCount: getExecutedBuyStageFromBuys(executedBuys),
+      executedBuys,
+      averageBuyPrice: averageBuyPrice ?? historyCase.averageBuyPrice,
+      unrealizedReturnPct: calculateReturnPct(latestPoint.close, effectiveAverageBuyPrice),
       maxFavorablePrice: marketPath.maxFavorablePrice,
       maxFavorableDate: marketPath.maxFavorableDate,
-      maxFavorableReturnPct: marketPath.maxFavorableReturnPct,
+      maxFavorableReturnPct: isFiniteNumber(marketPath.maxFavorablePrice)
+        ? calculateReturnPct(marketPath.maxFavorablePrice, effectiveAverageBuyPrice)
+        : undefined,
       maxAdversePrice: marketPath.maxAdversePrice,
       maxAdverseDate: marketPath.maxAdverseDate,
-      maxAdverseReturnPct: marketPath.maxAdverseReturnPct
+      maxAdverseReturnPct: isFiniteNumber(marketPath.maxAdversePrice)
+        ? calculateReturnPct(marketPath.maxAdversePrice, effectiveAverageBuyPrice)
+        : undefined
     };
   } catch {
     return historyCase;
@@ -1579,10 +2664,16 @@ function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
         enteredCaseCount: monthCases.filter((item) => getExecutedBuyStage(item) > 0).length,
         noEntryCaseCount: monthCases.filter((item) => getExecutedBuyStage(item) <= 0).length,
         profitExitCaseCount: monthCases.filter(
-          (item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit"
+          (item) =>
+            item.historyOutcome?.type === "target_hit" ||
+            item.historyOutcome?.type === "deep_zone_rebound_exit" ||
+            item.historyOutcome?.type === "drift_profit_exit"
         ).length,
         stopBrokenCaseCount: monthCases.filter(
-          (item) => item.historyOutcome?.type === "stop_broken" || item.historyOutcome?.type === "market_shock_stop"
+          (item) =>
+            item.historyOutcome?.type === "stop_broken" ||
+            item.historyOutcome?.type === "market_shock_stop" ||
+            item.historyOutcome?.type === "deep_zone_timeout_exit"
         ).length,
         marketShockStopCaseCount: monthCases.filter((item) => item.historyOutcome?.type === "market_shock_stop").length,
         averageReturnPct
@@ -1676,6 +2767,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
         .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
   const currentCandidates = await readCurrentSwingCandidates();
+  const currentCandidateByKey = new Map(
+    currentCandidates.map((candidate) => [getHistoryCaseKey(candidate.profile, candidate.symbol), candidate])
+  );
   const initialAlertSnapshotByKey = await readInitialSwingAlertSnapshots();
   const existingCaseByKey = new Map(
     existingCases.map((historyCase) => [getHistoryCaseKey(historyCase.profile, historyCase.symbol), historyCase])
@@ -1727,10 +2821,13 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       historyOutcome: deriveHistoryOutcome(caseWithLifecycle, lifecycleStatus)
     };
   });
-  const currentEnteredRecommendationCount = casesWithOutcome.filter(
+  const casesWithDiagnostics = casesWithOutcome.map((historyCase) =>
+    attachHistoryDiagnostics(historyCase, currentCandidateByKey.get(getHistoryCaseKey(historyCase.profile, historyCase.symbol)))
+  );
+  const currentEnteredRecommendationCount = casesWithDiagnostics.filter(
     (historyCase) => currentCaseKeys.has(getHistoryCaseKey(historyCase.profile, historyCase.symbol)) && getExecutedBuyStage(historyCase) > 0
   ).length;
-  const closedCases = dedupeClosedHistoryCases(casesWithOutcome.filter(
+  const closedCases = dedupeClosedHistoryCases(casesWithDiagnostics.filter(
     (historyCase) => historyCase.status === "closed" && getExecutedBuyStage(historyCase) > 0 && isExecutionHistoryCase(historyCase)
   ));
   const output: SwingHistoryPayload = {
@@ -1745,9 +2842,9 @@ export async function updateSwingRecommendationHistoryFromCurrentPicks() {
       includedBuckets: ["executionItems", "watchItems"],
       includeOnlyTouchedFirstBuy: true
     },
-    summary: buildSwingHistorySummary(casesWithOutcome, currentCandidates),
+    summary: buildSwingHistorySummary(casesWithDiagnostics, currentCandidates),
     closedMonths: buildClosedMonthSummaries(closedCases),
-    cases: casesWithOutcome
+    cases: casesWithDiagnostics
   };
 
   await mkdir(path.dirname(swingHistoryPath), { recursive: true });
@@ -1785,7 +2882,7 @@ export async function readSwingRecommendationHistory() {
     const lifecycleStatus = getEffectiveLifecycleStatus(historyCase, currentCaseKeys);
     const caseWithClosedDate = enrichClosedDateFields(historyCase, lifecycleStatus, payload.asOfDate as string | undefined);
 
-    return {
+    const caseWithOutcome = {
       ...caseWithClosedDate,
       lifecycleStatus,
       historyOutcome: deriveHistoryOutcome(caseWithClosedDate, lifecycleStatus),
@@ -1803,6 +2900,7 @@ export async function readSwingRecommendationHistory() {
           }
         : undefined
     };
+    return attachHistoryDiagnostics(caseWithOutcome, currentRecommendation);
   });
 
   const historyCaseByProfileSymbol = new Map(

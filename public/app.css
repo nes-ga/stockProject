@@ -1843,10 +1843,25 @@ body {
 }
 
 .history-buy-level strong {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
   color: var(--text);
   font-size: 13px;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+.history-buy-level strong span {
+  min-width: 0;
+}
+
+.history-buy-level strong small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .history-buy-level.pending {
@@ -1866,6 +1881,79 @@ body {
 .history-buy-level.executed.stage-3 {
   border-color: rgba(216, 76, 63, 0.18);
   background: rgba(255, 246, 244, 0.78);
+}
+
+.history-buy-level.confirmation-required {
+  border-color: rgba(184, 113, 34, 0.24);
+  background: rgba(255, 249, 237, 0.9);
+}
+
+.history-buy-level.confirmation-required em,
+.history-buy-level.confirmation-required strong {
+  color: #9a5a12;
+}
+
+.history-buy-level.confirmation-blocked {
+  border-color: rgba(177, 56, 40, 0.24);
+  background: rgba(255, 244, 242, 0.92);
+}
+
+.history-buy-level.confirmation-blocked em,
+.history-buy-level.confirmation-blocked strong {
+  color: var(--negative);
+}
+
+.history-buy-adjustment-note {
+  grid-column: 1 / -1;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  padding: 1px 2px 0;
+}
+
+.history-third-buy-status {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(17, 50, 62, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-third-buy-status span,
+.history-third-buy-status strong {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.history-third-buy-status strong {
+  text-align: right;
+}
+
+.history-third-buy-status.pending {
+  border-color: rgba(184, 113, 34, 0.18);
+  background: rgba(255, 249, 237, 0.76);
+  color: #9a5a12;
+}
+
+.history-third-buy-status.blocked {
+  border-color: rgba(177, 56, 40, 0.18);
+  background: rgba(255, 244, 242, 0.82);
+  color: var(--negative);
+}
+
+.history-third-buy-status.executed {
+  border-color: rgba(216, 76, 63, 0.18);
+  background: rgba(255, 246, 244, 0.78);
+  color: #b13828;
 }
 
 .history-matrix-modal-panel {
@@ -4041,6 +4129,23 @@ body {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.5;
+}
+
+.stock-card-guard-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.stock-card-guard-pill.blocked {
+  background: rgba(177, 56, 40, 0.12);
+  color: var(--negative);
 }
 
 .stock-card-delete,

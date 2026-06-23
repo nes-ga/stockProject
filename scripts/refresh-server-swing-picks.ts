@@ -1,6 +1,6 @@
 import { analyzeSmartMoneyPatterns } from "../src/services/stockAnalysis.js";
 import { classifySwingCandidate } from "../src/services/recommendationUniverse.js";
-import { updateSwingRecommendationHistoryFromCurrentPicks } from "../src/services/recommendationHistory.js";
+import { buildSwingHistoryWinRateGuardModel, updateSwingRecommendationHistoryFromCurrentPicks } from "../src/services/recommendationHistory.js";
 import { readServerSwingPicks, writeServerSwingPicks } from "../src/services/serverSwingPicks.js";
 
 type Pattern = Awaited<ReturnType<typeof analyzeSmartMoneyPatterns>>[number]["pattern"];
@@ -44,9 +44,10 @@ async function main() {
       note: item.note
     }))
   );
+  const historyGuardModel = await buildSwingHistoryWinRateGuardModel();
 
   const filtered = analyses
-    .filter((analysis) => classifySwingCandidate(analysis).bucket !== "watch")
+    .filter((analysis) => classifySwingCandidate(analysis, historyGuardModel).bucket !== "watch")
     .sort((left, right) => {
       const leftRank = left.pattern.stage === "breakout" ? 2 : left.pattern.stage === "setup" ? 1 : 0;
       const rightRank = right.pattern.stage === "breakout" ? 2 : right.pattern.stage === "setup" ? 1 : 0;
@@ -60,7 +61,7 @@ async function main() {
     });
 
   const refreshed = filtered.map((analysis) => {
-    const classification = classifySwingCandidate(analysis);
+    const classification = classifySwingCandidate(analysis, historyGuardModel);
     return {
       key: `${analysis.name ?? analysis.symbol}-${analysis.symbol}`,
       name: analysis.name ?? analysis.symbol,

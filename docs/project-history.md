@@ -2,6 +2,32 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-06-23
+
+스윙 히스토리의 현재 후보 표시와 분할매수 체결 추적을 보정했습니다.
+
+- 이미 열린 히스토리 케이스는 현재 스캔에서 `execution`에서 `watch`로 내려가도 현재 추적 목록에 계속 표시합니다.
+- 열린 히스토리 케이스의 분할매수 체결 체크는 현재 bucket과 무관하게 계속 수행합니다.
+- 최신 일봉 경로를 최초 고정 `buyPlan`과 대조해 1차/2차/3차 매수가 터치 여부를 다시 계산합니다.
+- 서버 현재 픽 payload에 `postEntryOutcome`이 없어도, 히스토리 갱신 단계에서 Naver 일봉을 재생해 `executedBuys`, 평균 매수가, 수익률을 보정합니다.
+- 기준 사례: 삼성에스디에스 `018260`은 2026-06-18 열린 케이스가 2026-06-23에 `watch`로 내려갔지만, 고정 매수가 `242000/210500/177800` 기준 2차까지 체결된 active case로 유지합니다.
+- 기존 스윙 히스토리 케이스까지 `decisionSnapshot`, `stagedBuyDiagnostics`, `outcomeDiagnostics`를 붙여 승률 조건 분석용 JSON으로 확장했습니다. 과거 케이스에서 원본 메타데이터가 없는 `penaltyFactors`와 `envelope`은 임의 추정하지 않습니다.
+- 스윙 검색 엔진에 히스토리 승률 가드를 연결했습니다. 손실률이 높은 조건 클러스터는 실행 후보를 `watch`로 낮추고, 약한 손실 우위 조건은 `execution_ready`를 `execution_probe`로 낮춥니다.
+- 3차 매수권 후보는 지지, 캔들, 거래량, ENV20 확인이 없으면 `third_buy_confirmation_required`로 표시하고 실행 후보에서 제외합니다.
+- 3차 매수 히스토리 실행 기준을 저가 터치에서 회복 확인 방식으로 바꿨습니다. 3차 가격과 손절가 사이의 애매한 구간은 `waiting_reclaim`으로 두고, 3차 비중을 평균 매수가에 넣지 않습니다.
+- 3차 미확정 딥존에서 기간 중 고가가 2차 평균 기준 목표 수익률을 충족하면 `deep_zone_rebound_exit`로 종료하고, 3차 회복 없이 5거래일 이상 머물면 `deep_zone_timeout_exit` 위험 종료로 처리합니다.
+- 딥존 목표 슈팅은 손절 판정보다 먼저 적용합니다. 수익 청산 가능 구간이 나온 뒤 손절가 아래로 밀려도 손절 종료로 뒤집지 않습니다.
+
+관련 수정:
+
+- `src/services/recommendationHistory.ts`
+- `src/services/smartMoneyEnhancer.ts`
+- `src/services/recommendationUniverse.ts`
+- `src/types.ts`
+- `scripts/refresh-server-swing-picks.ts`
+- `public/app.js`
+- `docs/smart-money-maintenance.md`
+
 ## 2026-06-02
 
 Naver 기반 KOSPI/KOSDAQ 지수 분봉 사용 가능성을 조사했습니다.
@@ -230,3 +256,8 @@ npx tsx src/scripts/checkVolumeProfileImpact.ts
 - 중장기는 “구조적 우위와 보유 품질” 중심
 - 매물대는 단독 매수 신호가 아니라 보조 판단 지표
 - BUY 후보를 공격적으로 늘리기보다 리스크 해석을 강화
+## 2026-06-23 - 3차 조정 매수 정책
+
+- 원래 3차 매수가와 손절가 사이에서 가격이 오래 머물 때, 지수 안정성과 종목 바닥 다짐이 확인되면 `adjustedThirdBuyPrice`를 산출해 3차 매수가를 조정합니다.
+- 조정 3차가는 손절가 대비 최소 6% 여유, 2차 매수가보다 낮은 가격, 지수 risk-off 아님, 종목 지지 안정/거래량 수축/캔들 회복 조건을 통과해야 합니다.
+- JSON에는 `originalThirdBuyPrice`, `adjustedThirdBuyPrice`, `thirdBuyAdjustment`, `thirdBuyMonitor.adjustmentReason`을 남기고, 이후 3차 체결/평단/슈팅/손절 판정은 조정가 기준으로 계산합니다.

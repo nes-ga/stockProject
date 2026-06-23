@@ -124,6 +124,67 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
 - `src/services/recommendationUniverse.ts`: `preserveEnteredHistoryPlan`, `replaceSwingNoteBuyPlan`
 - `public/app.js`: 히스토리 노트의 매수계획을 화면 오버레이에서 우선 표시
 
+## 히스토리 분할매수 추적 원칙
+
+히스토리 케이스가 한 번 열렸다면 현재 스캔 bucket이 `execution`에서 `watch`로 내려가도 분할매수 체결 체크는 계속해야 합니다. `watch`는 실행 후보에서 관찰 후보로 내려간 상태일 뿐이고, 이미 열린 케이스의 1차/2차/3차 매수가 터치 여부를 중단하는 신호가 아닙니다.
+
+핵심 규칙:
+
+- 신규 `watch` 후보는 히스토리 케이스를 열지 않습니다.
+- 이미 열린 히스토리 케이스는 미체결 상태여도 현재 후보 화면에 계속 보여야 합니다.
+- 열린 케이스의 `buyPlan`은 최초 기준으로 고정하고, 이후 최신 일봉 경로를 고정 매수가와 대조해 `executedBuys`를 갱신합니다.
+- 현재 서버 픽 payload에 `postEntryOutcome`이 없더라도, 히스토리 갱신 시 Naver 일봉 경로를 재생해 1차/2차/3차 터치 여부를 다시 계산합니다.
+- 화면은 `watch`로 내려간 히스토리 케이스도 `closed` 전까지 현재 추적 목록에 표시해야 합니다.
+
+대표 사례:
+
+- 삼성에스디에스 `018260`: 2026-06-18에 열린 케이스가 2026-06-23 스캔에서 `watch`로 내려갔지만, 최초 고정 매수가 `242000/210500/177800` 기준 현재 일봉 경로는 2차 매수가까지 터치했습니다. 따라서 `executedBuyCount=2`, 평균 매수가 `221000`으로 유지해야 하며, `watch` 강등만으로 미체결/숨김 처리하면 안 됩니다.
+
+수정 위치:
+
+- `src/services/recommendationHistory.ts`: `inferExecutedBuysFromMarketPath`, `mergeExecutedBuysByStage`, `refreshCaseMarketPrice`, `buildCurrentHistoryCase`
+- `public/app.js`: `shouldDisplayCurrentRecommendationCandidate`
+
+## 히스토리 진단 필드
+
+스윙 히스토리는 단순 승패 기록이 아니라 다음 검색 때 승률 조건을 조정할 수 있는 진단 로그로 유지합니다. 기존 `data/recommendation-history/swing-history.json` 케이스도 읽기/갱신 시 가능한 범위에서 아래 필드를 재구성합니다.
+
+추가 필드:
+
+- `decisionSnapshot`: 히스토리가 열린 당시 또는 현재 재계산 가능한 판단 근거입니다. `score`, `bucket`, `tags`, `reasons`, `penaltyFactors`, `envelope`, `referenceSma20`, `signalSummary`를 모아 이후 승률 분석의 조건 키로 씁니다.
+- `stagedBuyDiagnostics`: 1차/2차/3차 분할매수 단계별 상태입니다. 각 단계의 계획가, 체결 여부, 체결일, 현재가 대비 위치, 손절가까지의 여유를 저장합니다. 3차 매수는 단순 저가 터치만으로 공격하지 않고 `confirmation_required` 상태로 별도 검증 대상으로 둡니다.
+- `outcomeDiagnostics`: 현재까지의 결과 요약입니다. 평균 매수가, 현재가, 미실현 수익률, 최대 유리/불리 가격 경로, 현재 outcome을 같이 저장해 어떤 조건 조합이 수익/손실로 이어졌는지 집계할 수 있게 합니다.
+
+복원 한계:
+
+- 기존 케이스의 `score`, `sma20`, 매수가, 손절가처럼 노트/플랜에 남아 있는 값은 재구성합니다.
+- 과거 알림에 `penaltyFactors`나 `envelope` 메타데이터가 없었던 케이스는 해당 필드를 비워 둡니다. 없는 값을 임의 추정하지 않습니다.
+- 현재 검색 결과에 다시 잡힌 종목은 최신 후보의 `penaltyFactors`와 `envelope`을 보강해 저장합니다.
+
+## 히스토리 승률 가드
+
+스윙 검색 엔진은 검색 시작 시 `swing-history.json`의 종료 케이스를 읽어 조건별 승률 가드를 만듭니다. 이 가드는 후보를 새로 만드는 기준이 아니라, 이미 잡힌 후보의 실행 강도를 낮추는 보수 필터입니다.
+
+반영 방식:
+
+- `historyOutcome.category`가 `profit` 또는 `loss`인 종료 케이스만 표본에 넣습니다. 미체결 제외, 진행 중 케이스는 승패 통계에서 제외합니다.
+- `decisionSnapshot`의 tag/reason/penalty/envelope, 점수 구간, 실제 도달한 분할매수 단계를 조건 키로 묶습니다.
+- 표본 4건 이상, 손실률 65% 이상, 평균 수익률이 음수인 조건은 `history_loss_cluster`로 보고 실행 후보에서 `watch`로 낮춥니다.
+- 표본 3건 이상, 손실률 55% 이상인 약한 조건은 `history_win_rate_caution`으로 보고 `execution_ready`를 `execution_probe`로 낮춥니다.
+- 현재 히스토리 기준 대표 손실 우위 조건은 `envelope_lower_break`, `sma20_slope_negative`, `probe_demoted_low_score_unstable_support`, `quality_not_ready`입니다.
+
+3차 매수 확인 정책:
+
+- 1차/2차는 기존처럼 일봉 저가가 매수가를 터치하면 체결로 봅니다.
+- 3차는 저가 터치만으로 체결하지 않습니다. 3차 가격 터치 후 종가가 3차 매수가를 회복하고, 양봉 또는 전일 대비 종가 회복이 있어야 합니다.
+- 3차 확인 시점의 종가는 손절가 대비 최소 6% 이상 여유가 있어야 합니다.
+- 3차 매수가와 손절가 사이에서 가격이 오가면 `thirdBuyMonitor.status=waiting_reclaim`으로 두고, 3차 비중 4는 평균 매수가에 넣지 않습니다.
+- 손절가까지 밀리면 `thirdBuyMonitor.status=stop_zone`으로 두고, 3차 매수보다 손절/시장충격 유예 판단을 우선합니다.
+- 현재가가 3차 매수가의 1% 이내 또는 그 아래에 있는데 확인이 부족하면 `third_buy_confirmation_required`, `third_buy_not_confirmed`, `execution_blocked_by_deep_entry_policy` reason을 남기고 watch로 낮춥니다.
+- `waiting_reclaim` 또는 `confirmation_required` 상태에서 기간 중 고가가 2차 평균 매수가 기준 목표 수익률을 충족하면 `deep_zone_rebound_exit`로 종료합니다. 이때 3차는 미체결로 유지하고, 2차 평균 기준 슈팅 수익으로 통계에 넣습니다.
+- `deep_zone_rebound_exit`는 손절 판정보다 먼저 적용합니다. 딥존에서 목표 슈팅이 나온 순간 수익 청산으로 케이스를 닫고, 이후 종가가 손절가 아래로 내려가도 손절 종료로 뒤집지 않습니다.
+- 3차 터치 후 5거래일 이상 3차 가격을 회복하지 못하면 `deep_zone_timeout_exit`로 위험 종료합니다. 장기 체류 케이스를 계속 현재 후보로 끌고 가지 않기 위한 방어 규칙입니다.
+
 ## Watch 후보와 히스토리 승격 금지
 
 `watch`는 관찰군이지 체결 통계 대상이 아닙니다. watch 후보에 `postEntryOutcome`이 있더라도, 그것만으로 신규 히스토리 체결 케이스를 열면 안 됩니다.
@@ -250,3 +311,12 @@ npm run scan:swing-universe
 - 2026-05-08: 매물대 양수 가산을 BUY 직접 승격에서 제외하고 ranking support로 보수화
 - 2026-06-01: 시장 충격 손절 유예와 `market_shock_grace`/`market_shock_stop` outcome 추가
 - 2026-06-17: 스윙 최초 기준 고정, watch 후보의 체결 히스토리 승격 금지, 와이어블 watch-only 기준 명문화
+- 2026-06-23: 열린 히스토리 케이스는 `watch` 강등 후에도 현재 목록에 표시하고, 고정 `buyPlan` 기준 분할매수 체결을 계속 재계산하도록 보정
+## 3차 조정 매수 정책
+
+- 3차 매수가는 무조건 고정 대기하지 않습니다. 원래 3차 매수가와 손절가 사이에서 가격이 오래 머물 때, 지수 안정성과 종목 바닥 다짐이 확인되면 `adjustedThirdBuyPrice`를 산출해 3차 매수가를 현재 확인된 바닥 가격으로 낮춥니다.
+- 실시간 검색 엔진 기준: `riskOff !== true`, `marketContextScore >= 50`, `regimeScore >= 45`, 시장 모멘텀이 `weak`가 아니어야 합니다.
+- 종목 바닥 다짐 기준: `supportStabilityScore >= 65`, `volumeContractionScore >= 55`, `candleQualityScore >= 55`, 엔벨로프가 `below_lower`가 아니어야 합니다.
+- 가격 안전 기준: 조정 3차가는 손절가보다 높고 2차 매수가보다 낮아야 하며, 현재 종가 기준 손절가까지 최소 6% 이상 여유가 있어야 합니다.
+- 히스토리 재생 기준: 원래 3차가 아래로 내려온 뒤 최근 3거래일 저점이 손절가 위에서 유지되고, 양봉 또는 전일 대비 종가 회복이 나오면 해당 일자의 종가를 `adjustedThirdBuyPrice`로 기록합니다.
+- JSON에는 원래 3차가를 `originalThirdBuyPrice`, 조정 3차가를 `adjustedThirdBuyPrice`, 조정 근거를 `thirdBuyAdjustment`와 `thirdBuyMonitor.adjustmentReason`에 남깁니다. 이후 3차 체결, 평균 매수가, 슈팅/손절 종결은 조정 3차가 기준으로 계산합니다.

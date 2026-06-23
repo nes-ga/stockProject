@@ -7,7 +7,15 @@ import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
 import { getSwingProfileFilterOverrides, resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 import { getTradingHaltLookup } from "./tradingHalts.js";
-import { readSwingCarryForwardCases, updateSwingRecommendationHistoryFromCurrentPicks, type SwingCarryForwardCase } from "./recommendationHistory.js";
+import {
+  buildSwingHistoryWinRateGuardModel,
+  evaluateSwingHistoryWinRateGuard,
+  readSwingCarryForwardCases,
+  updateSwingRecommendationHistoryFromCurrentPicks,
+  type SwingCarryForwardCase,
+  type SwingHistoryWinRateGuardEvaluation,
+  type SwingHistoryWinRateGuardModel
+} from "./recommendationHistory.js";
 
 const SWING_TARGET_MARKETS = new Set(["KOSPI", "KOSDAQ"]);
 const SWING_CHUNK_SIZE = 8;
@@ -240,7 +248,7 @@ type SwingCandidateClassification = {
   penaltyFactors: SmartMoneyAnalysis["pattern"]["penaltyFactors"];
 };
 
-function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, classification: SwingCandidateClassification) {
+function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, classification: SwingCandidateClassification): ServerSwingPick {
   return {
     key: `${item.name}-${item.code}`,
     name: item.name,
@@ -252,6 +260,7 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     tags: classification.tags,
     reasons: classification.reasons,
     penaltyFactors: classification.penaltyFactors,
+    buyPlan: analysis.pattern.buyPlan,
     postEntryOutcome: analysis.pattern.postEntryOutcome,
     envelope: analysis.pattern.envelope,
     haltCategory: analysis.haltCategory,
@@ -313,7 +322,7 @@ function preserveEnteredHistoryPlan(
     return nextPick;
   }
 
-  const latestDate = nextPick.postEntryOutcome?.latestDate ?? historyCase.dataDate ?? nextPick.latestMentionDate;
+  const latestDate = nextPick.postEntryOutcome?.latestDate ?? historyCase.dataDate ?? nextPick.latestMentionDate ?? nextPick.anchorDate;
   const executedBuys = (historyCase.executedBuys ?? [])
     .filter(
       (buy): buy is { stage: 1 | 2 | 3; price: number; date?: string } =>
@@ -333,6 +342,7 @@ function preserveEnteredHistoryPlan(
     ...nextPick,
     anchorDate: historyCase.initialSnapshot?.anchorDate ?? historyCase.openedDate ?? nextPick.anchorDate,
     note: replaceSwingNoteBuyPlan(historyCase.initialSnapshot?.note ?? nextPick.note, historyCase.buyPlan) ?? nextPick.note,
+    buyPlan: historyCase.buyPlan,
     postEntryOutcome: {
       ...(nextPick.postEntryOutcome ?? {}),
       status: "active" as const,
@@ -384,6 +394,7 @@ function toCarryForwardSwingWatchPick(historyCase: SwingCarryForwardCase, profil
       "carry_forward_until_stop",
       "above_stop"
     ],
+    buyPlan: historyCase.buyPlan,
     postEntryOutcome: {
       status: "active",
       executedBuyCount: historyCase.executedBuyCount,
@@ -618,7 +629,83 @@ function summarizePenaltyFactors(
     .slice(0, 6);
 }
 
-export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandidateClassification {
+function buildHistoryGuardPenaltyFactors(
+  guardEvaluation: SwingHistoryWinRateGuardEvaluation | undefined
+): SmartMoneyAnalysis["pattern"]["penaltyFactors"] {
+  return (guardEvaluation?.matchedSignals ?? []).slice(0, 2).map((signal) => ({
+    code: signal.severity === "block" ? "history_loss_cluster" : "history_win_rate_caution",
+    label: signal.severity === "block" ? "History loss cluster" : "History win-rate caution",
+    impact: signal.severity === "block" ? 20 : 10,
+    reason: signal.reason
+  }));
+}
+
+function buildHistoryGuardReasons(guardEvaluation: SwingHistoryWinRateGuardEvaluation | undefined) {
+  return (guardEvaluation?.matchedSignals ?? []).slice(0, 3).map((signal) =>
+    signal.severity === "block"
+      ? `history_loss_cluster:${signal.key}:${signal.winRatePct}%`
+      : `history_win_rate_caution:${signal.key}:${signal.winRatePct}%`
+  );
+}
+
+function buildSwingHistoryGuardEvaluation(
+  analysis: SmartMoneyAnalysis,
+  guardModel: SwingHistoryWinRateGuardModel | undefined,
+  classificationReasons: string[]
+) {
+  const pattern = analysis.pattern;
+  return evaluateSwingHistoryWinRateGuard(guardModel, {
+    score: pattern.finalRankScore ?? pattern.patternScore,
+    tags: pattern.tags,
+    reasons: classificationReasons,
+    penaltyFactors: pattern.penaltyFactors,
+    envelope: pattern.envelope,
+    buyPlan: pattern.buyPlan,
+    referenceClose: pattern.referenceClose
+  });
+}
+
+function isThirdBuyConfirmationBlocked(pattern: SmartMoneyAnalysis["pattern"]) {
+  const buyPlan = pattern.buyPlan;
+  if (
+    !buyPlan ||
+    typeof pattern.referenceClose !== "number" ||
+    !Number.isFinite(pattern.referenceClose) ||
+    typeof buyPlan.thirdBuyPrice !== "number" ||
+    !Number.isFinite(buyPlan.thirdBuyPrice)
+  ) {
+    return false;
+  }
+
+  const inThirdBuyZone = pattern.referenceClose <= buyPlan.thirdBuyPrice * 1.01;
+  if (!inThirdBuyZone) {
+    return false;
+  }
+
+  const supportConfirmed =
+    pattern.debugInfo.supportStatus === "holding" &&
+    (pattern.supportStabilityScore ?? 0) >= 65 &&
+    (pattern.candleQualityScore ?? 0) >= 60 &&
+    (pattern.volumeContractionScore ?? 0) >= 60 &&
+    pattern.envelope?.position !== "below_lower";
+
+  return !supportConfirmed;
+}
+
+function buildThirdBuyConfirmationPenalty(): SmartMoneyAnalysis["pattern"]["penaltyFactors"][number] {
+  return {
+    code: "third_buy_confirmation_required",
+    label: "Third buy confirmation required",
+    impact: 24,
+    reason:
+      "Reference close is already near or below the third staged-buy price, so the engine requires support, candle, volume, and envelope confirmation before keeping it actionable."
+  };
+}
+
+export function classifySwingCandidate(
+  analysis: SmartMoneyAnalysis,
+  guardModel?: SwingHistoryWinRateGuardModel
+): SwingCandidateClassification {
   const pattern = analysis.pattern;
   const riskRewardRatio = pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio ?? 0;
   const failedPostSpikePullbackShape = isFailedPostSpikePullbackShape(pattern);
@@ -641,6 +728,27 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
   const rankScore = pattern.finalRankScore ?? pattern.patternScore;
   const hasUnstableSupportPenalty = (pattern.penaltyFactors ?? []).some((factor) => factor.code === "unstable_support");
   const lowScoreUnstableSupport = rankScore < 60 && hasUnstableSupportPenalty;
+  const derivedHistoryGuardReasons = dedupeStrings([
+    ...(pattern.classificationReasons ?? []),
+    supportHoldingProbeEligible ? "support_holding_probe" : "",
+    deepPullbackProbeEligible ? "deep_pullback_probe" : "",
+    longPullbackUntilStopCandidate ? "long_pullback_until_stop_probe" : "",
+    envelopeWidePullbackCandidate ? "wide_pullback_candidate" : "",
+    envelopeWidePullbackCandidate ? "envelope_lower_hold" : "",
+    envelopeLowerBreak ? "envelope_lower_break" : "",
+    weakVolumeContraction ? "weak_volume_contraction" : "",
+    poorCandleStructure ? "weak_candle_structure" : "",
+    negativeSma20Slope ? "sma20_slope_negative" : "",
+    unstableSupport ? "unstable_support" : "",
+    weakRiskReward ? "risk_reward_thin" : "",
+    lowScoreUnstableSupport ? "probe_demoted_low_score_unstable_support" : "",
+    lowQuality ? "quality_not_ready" : ""
+  ]);
+  const historyGuardEvaluation = buildSwingHistoryGuardEvaluation(analysis, guardModel, derivedHistoryGuardReasons);
+  const historyGuardPenaltyFactors = buildHistoryGuardPenaltyFactors(historyGuardEvaluation);
+  const historyGuardReasons = buildHistoryGuardReasons(historyGuardEvaluation);
+  const thirdBuyConfirmationBlocked = isThirdBuyConfirmationBlocked(pattern);
+  const thirdBuyConfirmationPenalty = thirdBuyConfirmationBlocked ? [buildThirdBuyConfirmationPenalty()] : [];
   const targetHitOutcome =
     pattern.postEntryOutcome?.status === "target_hit_after_first_buy" ||
     pattern.postEntryOutcome?.status === "target_hit_after_second_buy" ||
@@ -689,7 +797,69 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     };
   }
 
+  if (thirdBuyConfirmationBlocked) {
+    return {
+      bucket: "watch",
+      reasons: dedupeStrings([
+        ...(pattern.classificationReasons ?? []),
+        "third_buy_confirmation_required",
+        "third_buy_not_confirmed",
+        "execution_blocked_by_deep_entry_policy"
+      ]),
+      tags: dedupeStrings([
+        ...(pattern.tags ?? []),
+        "tag_third_buy_confirmation_required" as const,
+        "watch_low_quality" as const
+      ]),
+      penaltyFactors: summarizePenaltyFactors([
+        ...(pattern.penaltyFactors ?? []),
+        ...thirdBuyConfirmationPenalty
+      ])
+    };
+  }
+
+  if (historyGuardEvaluation.shouldBlockExecution) {
+    return {
+      bucket: "watch",
+      reasons: dedupeStrings([
+        ...(pattern.classificationReasons ?? []),
+        ...historyGuardReasons,
+        "history_loss_cluster",
+        "execution_blocked_by_history_win_rate"
+      ]),
+      tags: dedupeStrings([
+        ...(pattern.tags ?? []),
+        "tag_history_loss_cluster" as const,
+        "watch_low_quality" as const
+      ]),
+      penaltyFactors: summarizePenaltyFactors([
+        ...(pattern.penaltyFactors ?? []),
+        ...historyGuardPenaltyFactors
+      ])
+    };
+  }
+
   if (readyByEngine && !lowQuality) {
+    if (historyGuardEvaluation.shouldCautionExecution) {
+      return {
+        bucket: "execution_probe",
+        reasons: dedupeStrings([
+          ...(pattern.classificationReasons ?? []),
+          ...historyGuardReasons,
+          "history_win_rate_caution",
+          "execution_ready_downgraded_to_probe"
+        ]),
+        tags: dedupeStrings([
+          ...(pattern.tags ?? []),
+          "tag_history_win_rate_caution" as const
+        ]),
+        penaltyFactors: summarizePenaltyFactors([
+          ...(pattern.penaltyFactors ?? []),
+          ...historyGuardPenaltyFactors
+        ])
+      };
+    }
+
     return {
       bucket: "execution_ready",
       reasons: dedupeStrings([...(pattern.classificationReasons ?? []), "execution_ready", "actionable_gate_cleared"]),
@@ -714,11 +884,13 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
       isInOrBelowRawSwingEntryZone(pattern) ? "entry_zone_hit" : "",
       envelopeWidePullbackCandidate ? "wide_pullback_candidate" : "",
       envelopeWidePullbackCandidate ? "envelope_lower_hold" : "",
+      ...historyGuardReasons,
       readyByEngine
         ? "execution_ready_blocked_by_quality"
         : envelopeWidePullbackCandidate
           ? "execution_gate_overridden_by_envelope"
           : "execution_gate_not_cleared",
+      historyGuardEvaluation.shouldCautionExecution ? "history_win_rate_caution" : "",
       weakVolumeContraction ? "weak_volume_contraction" : "",
       poorCandleStructure ? "weak_candle_structure" : "",
       negativeSma20Slope ? "sma20_slope_negative" : "",
@@ -733,9 +905,13 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
       tags: dedupeStrings([
         ...(pattern.tags ?? []),
         ...(unstableSupport ? (["tag_support_unstable"] as const) : []),
-        ...(envelopeWidePullbackCandidate ? (["tag_envelope_lower_hold"] as const) : [])
+        ...(envelopeWidePullbackCandidate ? (["tag_envelope_lower_hold"] as const) : []),
+        ...(historyGuardEvaluation.shouldCautionExecution ? (["tag_history_win_rate_caution"] as const) : [])
       ]),
-      penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
+      penaltyFactors: summarizePenaltyFactors([
+        ...(pattern.penaltyFactors ?? []),
+        ...historyGuardPenaltyFactors
+      ])
     };
   }
 
@@ -745,7 +921,8 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
     ...(analysis.haltCategory === "structural" || analysis.haltCategory === "critical" ? (["watch_halt_structural"] as const) : []),
     ...(pattern.status === "breakout_extended" ? (["watch_extended_leader"] as const) : []),
     ...(pattern.stage === "setup" && !withinEntryZone ? (["watch_pullback_pending"] as const) : []),
-    ...(lowQuality ? (["watch_low_quality"] as const) : [])
+    ...(lowQuality ? (["watch_low_quality"] as const) : []),
+    ...(historyGuardEvaluation.shouldCautionExecution ? (["tag_history_win_rate_caution"] as const) : [])
   ];
 
   return {
@@ -756,14 +933,19 @@ export function classifySwingCandidate(analysis: SmartMoneyAnalysis): SwingCandi
       pattern.stage === "setup" && (!withinEntryZone || pattern.status !== "buy_ready") ? "pullback_pending" : "",
       broadReviewEligible ? "broad_review_watch" : "",
       broadReviewEligible ? "above_stop" : "",
+      ...historyGuardReasons,
       envelopeLowerBreak ? "envelope_lower_break" : "",
       lowScoreUnstableSupport ? "probe_demoted_low_score_unstable_support" : "",
+      historyGuardEvaluation.shouldCautionExecution ? "history_win_rate_caution" : "",
       lowQuality ? "quality_not_ready" : "",
       haltPenalty ? "halt_penalty_active" : "",
       haltWatchOnly ? "halt_watch_only" : ""
     ]),
     tags: dedupeStrings(watchTags),
-    penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
+    penaltyFactors: summarizePenaltyFactors([
+      ...(pattern.penaltyFactors ?? []),
+      ...historyGuardPenaltyFactors
+    ])
   };
 }
 
@@ -813,7 +995,11 @@ function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: Swi
   );
 }
 
-async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile) {
+async function scanSwingChunk(
+  chunk: UniverseItem[],
+  profile: SwingEngineProfile,
+  guardModel: SwingHistoryWinRateGuardModel | undefined
+) {
   const settled = await Promise.allSettled(
     chunk.map(async (item) => ({
       item,
@@ -838,7 +1024,7 @@ async function scanSwingChunk(chunk: UniverseItem[], profile: SwingEngineProfile
         continue;
       }
 
-      const classification = classifySwingCandidate(result.value.analysis);
+      const classification = classifySwingCandidate(result.value.analysis, guardModel);
       if (classification.bucket !== "watch") {
         actionable.push(result.value);
       } else if (isSwingWatchEligible(result.value.analysis, classification)) {
@@ -922,13 +1108,14 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const targets = universe.items.filter((item) => SWING_TARGET_MARKETS.has(item.market));
   const tradingHaltLookup = await getTradingHaltLookup({ forceRefresh: true });
   const activeTargets = targets.filter((item) => tradingHaltLookup.get(item.code)?.haltAction !== "exclude");
+  const historyGuardModel = await buildSwingHistoryWinRateGuardModel();
   const actionable: SwingScanRankedItem[] = [];
   const watch: SwingScanRankedItem[] = [];
   let failures = 0;
 
   for (let index = 0; index < activeTargets.length; index += SWING_CHUNK_SIZE) {
     const chunk = activeTargets.slice(index, index + SWING_CHUNK_SIZE);
-    const result = await scanSwingChunk(chunk, profile);
+    const result = await scanSwingChunk(chunk, profile, historyGuardModel);
     actionable.push(...result.actionable);
     watch.push(...result.watch);
     failures += result.failures;
@@ -952,7 +1139,7 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const executionItems = filteredActionable.map(({ item, analysis }) => ({
     ...preserveSwingPickDates(
       preserveEnteredHistoryPlan(
-        toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        toServerSwingPick(item, analysis, classifySwingCandidate(analysis, historyGuardModel)),
         carryForwardCaseBySymbol.get(item.code)
       ),
       existingPickBySymbol.get(item.code)
@@ -962,7 +1149,7 @@ async function scanAndSaveSwingUniverse(profileInput?: SwingEngineProfile): Prom
   const engineWatchItems = filteredWatch.map(({ item, analysis }) => ({
     ...preserveSwingPickDates(
       preserveEnteredHistoryPlan(
-        toServerSwingPick(item, analysis, classifySwingCandidate(analysis)),
+        toServerSwingPick(item, analysis, classifySwingCandidate(analysis, historyGuardModel)),
         carryForwardCaseBySymbol.get(item.code)
       ),
       existingPickBySymbol.get(item.code)
