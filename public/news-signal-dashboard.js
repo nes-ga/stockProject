@@ -21723,11 +21723,11 @@ var import_client = __toESM(require_client(), 1);
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var eventLabels = {
   EARNINGS: "\uC2E4\uC801",
-  CONTRACT: "\uC218\uC8FC/\uACF5\uAE09\uACC4\uC57D",
-  "M&A": "\uC778\uC218/\uD569\uBCD1",
+  CONTRACT: "\uC218\uC8FC\uACC4\uC57D",
+  "M&A": "M&A",
   POLICY: "\uC815\uCC45",
-  CAPEX: "\uC99D\uC124/\uD22C\uC790",
-  SHAREHOLDER: "\uC790\uC0AC\uC8FC/\uBC30\uB2F9",
+  CAPEX: "\uC124\uBE44\uD22C\uC790",
+  SHAREHOLDER: "\uC8FC\uC8FC\uD658\uC6D0",
   RISK: "\uB9AC\uC2A4\uD06C"
 };
 var sentimentLabels = {
@@ -21788,9 +21788,9 @@ function NewsSignalDashboard() {
   }, []);
   const signals = Array.isArray(payload?.signals) ? payload.signals : [];
   const sectors = Array.isArray(payload?.sectors) ? payload.sectors : [];
-  const highSignals = signals.filter((signal) => signal.sentiment === "positive" && signal.score >= 7).sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
-  const radarSignals = signals.filter((signal) => signal.sentiment === "positive" && signal.score < 7).sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
-  const riskSignals = signals.filter((signal) => signal.sentiment === "negative").sort((left, right) => left.score - right.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
+  const highSignals = mergeSignalsByTicker(signals.filter((signal) => signal.sentiment === "positive" && signal.score >= 7).sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
+  const radarSignals = mergeSignalsByTicker(signals.filter((signal) => signal.sentiment === "positive" && signal.score < 7).sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
+  const riskSignals = mergeSignalsByTicker(signals.filter((signal) => signal.sentiment === "negative").sort((left, right) => left.score - right.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-dashboard", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "panel news-dashboard-hero", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-dashboard-head", children: [
@@ -21901,8 +21901,54 @@ function SignalSection({ title, caption, items, emptyMessage }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: title }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "field-help", children: caption })
     ] }) }),
-    items.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "news-signal-list", children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SignalCard, { signal: item }, `${item.ticker}-${item.eventType}-${item.timestamp}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-state news-empty-state", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: emptyMessage }) })
+    items.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `news-signal-list ${items.length > 3 ? "is-scrollable" : ""}`, children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SignalCard, { signal: item }, `${item.ticker}-${item.eventType}-${item.timestamp}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-state news-empty-state", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: emptyMessage }) })
   ] });
+}
+function mergeSignalsByTicker(items) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const signal of items) {
+    const key = signal.ticker || signal.companyName;
+    const current = groups.get(key);
+    groups.set(key, current ? [...current, signal] : [signal]);
+  }
+  return [...groups.values()].map((group) => {
+    if (group.length === 1) {
+      return group[0];
+    }
+    const representative = group[0];
+    const eventTypes = [...new Set(group.map((item) => item.eventType).filter(Boolean))];
+    const sources = [...new Set(group.flatMap((item) => item.sources ?? []))];
+    const newsList = dedupeNewsList(group.flatMap((item) => item.newsList ?? []));
+    const latestTimestamp = group.map((item) => item.timestamp).filter(Boolean).sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? representative.timestamp;
+    const score = representative.sentiment === "negative" ? Math.min(...group.map((item) => item.score)) : Math.max(...group.map((item) => item.score));
+    const eventLabelList = eventTypes.map((type) => eventLabels[type] ?? type);
+    const eventLabelText = eventLabelList.join(", ");
+    return {
+      ...representative,
+      score,
+      eventType: representative.eventType,
+      displayEventLabels: eventLabelList,
+      articleCount: newsList.length,
+      sources,
+      timestamp: latestTimestamp,
+      summary: `${representative.companyName}, ${eventLabelText} \uAD00\uB828 \uC2DC\uADF8\uB110 ${group.length}\uAC74\uC744 \uD558\uB098\uB85C \uBB36\uC5C8\uC2B5\uB2C8\uB2E4. \uAE30\uC0AC ${newsList.length}\uAC74\uACFC \uB9E4\uCCB4 ${sources.length}\uACF3\uC744 \uD568\uAED8 \uD655\uC778\uD569\uB2C8\uB2E4.`,
+      newsList
+    };
+  });
+}
+function dedupeNewsList(items) {
+  const seen = /* @__PURE__ */ new Set();
+  return [...items].sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt)).filter((item) => {
+    const key = [item.url, item.title, item.publishedAt].filter(Boolean).join("|");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+function getSignalEventLabels(signal) {
+  return Array.isArray(signal.displayEventLabels) && signal.displayEventLabels.length ? signal.displayEventLabels : [eventLabels[signal.eventType] ?? signal.eventType];
 }
 function SignalCard({ signal }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
@@ -21911,7 +21957,7 @@ function SignalCard({ signal }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-signal-title-wrap", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-signal-title-row", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: signal.companyName }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `news-event-badge ${signal.sentiment.toLowerCase()}`, children: eventLabels[signal.eventType] })
+          getSignalEventLabels(signal).map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `news-event-badge ${signal.sentiment.toLowerCase()}`, children: label }, label))
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-signal-meta", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: signal.ticker }),
@@ -21937,7 +21983,7 @@ function SignalCard({ signal }) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "ghost-button small-button", type: "button", onClick: () => setExpanded((value) => !value), children: expanded ? "Hide News" : "View News" })
     ] }),
-    expanded ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "news-signal-expand", children: signal.newsList.map((news) => {
+    expanded ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `news-signal-expand ${signal.newsList.length > 3 ? "is-scrollable" : ""}`, children: signal.newsList.map((news) => {
       const hasLiveUrl = isLiveNewsUrl(news.url);
       const TagName = hasLiveUrl ? "a" : "div";
       return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -21949,6 +21995,11 @@ function SignalCard({ signal }) {
           rel: hasLiveUrl ? "noreferrer" : void 0,
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "news-signal-news-copy", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "news-signal-news-stock", children: [
+                news.companyName ?? signal.companyName,
+                " \xB7 ",
+                news.ticker ?? signal.ticker
+              ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: news.title }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
                 news.source,

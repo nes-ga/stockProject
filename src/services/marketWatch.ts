@@ -26,14 +26,14 @@ type ChartResponse = {
   };
 };
 
-type SupportedMarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "BTC";
+type SupportedMarketWatchKey = "KOSPI" | "KOSDAQ" | "NASDAQ100" | "SOX" | "VIX" | "USDKRW" | "GOLD" | "WTI" | "BTC";
 
 type MarketWatchDefinition = {
   key: SupportedMarketWatchKey;
   name: string;
   symbol: string;
   category: "index" | "fx" | "commodity" | "crypto";
-  source?: "naver" | "yahoo";
+  source?: "naver" | "naver-world" | "yahoo";
   naverSymbol?: string;
 };
 
@@ -53,6 +53,15 @@ type NaverIndexIntradayInterval = {
   interval: "minute" | "minute5" | "minute30" | "minute60";
 };
 
+type NaverWorldDailyRecord = {
+  xymd?: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  clos?: number;
+  gvol?: number;
+};
+
 const requestHeaders = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
@@ -67,6 +76,7 @@ const naverRequestHeaders = {
 };
 
 const cacheTtlMs = 2 * 1000;
+const NAVER_WORLD_CHART_CACHE_TTL_MS = 30 * 60 * 1000;
 const NAVER_INDEX_INTRADAY_LOOKBACK_DAYS = 10;
 const naverIndexIntradayIntervals = [
   { timeframe: "minute1", interval: "minute" },
@@ -78,6 +88,9 @@ const logger = createLogger("marketWatch");
 const marketWatchDefinitions: MarketWatchDefinition[] = [
   { key: "KOSPI", name: "KOSPI", symbol: "^KS11", category: "index", source: "naver", naverSymbol: "KOSPI" },
   { key: "KOSDAQ", name: "KOSDAQ", symbol: "^KQ11", category: "index", source: "naver", naverSymbol: "KOSDAQ" },
+  { key: "NASDAQ100", name: "NASDAQ 100", symbol: "NAS@NDX", category: "index", source: "naver-world", naverSymbol: "NAS@NDX" },
+  { key: "SOX", name: "PHLX Semiconductor", symbol: "NAS@SOX", category: "index", source: "naver-world", naverSymbol: "NAS@SOX" },
+  { key: "VIX", name: "VIX", symbol: "^VIX", category: "index" },
   { key: "USDKRW", name: "USD/KRW", symbol: "KRW=X", category: "fx" },
   { key: "GOLD", name: "Gold", symbol: "GC=F", category: "commodity" },
   { key: "WTI", name: "WTI", symbol: "CL=F", category: "commodity" },
@@ -92,6 +105,7 @@ let cachedPayload:
       events: MarketOperationEvent[];
     }
   | null = null;
+const naverWorldChartCache = new Map<string, { expiresAt: number; points: ChartPoint[] }>();
 
 function getLatestPoint(points: ChartPoint[]) {
   return points.at(-1);
@@ -231,6 +245,20 @@ function parseNaverIntradayChartRecords(records: NaverIntradayChartRecord[]): Ch
       close: record.currentPrice ?? 0,
       volume: record.accumulatedTradingVolume
     }));
+}
+
+function parseNaverWorldDailyRecords(records: NaverWorldDailyRecord[]): ChartPoint[] {
+  return records
+    .filter((record) => record.xymd && typeof record.clos === "number")
+    .map((record) => ({
+      date: `${record.xymd?.slice(0, 4)}-${record.xymd?.slice(4, 6)}-${record.xymd?.slice(6, 8)}`,
+      open: record.open,
+      high: record.high,
+      low: record.low,
+      close: record.clos ?? 0,
+      volume: record.gvol
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 function buildChartWindow(points: ChartPoint[]): MarketWatchChartWindow | undefined {
@@ -445,6 +473,86 @@ async function fetchNaverIndexIntradayChartSets(symbol: string): Promise<Partial
   return Object.fromEntries(entries.filter(([, window]) => window != null));
 }
 
+async function fetchNaverWorldDailyPage(symbol: string, page: number) {
+  const url = new URL("https://finance.naver.com/world/worldDayListJson.naver");
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("fdtc", "0");
+  url.searchParams.set("page", String(page));
+
+  const response = await fetch(url, {
+    headers: {
+      ...naverRequestHeaders,
+      "Referer": `https://finance.naver.com/world/sise.naver?symbol=${encodeURIComponent(symbol)}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Naver world daily chart request failed with status ${response.status} for ${symbol}`);
+  }
+
+  return (await readJson<NaverWorldDailyRecord[]>(response)) ?? [];
+}
+
+async function fetchNaverWorldChartPoints(symbol: string, pageCount = 60) {
+  const cached = naverWorldChartCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.points;
+  }
+
+  const pages = await Promise.all(Array.from({ length: pageCount }, (_value, index) => fetchNaverWorldDailyPage(symbol, index + 1)));
+  const points = parseNaverWorldDailyRecords(pages.flat());
+  naverWorldChartCache.set(symbol, {
+    expiresAt: Date.now() + NAVER_WORLD_CHART_CACHE_TTL_MS,
+    points
+  });
+
+  return points;
+}
+
+async function fetchNaverWorldMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
+  const naverSymbol = definition.naverSymbol;
+  if (!naverSymbol) {
+    throw new Error(`Missing Naver world symbol for ${definition.key}`);
+  }
+
+  const dailyPoints = await fetchNaverWorldChartPoints(naverSymbol);
+  if (!dailyPoints.length) {
+    throw new Error(`${definition.name} chart data is unavailable.`);
+  }
+
+  const latestPoint = getLatestPoint(dailyPoints);
+  const previousPoint = dailyPoints.at(-2);
+  const weeklyPoints = aggregateWeeklyPoints(dailyPoints);
+  const yearlyPoints = aggregateYearlyPoints(dailyPoints);
+  const snapshot = {
+    key: definition.key,
+    name: definition.name,
+    symbol: definition.symbol,
+    category: definition.category,
+    price: latestPoint?.close,
+    previousClose: previousPoint?.close,
+    changeAmount: latestPoint && previousPoint ? latestPoint.close - previousPoint.close : undefined,
+    changePercent: latestPoint && previousPoint ? percentChange(latestPoint.close, previousPoint.close) : undefined,
+    latestDate: latestPoint?.date,
+    chartSets: {
+      daily: buildChartWindow(dailyPoints),
+      weekly: buildChartWindow(weeklyPoints),
+      yearly: buildChartWindow(yearlyPoints)
+    }
+  } satisfies MarketWatchSnapshot;
+
+  logger.info("item:load:success", {
+    key: definition.key,
+    symbol: definition.symbol,
+    source: "naver-world",
+    latestDate: snapshot.latestDate,
+    price: snapshot.price,
+    changePercent: snapshot.changePercent,
+    previousClose: snapshot.previousClose
+  });
+
+  return snapshot;
+}
+
 async function fetchNaverIndexMarketWatchItem(definition: MarketWatchDefinition): Promise<MarketWatchSnapshot> {
   const naverSymbol = definition.naverSymbol;
   if (!naverSymbol) {
@@ -519,6 +627,10 @@ async function fetchMarketWatchItem(definition: MarketWatchDefinition): Promise<
 
   if (definition.source === "naver") {
     return fetchNaverIndexMarketWatchItem(definition);
+  }
+
+  if (definition.source === "naver-world") {
+    return fetchNaverWorldMarketWatchItem(definition);
   }
 
   const [intradayPayload, dailyPayload, weeklyPayload, monthlyPayload] = await Promise.all([

@@ -3,11 +3,11 @@ import { createRoot } from "react-dom/client";
 
 const eventLabels = {
   EARNINGS: "실적",
-  CONTRACT: "수주/공급계약",
-  "M&A": "인수/합병",
+  CONTRACT: "수주계약",
+  "M&A": "M&A",
   POLICY: "정책",
-  CAPEX: "증설/투자",
-  SHAREHOLDER: "자사주/배당",
+  CAPEX: "설비투자",
+  SHAREHOLDER: "주주환원",
   RISK: "리스크"
 };
 
@@ -79,15 +79,15 @@ function NewsSignalDashboard() {
 
   const signals = Array.isArray(payload?.signals) ? payload.signals : [];
   const sectors = Array.isArray(payload?.sectors) ? payload.sectors : [];
-  const highSignals = signals
+  const highSignals = mergeSignalsByTicker(signals
     .filter((signal) => signal.sentiment === "positive" && signal.score >= 7)
-    .sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
-  const radarSignals = signals
+    .sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
+  const radarSignals = mergeSignalsByTicker(signals
     .filter((signal) => signal.sentiment === "positive" && signal.score < 7)
-    .sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
-  const riskSignals = signals
+    .sort((left, right) => right.score - left.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
+  const riskSignals = mergeSignalsByTicker(signals
     .filter((signal) => signal.sentiment === "negative")
-    .sort((left, right) => left.score - right.score || Date.parse(right.timestamp) - Date.parse(left.timestamp));
+    .sort((left, right) => left.score - right.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
 
   return (
     <div className="news-dashboard">
@@ -215,7 +215,7 @@ function SignalSection({ title, caption, items, emptyMessage }) {
       </div>
 
       {items.length ? (
-        <div className="news-signal-list">
+        <div className={`news-signal-list ${items.length > 3 ? "is-scrollable" : ""}`}>
           {items.map((item) => (
             <SignalCard key={`${item.ticker}-${item.eventType}-${item.timestamp}`} signal={item} />
           ))}
@@ -229,6 +229,69 @@ function SignalSection({ title, caption, items, emptyMessage }) {
   );
 }
 
+function mergeSignalsByTicker(items) {
+  const groups = new Map();
+
+  for (const signal of items) {
+    const key = signal.ticker || signal.companyName;
+    const current = groups.get(key);
+    groups.set(key, current ? [...current, signal] : [signal]);
+  }
+
+  return [...groups.values()].map((group) => {
+    if (group.length === 1) {
+      return group[0];
+    }
+
+    const representative = group[0];
+    const eventTypes = [...new Set(group.map((item) => item.eventType).filter(Boolean))];
+    const sources = [...new Set(group.flatMap((item) => item.sources ?? []))];
+    const newsList = dedupeNewsList(group.flatMap((item) => item.newsList ?? []));
+    const latestTimestamp = group
+      .map((item) => item.timestamp)
+      .filter(Boolean)
+      .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? representative.timestamp;
+    const score =
+      representative.sentiment === "negative"
+        ? Math.min(...group.map((item) => item.score))
+        : Math.max(...group.map((item) => item.score));
+    const eventLabelList = eventTypes.map((type) => eventLabels[type] ?? type);
+    const eventLabelText = eventLabelList.join(", ");
+
+    return {
+      ...representative,
+      score,
+      eventType: representative.eventType,
+      displayEventLabels: eventLabelList,
+      articleCount: newsList.length,
+      sources,
+      timestamp: latestTimestamp,
+      summary: `${representative.companyName}, ${eventLabelText} 관련 시그널 ${group.length}건을 하나로 묶었습니다. 기사 ${newsList.length}건과 매체 ${sources.length}곳을 함께 확인합니다.`,
+      newsList
+    };
+  });
+}
+
+function dedupeNewsList(items) {
+  const seen = new Set();
+  return [...items]
+    .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt))
+    .filter((item) => {
+      const key = [item.url, item.title, item.publishedAt].filter(Boolean).join("|");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function getSignalEventLabels(signal) {
+  return Array.isArray(signal.displayEventLabels) && signal.displayEventLabels.length
+    ? signal.displayEventLabels
+    : [eventLabels[signal.eventType] ?? signal.eventType];
+}
+
 function SignalCard({ signal }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -238,7 +301,11 @@ function SignalCard({ signal }) {
         <div className="news-signal-title-wrap">
           <div className="news-signal-title-row">
             <strong>{signal.companyName}</strong>
-            <span className={`news-event-badge ${signal.sentiment.toLowerCase()}`}>{eventLabels[signal.eventType]}</span>
+            {getSignalEventLabels(signal).map((label) => (
+              <span key={label} className={`news-event-badge ${signal.sentiment.toLowerCase()}`}>
+                {label}
+              </span>
+            ))}
           </div>
           <div className="news-signal-meta">
             <span>{signal.ticker}</span>
@@ -263,7 +330,7 @@ function SignalCard({ signal }) {
       </div>
 
       {expanded ? (
-        <div className="news-signal-expand">
+        <div className={`news-signal-expand ${signal.newsList.length > 3 ? "is-scrollable" : ""}`}>
           {signal.newsList.map((news) => {
             const hasLiveUrl = isLiveNewsUrl(news.url);
             const TagName = hasLiveUrl ? "a" : "div";
@@ -277,6 +344,11 @@ function SignalCard({ signal }) {
                 rel={hasLiveUrl ? "noreferrer" : undefined}
               >
                 <div className="news-signal-news-copy">
+                  <span className="news-signal-news-stock">
+                    {news.companyName ?? signal.companyName}
+                    {" · "}
+                    {news.ticker ?? signal.ticker}
+                  </span>
                   <strong>{news.title}</strong>
                   <span>
                     {news.source} · {formatDateTime(news.publishedAt)}

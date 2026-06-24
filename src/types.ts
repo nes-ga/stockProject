@@ -856,7 +856,7 @@ export type StockUniverseItem = {
   aliases?: string[];
 };
 
-export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "USDKRW" | "GOLD" | "WTI" | "BTC";
+export type MarketWatchKey = "KOSPI" | "KOSDAQ" | "NASDAQ100" | "SOX" | "VIX" | "USDKRW" | "GOLD" | "WTI" | "BTC";
 
 export type MarketWatchCategory = "index" | "fx" | "commodity" | "crypto";
 
@@ -1068,6 +1068,50 @@ export type MarketFlowLocalSnapshot = {
   notes: string[];
 };
 
+export type LiquidityIndicatorState = "EXPANDING" | "NEUTRAL" | "TIGHTENING" | "UNAVAILABLE";
+
+export type LiquidityIndicatorPoint = {
+  date: string;
+  value: number;
+};
+
+export type LiquidityIndicatorSnapshot = {
+  key: "US_M2" | "KR_M2";
+  label: string;
+  source: string;
+  unit: string;
+  frequency: "monthly";
+  latestDate?: string;
+  latestValue?: number;
+  change1mPct?: number;
+  change3mPct?: number;
+  change6mPct?: number;
+  yoyPct?: number;
+  state: LiquidityIndicatorState;
+  points: LiquidityIndicatorPoint[];
+  error?: string;
+};
+
+export type LiquidityComparisonPoint = {
+  date: string;
+  usM2YoyPct: number;
+  krM2YoyPct: number;
+  kosdaqYoyPct: number;
+};
+
+export type MarketLiquiditySnapshot = {
+  generatedAt: string;
+  indicators: LiquidityIndicatorSnapshot[];
+  comparison?: {
+    startDate: string;
+    endDate: string;
+    pointCount: number;
+    points: LiquidityComparisonPoint[];
+    source: string;
+  };
+  notes: string[];
+};
+
 export type ThemeRotationPayload = {
   generatedAt: string;
   score: number;
@@ -1085,6 +1129,7 @@ export type MarketFlowDashboardPayload = {
   marketMode: MarketFlowMode;
   global: MarketFlowGlobalSnapshot;
   local: MarketFlowLocalSnapshot;
+  liquidity?: MarketLiquiditySnapshot;
   themeRotation: ThemeRotationPayload;
   interpretation: string;
   notes: string[];
@@ -1512,6 +1557,8 @@ export type NewsMetadata = {
   source: string;
   publishedAt: string;
   url: string;
+  ticker?: string;
+  companyName?: string;
 };
 
 export type NewsEventType =

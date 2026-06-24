@@ -691,11 +691,13 @@ function buildSignalCard(group: EnrichedNews[]): NewsSignalCard {
       sourceCount: uniqueSources.length,
       sentiment: latestNews.sentiment
     }),
-    newsList: sortedNewsList.map(({ title, source, publishedAt, url }) => ({
+    newsList: sortedNewsList.map(({ title, source, publishedAt, url, companyName, ticker }) => ({
       title,
       source,
       publishedAt,
-      url
+      url,
+      companyName,
+      ticker
     })),
     sector: latestNews.sector
   };

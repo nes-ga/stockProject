@@ -13,5 +13,9 @@ export const config = {
   alertRequireBreakout: process.env.ALERT_REQUIRE_BREAKOUT === "true",
   yahooDefaultMarketSuffix: process.env.YAHOO_DEFAULT_MARKET_SUFFIX ?? ".KS",
   naverSearchClientId: process.env.NAVER_SEARCH_CLIENT_ID,
-  naverSearchClientSecret: process.env.NAVER_SEARCH_CLIENT_SECRET
+  naverSearchClientSecret: process.env.NAVER_SEARCH_CLIENT_SECRET,
+  ecosApiKey: process.env.ECOS_API_KEY,
+  ecosKoreaM2StatCode: process.env.ECOS_KOREA_M2_STAT_CODE,
+  ecosKoreaM2ItemCode: process.env.ECOS_KOREA_M2_ITEM_CODE,
+  ecosKoreaM2Cycle: process.env.ECOS_KOREA_M2_CYCLE ?? "M"
 };

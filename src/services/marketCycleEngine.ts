@@ -269,13 +269,6 @@ async function fetchLocalMarketInternals(): Promise<LocalMarketInternals> {
           }
         : undefined;
 
-    if (!breadth) {
-      notes.push("국내 breadth를 직접 파싱하지 못해 breadth 신호를 생략했습니다.");
-    }
-    if (!turnover) {
-      notes.push("국내 거래대금 평균을 직접 파싱하지 못해 turnover 신호를 생략했습니다.");
-    }
-
     return {
       breadth,
       turnover,
@@ -286,7 +279,7 @@ async function fetchLocalMarketInternals(): Promise<LocalMarketInternals> {
       message: error instanceof Error ? error.message : "Failed to load local market internals."
     });
     return {
-      notes: ["국내 breadth/turnover 페이지를 읽지 못해 프록시 지표가 있으면 그것을 사용합니다."]
+      notes: []
     };
   }
 }
@@ -433,12 +426,16 @@ export async function getLocalCycleSnapshot(params: {
   const turnoverUsedProxy = marketInternals.turnover == null && turnover != null;
 
   if (breadthUsedProxy) {
-    notes.push("상승/하락 종목수는 추적 중인 테마 유니버스를 프록시로 사용했습니다.");
+    notes.push("전체 상승/하락 종목수 대신 대시보드가 추적하는 종목 기준으로 상승 비율을 추정했습니다.");
+  } else if (!breadth) {
+    notes.push("상승 종목 비율은 확인할 데이터가 없어 이번 점수에 반영하지 않았습니다.");
   }
   if (turnoverUsedProxy) {
-    notes.push("거래대금 비교는 추적 중인 테마 유니버스의 합산 거래대금을 프록시로 사용했습니다.");
+    notes.push("시장 전체 거래대금 대신 대시보드가 추적하는 종목들의 거래대금으로 시장 활기를 추정했습니다.");
+  } else if (!turnover) {
+    notes.push("거래대금 흐름은 확인할 데이터가 없어 이번 점수에 반영하지 않았습니다.");
   }
-  notes.push("외국인/기관 5일 누적 순매수는 현재 프로젝트 데이터 소스가 없어 optional 신호로 남겨뒀습니다.");
+  notes.push("외국인·기관 수급은 아직 연결된 데이터가 없어 이번 요약에 반영하지 않았습니다.");
 
   const signals = [
     createBinarySignal({

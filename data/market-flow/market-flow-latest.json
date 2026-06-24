@@ -1,14 +1,14 @@
 {
-  "date": "2026-06-23",
+  "date": "2026-06-24",
   "global": {
     "score": 3,
     "state": "RISK_ON"
   },
   "local": {
-    "score": 3,
+    "score": 4.5,
     "state": "SELECTIVE"
   },
-  "themeRotationScore": 29.82,
+  "themeRotationScore": 29.09,
   "marketMode": "SELECTIVE",
   "topThemes": [
     "반도체",
@@ -16,9 +16,9 @@
     "AI / 플랫폼"
   ],
   "bottomThemes": [
-    "자동차 / 산업재",
     "철강 / 화학",
-    "건설 / 인프라"
+    "건설 / 인프라",
+    "자동차 / 산업재"
   ],
-  "updatedAt": "2026-06-23T17:56:47.761+09:00"
+  "updatedAt": "2026-06-24T16:45:14.606+09:00"
 }

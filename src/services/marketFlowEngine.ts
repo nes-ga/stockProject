@@ -5,6 +5,7 @@ import { getMarketWatchSnapshots } from "./marketWatch.js";
 import { getGlobalCycleSnapshot, getLocalCycleSnapshot } from "./marketCycleEngine.js";
 import { persistMarketFlowPayload } from "./marketFlowHistory.js";
 import { getThemeRotationPayload } from "./themeRotationEngine.js";
+import { getMarketLiquiditySnapshot } from "./liquidityIndicators.js";
 
 const logger = createLogger("marketFlowEngine");
 const MARKET_FLOW_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -41,34 +42,35 @@ function buildInterpretation(payload: {
 }) {
   const modeLine =
     payload.marketMode === "AGGRESSIVE"
-      ? "현재 시장은 공격적 대응 구간입니다."
+      ? "요약: 위험 선호와 국내 체력이 함께 강해 후보 검토 범위를 넓힐 수 있는 환경입니다."
       : payload.marketMode === "SELECTIVE"
-        ? "현재 시장은 선택적 매매 구간입니다."
+        ? "요약: 전체 시장보다 주도 테마와 개별 종목 선별이 더 중요한 환경입니다."
         : payload.marketMode === "DEFENSIVE"
-          ? "현재 시장은 방어적 대응 구간입니다."
-          : "현재 시장은 중립 구간입니다.";
+          ? "요약: 지수와 수급 부담이 커 신규 진입보다 보유 리스크 점검이 우선인 환경입니다."
+          : "요약: 방향성이 충분히 확인되지 않아 기존 기준을 유지하며 관찰하는 환경입니다.";
   const globalLine =
     payload.globalState === "RISK_ON"
-      ? "글로벌 환경은 위험자산 선호 쪽으로 기울어 있습니다."
+      ? "글로벌 지표는 위험자산 선호 쪽으로 기울어 있습니다."
       : payload.globalState === "RISK_OFF"
-        ? "글로벌 환경은 보수적으로 해석하는 편이 좋습니다."
-        : "글로벌 환경은 뚜렷한 방향성 없이 중립권입니다.";
+        ? "글로벌 지표는 보수적으로 해석해야 하는 상태입니다."
+        : "글로벌 지표는 뚜렷한 방향성 없이 중립권입니다.";
   const localLine =
     payload.localState === "STRONG"
-      ? "국내 시장은 지수와 내부 체력이 모두 강한 편입니다."
+      ? "국내 지표는 지수와 내부 체력이 모두 강한 편입니다."
       : payload.localState === "SELECTIVE"
-        ? "국내 시장은 특정 구간과 특정 주도군 중심으로 자금이 순환하고 있습니다."
+        ? "국내 지표는 특정 주도군 중심으로 자금이 순환하는 상태입니다."
         : payload.localState === "DEFENSIVE"
-          ? "국내 시장은 추격보다 방어와 선별이 우선입니다."
-          : "국내 시장은 반등과 약세가 혼재된 약한 상태입니다.";
+          ? "국내 지표는 추격보다 방어와 선별이 필요한 상태입니다."
+          : "국내 지표는 반등과 약세가 혼재된 약한 상태입니다.";
   const topThemeLine = payload.topThemes.length
-    ? `최근 강한 테마는 ${payload.topThemes.map((item) => item.label).join(", ")}입니다.`
+    ? `강세 테마: ${payload.topThemes.map((item) => item.label).join(", ")}.`
     : "";
   const weakThemeLine = payload.bottomThemes.length
-    ? `상대적으로 약한 테마는 ${payload.bottomThemes.map((item) => item.label).join(", ")}입니다.`
+    ? `약세 테마: ${payload.bottomThemes.map((item) => item.label).join(", ")}.`
     : "";
+  const disclaimerLine = "이 요약은 매수·매도 신호가 아니라 추천 후보를 해석할 때 참고하는 시장 배경입니다.";
 
-  return [modeLine, globalLine, localLine, topThemeLine, weakThemeLine].filter(Boolean).join(" ");
+  return [modeLine, globalLine, localLine, topThemeLine, weakThemeLine, disclaimerLine].filter(Boolean).join(" ");
 }
 
 function toMarketWatchMap(items: MarketWatchSnapshot[]) {
@@ -87,12 +89,15 @@ export async function getMarketFlowDashboard(options?: { forceRefresh?: boolean 
 
   const marketWatch = await getMarketWatchSnapshots();
   const marketWatchMap = toMarketWatchMap(marketWatch.items);
-  const [themeRotation, global] = await Promise.all([
+  const [themeRotation, global, liquidity] = await Promise.all([
     getThemeRotationPayload({
       benchmarkSnapshots: marketWatchMap
     }),
     getGlobalCycleSnapshot({
       marketWatchItems: marketWatchMap
+    }),
+    getMarketLiquiditySnapshot({
+      forceRefresh: options?.forceRefresh
     })
   ]);
   const local = await getLocalCycleSnapshot({
@@ -116,6 +121,7 @@ export async function getMarketFlowDashboard(options?: { forceRefresh?: boolean 
     marketMode,
     global,
     local,
+    liquidity,
     themeRotation: {
       generatedAt: themeRotation.generatedAt,
       score: themeRotation.score,
@@ -128,7 +134,7 @@ export async function getMarketFlowDashboard(options?: { forceRefresh?: boolean 
       notes: themeRotation.notes
     },
     interpretation,
-    notes: [...global.notes, ...local.notes, ...themeRotation.notes]
+    notes: [...global.notes, ...local.notes, ...themeRotation.notes, ...liquidity.notes]
   };
 
   try {

@@ -314,6 +314,30 @@ const indexWatchSeed = [
     note: "성장주와 중소형주 흐름을 함께 보는 보조 지수입니다."
   },
   {
+    key: "NASDAQ100",
+    name: "NASDAQ 100",
+    symbol: "NAS@NDX",
+    category: "지수",
+    status: "ready",
+    note: "네이버 해외지수 기준으로 미국 성장주 위험선호를 함께 확인합니다."
+  },
+  {
+    key: "SOX",
+    name: "필라델피아 반도체",
+    symbol: "NAS@SOX",
+    category: "지수",
+    status: "ready",
+    note: "네이버 해외지수 기준으로 반도체 업황과 국내 반도체 심리를 함께 확인합니다."
+  },
+  {
+    key: "VIX",
+    name: "VIX",
+    symbol: "^VIX",
+    category: "지수",
+    status: "ready",
+    note: "미국 변동성 지수로 위험회피 강도를 확인합니다."
+  },
+  {
     key: "USDKRW",
     name: "달러 / 원",
     symbol: "KRW=X",
@@ -2670,13 +2694,15 @@ function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
         );
 
   return `
-    ${renderHistoryCurrentStageSummary(enteredRows)}
-    <div class="history-case-list">
-      ${
-        filteredRows.length
-          ? filteredRows.slice(0, 36).map(renderHistoryCurrentCandidateCard).join("")
-          : `<div class="history-placeholder">선택한 체결 단계의 현재 추천 후보가 없습니다.</div>`
-      }
+    <div class="history-case-scroll">
+      ${renderHistoryCurrentStageSummary(enteredRows)}
+      <div class="history-case-list">
+        ${
+          filteredRows.length
+            ? filteredRows.slice(0, 36).map(renderHistoryCurrentCandidateCard).join("")
+            : `<div class="history-placeholder">선택한 체결 단계의 현재 추천 후보가 없습니다.</div>`
+        }
+      </div>
     </div>
   `;
 }
@@ -2724,11 +2750,13 @@ function renderHistoryClosedCasePanel(cases, options = {}) {
     : options.emptyText;
 
   return `
-    ${renderHistoryClosedOutcomeTabs(cases)}
-    ${renderHistoryCaseList(filteredCases, {
-      ...options,
-      emptyText
-    })}
+    <div class="history-case-scroll">
+      ${renderHistoryClosedOutcomeTabs(cases)}
+      ${renderHistoryCaseList(filteredCases, {
+        ...options,
+        emptyText
+      })}
+    </div>
   `;
 }
 
@@ -3791,6 +3819,404 @@ function renderMarketFlowMeter(label, score, maxScore, toneClass) {
   `;
 }
 
+function getLiquidityStateLabel(state) {
+  switch (state) {
+    case "EXPANDING":
+      return "확장";
+    case "TIGHTENING":
+      return "긴축";
+    case "NEUTRAL":
+      return "중립";
+    default:
+      return "대기";
+  }
+}
+
+function getLiquidityStateClass(state) {
+  switch (state) {
+    case "EXPANDING":
+      return "positive";
+    case "TIGHTENING":
+      return "negative";
+    case "NEUTRAL":
+      return "neutral";
+    default:
+      return "warning";
+  }
+}
+
+function formatLiquidityValue(value, unit) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return "-";
+  }
+
+  const numericValue = Number(value);
+  if (unit === "십억 달러") {
+    return `$${formatDecimal(numericValue / 1000, 2)}T`;
+  }
+  if (unit === "조원") {
+    return `${formatDecimal(numericValue, 0)}조`;
+  }
+  if (unit === "십억원") {
+    return `${formatDecimal(numericValue / 1000, 0)}조`;
+  }
+
+  return formatNumber(numericValue);
+}
+
+function formatSignedMetric(value) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return "-";
+  }
+
+  return `${Number(value) >= 0 ? "+" : ""}${formatDecimal(value, 2)}%`;
+}
+
+function renderLiquiditySparkline(points = [], unit = "") {
+  const recentPoints = points.slice(-18);
+  if (recentPoints.length < 2) {
+    return `
+      <div class="market-liquidity-sparkline empty"></div>
+      <div class="market-liquidity-axis">
+        <span>-</span>
+        <span>데이터 부족</span>
+        <span>-</span>
+      </div>
+    `;
+  }
+
+  const values = recentPoints.map((point) => Number(point.value)).filter((value) => Number.isFinite(value));
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+
+  return `
+    <div class="market-liquidity-sparkline" aria-hidden="true">
+      ${recentPoints
+        .map((point) => {
+          const height = 18 + ((Number(point.value) - minValue) / range) * 52;
+          return `
+            <span class="market-liquidity-bar-wrap" title="${escapeHtml(`${point.date} ${formatLiquidityMiniValue(point.value, unit)}`)}">
+              <span class="market-liquidity-bar" style="height:${height.toFixed(1)}%;"></span>
+              <span class="market-liquidity-bar-value">${escapeHtml(formatLiquidityMiniValue(point.value, unit))}</span>
+            </span>
+          `;
+        })
+        .join("")}
+    </div>
+    <div class="market-liquidity-axis">
+      <span>${escapeHtml(formatLiquidityAxisDate(recentPoints[0]?.date))}</span>
+      <span>월별 M2 잔액</span>
+      <span>${escapeHtml(formatLiquidityAxisDate(recentPoints.at(-1)?.date))}</span>
+    </div>
+  `;
+}
+
+function formatLiquidityAxisDate(dateText) {
+  if (!dateText) {
+    return "-";
+  }
+
+  const normalized = String(dateText).slice(0, 7);
+  const [year, month] = normalized.split("-");
+  return year && month ? `${year.slice(2)}.${month}` : normalized;
+}
+
+function formatLiquidityMiniValue(value, unit = "") {
+  if (!Number.isFinite(Number(value))) {
+    return "-";
+  }
+
+  const numericValue = Number(value);
+  if (unit === "십억 달러") {
+    return formatDecimal(numericValue / 1000, 1);
+  }
+  if (unit === "십억원") {
+    return formatDecimal(numericValue / 1000, 0);
+  }
+  if (unit === "조원") {
+    return formatDecimal(numericValue, 0);
+  }
+
+  return formatDecimal(numericValue, 0);
+}
+
+function renderMarketLiquidityPanel(liquidity) {
+  const indicators = Array.isArray(liquidity?.indicators) ? liquidity.indicators : [];
+  if (!indicators.length) {
+    return "";
+  }
+  const globalIndicator = indicators.find((indicator) => indicator.key === "US_M2") ?? indicators[0];
+  const localIndicator = indicators.find((indicator) => indicator.key === "KR_M2") ?? indicators[1];
+  const comparison = buildLiquidityComparison(globalIndicator, localIndicator);
+
+  return `
+    <section class="market-liquidity-panel compare">
+      <div class="market-liquidity-head">
+        <div>
+          <h3>유동성 비교</h3>
+          <span>글로벌 M2와 국내 유동성의 확장 속도를 비교합니다.</span>
+        </div>
+        <span class="market-liquidity-meta">${escapeHtml(formatMarketFlowDateTime(liquidity.generatedAt))} 갱신</span>
+      </div>
+
+      <div class="market-liquidity-compare-grid">
+        <article class="market-liquidity-verdict ${escapeHtml(comparison.tone)}">
+          <span class="market-liquidity-label">현재 판정</span>
+          <strong>${escapeHtml(comparison.label)}</strong>
+          <p>${escapeHtml(comparison.description)}</p>
+          <div class="market-liquidity-gap-row">
+            <span>3개월 격차 <strong>${escapeHtml(formatPercentagePoint(comparison.change3mGap))}</strong></span>
+            <span>6개월 격차 <strong>${escapeHtml(formatPercentagePoint(comparison.change6mGap))}</strong></span>
+            <span>YoY 격차 <strong>${escapeHtml(formatPercentagePoint(comparison.yoyGap))}</strong></span>
+          </div>
+        </article>
+
+        <article class="market-liquidity-compare-table">
+          <div class="market-liquidity-table-head">
+            <span></span>
+            <span>최신</span>
+            <span>3개월</span>
+            <span>6개월</span>
+            <span>YoY</span>
+          </div>
+          ${[globalIndicator, localIndicator]
+            .filter(Boolean)
+            .map((indicator) => {
+              const stateClass = getLiquidityStateClass(indicator.state);
+              return `
+                <div class="market-liquidity-table-row">
+                  <span>
+                    <strong>${escapeHtml(indicator.label)}</strong>
+                    <em>${escapeHtml(indicator.latestDate ?? "-")} · ${escapeHtml(indicator.source)}</em>
+                  </span>
+                  <span>${escapeHtml(formatLiquidityValue(indicator.latestValue, indicator.unit))}</span>
+                  <span class="${escapeHtml(stateClass)}">${escapeHtml(formatSignedMetric(indicator.change3mPct))}</span>
+                  <span class="${escapeHtml(stateClass)}">${escapeHtml(formatSignedMetric(indicator.change6mPct))}</span>
+                  <span class="${escapeHtml(stateClass)}">${escapeHtml(formatSignedMetric(indicator.yoyPct))}</span>
+                </div>
+              `;
+            })
+            .join("")}
+        </article>
+      </div>
+
+      <div class="market-liquidity-compare-bars">
+        ${renderLiquidityCompareMetric("3개월", globalIndicator?.change3mPct, localIndicator?.change3mPct)}
+        ${renderLiquidityCompareMetric("6개월", globalIndicator?.change6mPct, localIndicator?.change6mPct)}
+        ${renderLiquidityCompareMetric("YoY", globalIndicator?.yoyPct, localIndicator?.yoyPct)}
+      </div>
+      ${renderLiquidityAlignedComparison(liquidity.comparison)}
+      ${comparison.sourceNote ? `<p class="market-liquidity-source-note">${escapeHtml(comparison.sourceNote)}</p>` : ""}
+    </section>
+  `;
+}
+
+function buildLiquidityComparison(globalIndicator, localIndicator) {
+  const globalYoy = Number(globalIndicator?.yoyPct);
+  const localYoy = Number(localIndicator?.yoyPct);
+  const global3m = Number(globalIndicator?.change3mPct);
+  const local3m = Number(localIndicator?.change3mPct);
+  const global6m = Number(globalIndicator?.change6mPct);
+  const local6m = Number(localIndicator?.change6mPct);
+  const hasYoy = Number.isFinite(globalYoy) && Number.isFinite(localYoy);
+  const has3m = Number.isFinite(global3m) && Number.isFinite(local3m);
+  const has6m = Number.isFinite(global6m) && Number.isFinite(local6m);
+  const yoyGap = hasYoy ? globalYoy - localYoy : undefined;
+  const change3mGap = has3m ? global3m - local3m : undefined;
+  const change6mGap = has6m ? global6m - local6m : undefined;
+  const sourceNote = localIndicator?.key === "KR_M2" && (!Number.isFinite(localYoy) || !Number.isFinite(local3m))
+    ? "국내 유동성은 한국은행 ECOS M2 최신값 기준입니다. 월별 히스토리 연결 후 변화율 비교가 표시됩니다."
+    : "";
+
+  if (!hasYoy && !has3m) {
+    return {
+      label: "비교 대기",
+      tone: "warning",
+      description: "비교에 필요한 월간 변화율이 아직 충분하지 않습니다.",
+      yoyGap,
+      change3mGap,
+      change6mGap,
+      sourceNote
+    };
+  }
+
+  if ((yoyGap ?? 0) >= 2 && (change3mGap ?? 0) >= 0) {
+    return {
+      label: "글로벌 우위 확장",
+      tone: "positive",
+      description: "글로벌 유동성이 국내보다 빠르게 늘고 있어 국내 위험자산은 외부 유동성에 후행 반응할 수 있습니다.",
+      yoyGap,
+      change3mGap,
+      change6mGap,
+      sourceNote
+    };
+  }
+
+  if ((yoyGap ?? 0) <= -2 && (change3mGap ?? 0) <= 0) {
+    return {
+      label: "국내 우위 확장",
+      tone: "positive",
+      description: "국내 유동성 확장 속도가 글로벌보다 강해 국내 수급 환경을 더 우호적으로 볼 수 있습니다.",
+      yoyGap,
+      change3mGap,
+      change6mGap,
+      sourceNote
+    };
+  }
+
+  if ((globalYoy ?? 0) > 0 && (localYoy ?? 0) > 0 && (global3m ?? 0) > 0 && (local3m ?? 0) > 0) {
+    return {
+      label: "동반 확장",
+      tone: "positive",
+      description: "글로벌과 국내 유동성이 함께 늘고 있어 시장 배경은 중립 이상으로 해석할 수 있습니다.",
+      yoyGap,
+      change3mGap,
+      change6mGap,
+      sourceNote
+    };
+  }
+
+  if ((global3m ?? 0) < 0 && (local3m ?? 0) < 0) {
+    return {
+      label: "동반 둔화",
+      tone: "negative",
+      description: "두 유동성 축이 모두 둔화 중이라 신규 진입보다 리스크 점검을 우선합니다.",
+      yoyGap,
+      change3mGap,
+      change6mGap,
+      sourceNote
+    };
+  }
+
+  return {
+    label: "엇갈림",
+    tone: "neutral",
+    description: "글로벌과 국내 유동성 방향이 완전히 같지 않아 지수보다 테마와 개별 종목 선별이 중요합니다.",
+    yoyGap,
+    change3mGap,
+    change6mGap,
+    sourceNote
+  };
+}
+
+function formatPercentagePoint(value) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return "-";
+  }
+
+  return `${Number(value) >= 0 ? "+" : ""}${formatDecimal(value, 2)}%p`;
+}
+
+function renderLiquidityCompareMetric(label, globalValue, localValue) {
+  const globalMetric = Number(globalValue);
+  const localMetric = Number(localValue);
+  const maxAbs = Math.max(Math.abs(globalMetric || 0), Math.abs(localMetric || 0), 1);
+
+  return `
+    <div class="market-liquidity-compare-metric">
+      <div class="market-liquidity-compare-metric-head">
+        <strong>${escapeHtml(label)}</strong>
+        <span>글로벌 ${escapeHtml(formatSignedMetric(globalValue))} / 국내 ${escapeHtml(formatSignedMetric(localValue))}</span>
+      </div>
+      ${renderLiquidityCompareBar("글로벌", globalMetric, maxAbs)}
+      ${renderLiquidityCompareBar("국내", localMetric, maxAbs)}
+    </div>
+  `;
+}
+
+function renderLiquidityCompareBar(label, value, maxAbs) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const width = Math.max(4, Math.min(100, (Math.abs(safeValue) / maxAbs) * 100));
+  const tone = safeValue > 0 ? "positive" : safeValue < 0 ? "negative" : "neutral";
+
+  return `
+    <div class="market-liquidity-compare-bar-row">
+      <span>${escapeHtml(label)}</span>
+      <div class="market-liquidity-compare-bar-track">
+        <span class="market-liquidity-compare-bar ${escapeHtml(tone)}" style="width:${width}%;"></span>
+      </div>
+      <strong>${escapeHtml(formatSignedMetric(safeValue))}</strong>
+    </div>
+  `;
+}
+
+function renderLiquidityAlignedComparison(comparison) {
+  const points = Array.isArray(comparison?.points) ? comparison.points.slice(-12) : [];
+  const latest = points.at(-1);
+  const previous = points.at(-2);
+  if (!latest) {
+    return "";
+  }
+
+  const usKrGap = latest.usM2YoyPct - latest.krM2YoyPct;
+  const kosdaqMomentum = previous ? latest.kosdaqYoyPct - previous.kosdaqYoyPct : undefined;
+
+  return `
+    <article class="market-liquidity-aligned">
+      <div class="market-liquidity-aligned-head">
+        <div>
+          <strong>M2 YoY · 코스닥 YoY</strong>
+          <span>${escapeHtml(comparison.startDate)} ~ ${escapeHtml(comparison.endDate)} · 동일 월 ${escapeHtml(formatNumber(comparison.pointCount))}개</span>
+        </div>
+        <em>${escapeHtml(comparison.source)}</em>
+      </div>
+      <div class="market-liquidity-aligned-metrics">
+        ${renderLiquidityAlignedMetric("미국 M2", latest.usM2YoyPct, "FRED M2SL")}
+        ${renderLiquidityAlignedMetric("한국 M2", latest.krM2YoyPct, "ECOS 161Y006")}
+        ${renderLiquidityAlignedMetric("코스닥", latest.kosdaqYoyPct, "월말 종가 YoY")}
+        ${renderLiquidityAlignedMetric("미국-한국", usKrGap, "YoY 격차", true)}
+        ${renderLiquidityAlignedMetric("코스닥 속도", kosdaqMomentum, "전월 대비 YoY 변화", true)}
+      </div>
+      <div class="market-liquidity-yoy-strips">
+        ${renderLiquidityYoyStripRow("미국 M2", points, "usM2YoyPct")}
+        ${renderLiquidityYoyStripRow("한국 M2", points, "krM2YoyPct")}
+        ${renderLiquidityYoyStripRow("코스닥", points, "kosdaqYoyPct")}
+      </div>
+    </article>
+  `;
+}
+
+function renderLiquidityAlignedMetric(label, value, caption, isGap = false) {
+  const numericValue = Number(value);
+  const tone = numericValue > 0 ? "positive" : numericValue < 0 ? "negative" : "neutral";
+  return `
+    <div class="market-liquidity-aligned-metric ${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(isGap ? formatPercentagePoint(value) : formatSignedMetric(value))}</strong>
+      <em>${escapeHtml(caption)}</em>
+    </div>
+  `;
+}
+
+function renderLiquidityYoyStripRow(label, points, key) {
+  const values = points.map((point) => Number(point[key])).filter((value) => Number.isFinite(value));
+  const maxAbs = Math.max(...values.map((value) => Math.abs(value)), 1);
+
+  return `
+    <div class="market-liquidity-yoy-strip-row">
+      <span class="market-liquidity-yoy-label">${escapeHtml(label)}</span>
+      <div class="market-liquidity-yoy-cells">
+        ${points
+          .map((point) => {
+            const value = Number(point[key]);
+            const tone = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
+            const opacity = Math.min(0.42, 0.1 + (Math.abs(value) / maxAbs) * 0.32);
+            const background =
+              value > 0 ? `rgba(70, 185, 107, ${opacity.toFixed(2)})` : value < 0 ? `rgba(222, 108, 90, ${opacity.toFixed(2)})` : "rgba(96, 118, 128, 0.12)";
+            return `
+              <span class="market-liquidity-yoy-cell ${escapeHtml(tone)}" style="background:${background};" title="${escapeHtml(`${point.date} ${formatSignedMetric(value)}`)}">
+                <em>${escapeHtml(formatLiquidityAxisDate(point.date))}</em>
+                <strong>${escapeHtml(formatSignedMetric(value))}</strong>
+              </span>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function formatMarketFlowTurnover(value) {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return "-";
@@ -4000,6 +4426,8 @@ function renderMarketFlowBoard() {
       </article>
     </div>
 
+    ${renderMarketLiquidityPanel(payload.liquidity)}
+
     <div class="market-flow-meter-grid">
       ${renderMarketFlowMeter("글로벌 점수", payload.global.normalizedScore, 4, getMarketFlowToneClass(payload.global.state))}
       ${renderMarketFlowMeter("국내 점수", payload.local.normalizedScore, 6, getMarketFlowToneClass(payload.local.state))}
@@ -4045,7 +4473,6 @@ function renderMarketFlowBoard() {
             </div>
           </div>
           <div id="marketFlowHistoryChartContainer" class="market-flow-chart"></div>
-          <div class="market-flow-chart-caption">기본 범위는 ${escapeHtml(marketFlowSelectedRange)}이며, 최근 시장 온도 변화를 3개 축으로 보여줍니다.</div>
         </section>
 
         <section class="market-flow-panel market-flow-chart-panel">
@@ -4078,22 +4505,11 @@ function renderMarketFlowBoard() {
             }
           </div>
           <div id="marketFlowThemeChartContainer" class="market-flow-chart"></div>
-          <div class="market-flow-chart-caption">
-            ${selectedThemes.length ? escapeHtml(selectedThemes.map((item) => item.label).join(" · ")) : "표시할 테마를 선택해 주세요."}
-          </div>
         </section>
       </div>
     </div>
 
-    <section class="market-flow-interpretation">
-      <div class="market-flow-panel-head">
-        <h3>자동 해석</h3>
-      </div>
-      <p class="market-flow-interpretation-copy">${escapeHtml(payload.interpretation)}</p>
-      <div class="market-flow-note-list">
-        ${notes.map((note) => `<span class="market-flow-note-chip">${escapeHtml(note)}</span>`).join("")}
-      </div>
-    </section>
+    <!-- 시장 흐름 요약은 상단 지표와 중복되어 숨김 -->
   `;
 
   window.requestAnimationFrame(() => {
