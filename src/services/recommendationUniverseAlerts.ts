@@ -6,7 +6,7 @@ import type { ServerSwingPick } from "./serverSwingPicks.js";
 import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
 export type RecommendationUniverseAlertCategory = "longTerm" | "dividend" | "swing" | "smallcapSwing";
-export type RecommendationUniverseAlertBucket = "buy" | "execution" | "watch";
+export type RecommendationUniverseAlertBucket = "buy" | "accumulate" | "execution" | "watch";
 
 type RecommendationUniverseAlertItem = {
   symbol: string;
@@ -105,7 +105,12 @@ function buildLongTermAlertItems(items: ServerLongTermPick[]) {
     items.map((item) => ({
       symbol: item.symbol,
       name: item.name,
-      bucket: item.longTermBucket === "watch" ? ("watch" as const) : ("buy" as const)
+      bucket:
+        item.longTermBucket === "watch"
+          ? ("watch" as const)
+          : item.longTermBucket === "accumulate"
+            ? ("accumulate" as const)
+            : ("buy" as const)
     }))
   );
 }

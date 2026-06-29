@@ -357,7 +357,7 @@ const serverLongTermPickSchema = z.object({
   latestMentionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().min(1).optional(),
   category: z.literal("longTerm"),
-  longTermBucket: z.enum(["buy", "watch"]).optional(),
+  longTermBucket: z.enum(["buy", "accumulate", "watch"]).optional(),
   source: z.string().min(1).max(100).optional()
 });
 

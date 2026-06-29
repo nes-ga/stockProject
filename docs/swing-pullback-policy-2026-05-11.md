@@ -14,7 +14,7 @@ If a prior swing setup is still above its protective stop and pullback volume ha
 - Keep the candidate while `referenceClose > stopLossReference.price`.
 - Require volume contraction so stale noisy pullbacks do not stay alive by default.
 - Mark this path with `stop_valid_extended_pullback`.
-- Classify it as `pullback_deep` and usually `execution_probe` or watch, not `execution_ready`.
+- Classify it as `pullback_deep` and keep it watch-only unless the staged entry zone is actually reached.
 - Remove or downgrade it when the stop breaks, support quality collapses, volume expands badly, or risk/reward deteriorates.
 
 ## Reference Case
@@ -49,7 +49,7 @@ The engine calculates a fixed SMA20 envelope:
 - upper: `SMA20 * 1.10`
 - lower: `SMA20 * 0.90`
 
-A rough pullback can be promoted to `execution_probe` only when it is still inside the lower envelope zone or has reclaimed it. This path is marked with:
+A rough pullback can stay visible only when it is still inside the lower envelope zone or has reclaimed it. This path is marked with:
 
 - `wide_pullback_candidate`
 - `envelope_lower_hold`
@@ -77,7 +77,7 @@ Recommendation-history statistics now exclude cases that have not reached the fi
 
 The long-pullback rule is now reflected in final candidate classification.
 
-- A mature pullback can become `execution_probe` through `long_pullback_until_stop_probe`.
+- A mature pullback can stay visible through `long_pullback_until_stop_probe`, but this is not an execution promotion.
 - The candidate must still be above the invalidation/stop line.
 - The candidate must not be overheated above the upper SMA20 envelope.
 - Pullback age alone is still not an exclusion reason.
@@ -119,3 +119,33 @@ Code references:
 - `src/services/recommendationHistory.ts`
   - `shouldUpsertCurrentHistoryCase`
   - `readInitialSwingAlertSnapshots`
+
+## 2026-06-29 Update
+
+`execution_probe` must not be shown as a buy candidate.
+
+Issue found:
+
+- Some long-pullback candidates were stored under `executionItems` with `bucket: execution_probe`.
+- Their reasons included `entry_zone_pending`, so they were not actually at the buy price.
+- The frontend treated every `executionItems` record as the buy-candidate tab, so users saw non-entry candidates as `진입 가능`.
+
+Correct behavior:
+
+- `execution_ready`: buy candidate only when `stage=setup`, `status=buy_ready`, and `referenceClose` is inside `entryZoneLow~entryZoneHigh`.
+- `execution_probe`: internal caution state only. It is not a buy candidate in user-facing UI.
+- `entry_zone_pending`: always watch, not execution.
+- Long-pullback reasons such as `stop_valid_extended_pullback` and `long_pullback_until_stop_probe` keep the candidate visible, but they do not promote it to buy.
+
+Code guardrails:
+
+- `classifySwingCandidate()` must require `withinEntryZone` for `readyByEngine`.
+- The broad probe branch must return `watch`, not `execution_probe`, when the entry zone has not been reached.
+- `serverSwingPicks` must reclassify persisted `execution_probe` records from `executionItems` into `watchItems` when reading payloads.
+- The frontend must map `execution_probe` to the watch tab.
+
+Regression check:
+
+- Read `data/server-swing-picks.json` and `data/server-smallcap-swing-picks.json`.
+- Confirm no item with `entry_zone_pending` appears in visible execution counts.
+- After build, `readServerSwingPickPayload()` should report these persisted probe records under `watchItems`.

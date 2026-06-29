@@ -907,6 +907,7 @@ export type ThemeName =
   | "Semiconductor"
   | "Battery"
   | "AutoIndustrial"
+  | "Defense"
   | "Materials"
   | "Construction"
   | "Consumer"
@@ -1193,7 +1194,9 @@ export type LongTermScanLabel =
   | "contrarian accumulation candidate"
   | "needs more stabilization";
 
-export type LongTermCandidateGroup = "buy candidate" | "watch candidate";
+export type LongTermCandidateGroup = "buy candidate" | "accumulate candidate" | "watch candidate";
+
+export type LongTermCandidateType = "leader" | "quality" | "deep_value" | "turnaround";
 
 export type LongTermUniverseSeed = {
   symbol: string;
@@ -1203,6 +1206,9 @@ export type LongTermUniverseSeed = {
 };
 
 export type LongTermScoreBreakdown = {
+  baseScore: number;
+  bonusScore: number;
+  rawScore: number;
   totalScore: number;
   leaderScore: number;
   correctionScore: number;
@@ -1212,7 +1218,6 @@ export type LongTermScoreBreakdown = {
   financialScore: number;
   volumeProfileScore?: number;
   higherTimeframeScore?: number;
-  durabilityScore?: number;
 };
 
 export type LongTermStructureSnapshot = {
@@ -1303,6 +1308,7 @@ export type LongTermFinancialSnapshot = {
 };
 
 export type LongTermWatchTag =
+  | "accumulate_candidate"
   | "watch_needs_stabilization"
   | "watch_deep_value"
   | "watch_leader_correction"
@@ -1310,6 +1316,18 @@ export type LongTermWatchTag =
   | "watch_financial_repair"
   | "watch_secondary_recovery"
   | "buy_contrarian_accumulation";
+
+export type LongTermStageExplanationFactor = {
+  label: string;
+  score?: number;
+  tone: "positive" | "caution" | "negative";
+};
+
+export type LongTermStageExplanation = {
+  stage: "watch" | "accumulate" | "buy";
+  summary: string;
+  factors: LongTermStageExplanationFactor[];
+};
 
 export type LongTermScanCandidate = {
   symbol: string;
@@ -1330,9 +1348,11 @@ export type LongTermScanCandidate = {
   financials?: LongTermFinancialSnapshot;
   fundamentals?: LongTermFinancialSnapshot;
   longTermVolumeProfile?: LongTermVolumeProfileAnalysis;
+  candidateType: LongTermCandidateType;
   candidateGroup: LongTermCandidateGroup;
   label: LongTermScanLabel;
   reasonSummary: string;
+  stageExplanation?: LongTermStageExplanation;
   strengths: string[];
   weaknesses: string[];
   failureReasons: string[];
@@ -1359,6 +1379,10 @@ export type LongTermScanFilters = {
   minimumAdHocSectorTurnoverRank: number;
   minimumAdHocLeaderScore: number;
   minimumDrawdownPct: number;
+  leaderCorrectionMinPct: number;
+  qualityCorrectionMinPct: number;
+  deepValueCorrectionMinPct: number;
+  turnaroundCorrectionMinPct: number;
   strongDrawdownPct: number;
   deepDrawdownPct: number;
   longCycleSupplementDrawdownPct: number;
@@ -1369,6 +1393,8 @@ export type LongTermScanFilters = {
   lowBreakPenaltyDays: number;
   coolingVolumeRatioThreshold: number;
   higherLowQualityBuyFloor: number;
+  accumulateScoreMin: number;
+  buyScoreMin: number;
   leaderWeight: number;
   correctionWeight: number;
   trendWeight: number;
@@ -1385,6 +1411,7 @@ export type LongTermScanResult = {
   candidates: LongTermScanCandidate[];
   groupedCandidates: {
     buyCandidates: LongTermScanCandidate[];
+    accumulateCandidates: LongTermScanCandidate[];
     watchCandidates: LongTermScanCandidate[];
   };
 };

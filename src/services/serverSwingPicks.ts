@@ -151,15 +151,40 @@ function normalizeServerSwingPick(
   };
 }
 
+function shouldTreatAsSwingExecution(item: ServerSwingPick) {
+  // Only true execution states may remain in executionItems.
+  // Persisted execution_probe records are historical compatibility data and must read as watch.
+  return item.bucket === "execution" || item.bucket === "execution_ready";
+}
+
+function toSwingWatchPick(item: ServerSwingPick): ServerSwingPick {
+  if (item.bucket === "watch") {
+    return item;
+  }
+
+  return {
+    ...item,
+    bucket: "watch",
+    // Preserve visibility while preventing stale execution_probe records from reappearing as buy candidates.
+    tags: [...new Set([...(item.tags ?? []), "watch_pullback_pending"])]
+  };
+}
+
 function buildServerSwingPickPayload(raw: unknown, profile: SwingEngineProfile): ServerSwingPickPayload {
   if (Array.isArray(raw)) {
-    const executionItems = raw
+    const normalizedItems = raw
       .map((item) => normalizeServerSwingPick(item, "execution", profile))
       .filter((item): item is ServerSwingPick => Boolean(item));
+    const executionItems = normalizedItems.filter(shouldTreatAsSwingExecution);
+    const executionKeys = new Set(executionItems.map((item) => item.key));
+    const watchItems = normalizedItems
+      .filter((item) => !shouldTreatAsSwingExecution(item))
+      .map(toSwingWatchPick)
+      .filter((item) => !executionKeys.has(item.key));
     return {
       executionItems,
-      watchItems: [],
-      items: executionItems
+      watchItems,
+      items: [...executionItems, ...watchItems]
     };
   }
 
@@ -179,12 +204,18 @@ function buildServerSwingPickPayload(raw: unknown, profile: SwingEngineProfile):
   const legacyItems = Array.isArray(parsed.items) ? parsed.items : [];
   const executionSource = Array.isArray(parsed.executionItems) ? parsed.executionItems : legacyItems;
   const watchSource = Array.isArray(parsed.watchItems) ? parsed.watchItems : [];
-  const executionItems = executionSource
+  const normalizedExecutionSource = executionSource
     .map((item) => normalizeServerSwingPick(item, "execution", profile))
     .filter((item): item is ServerSwingPick => Boolean(item));
-  const watchItems = watchSource
+  const normalizedWatchSource = watchSource
     .map((item) => normalizeServerSwingPick(item, "watch", profile))
     .filter((item): item is ServerSwingPick => Boolean(item));
+  const executionItems = normalizedExecutionSource.filter(shouldTreatAsSwingExecution);
+  const executionKeys = new Set(executionItems.map((item) => item.key));
+  const watchItems = [
+    ...normalizedExecutionSource.filter((item) => !shouldTreatAsSwingExecution(item)).map(toSwingWatchPick),
+    ...normalizedWatchSource.map(toSwingWatchPick)
+  ].filter((item) => !executionKeys.has(item.key));
   const merged = new Map<string, ServerSwingPick>();
 
   for (const item of executionItems) {

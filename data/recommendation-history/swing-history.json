@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-24T05:12:09.247Z",
-  "asOfDate": "2026-06-24",
+  "generatedAt": "2026-06-29T06:39:18.515Z",
+  "asOfDate": "2026-06-29",
   "scope": {
     "strategy": "swing",
     "profiles": [
@@ -19,25 +19,334 @@
     "includeOnlyTouchedFirstBuy": true
   },
   "summary": {
-    "scannedExecutionCandidates": 0,
-    "openedCases": 148,
-    "enteredCases": 92,
+    "scannedExecutionCandidates": 4,
+    "openedCases": 150,
+    "enteredCases": 94,
     "noEntryCases": 56,
     "targetHitCases": 34,
     "driftProfitExitCases": 0,
-    "profitExitCases": 41,
+    "profitExitCases": 42,
     "entryMissedUpsideCases": 56,
     "stopBrokenCases": 27,
     "marketShockGraceCases": 0,
     "marketShockStopCases": 26,
     "staleTimeoutCases": 0,
-    "defaultCases": 81,
-    "smallcapCases": 67,
+    "defaultCases": 82,
+    "smallcapCases": 68,
     "firstBuyOnlyCases": 6,
-    "secondBuyReachedCases": 86,
-    "thirdBuyReachedCases": 36
+    "secondBuyReachedCases": 88,
+    "thirdBuyReachedCases": 40
   },
   "cases": [
+    {
+      "id": "swing:smallcap:006360:2026-06-29",
+      "strategy": "swing",
+      "profile": "smallcap",
+      "symbol": "006360",
+      "name": "GS건설",
+      "sourceKey": "GS건설-006360",
+      "openedAt": "2026-06-29T06:39:18.515Z",
+      "openedDate": "2026-06-29",
+      "dataDate": "2026-06-29",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "stage_1_2_low_touch_stage_3_reclaim_confirmation",
+        "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
+      },
+      "initialStopLossPrice": 22350,
+      "outcomeStatus": "active",
+      "executedBuyCount": 3,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 25450,
+          "date": "2026-06-29"
+        },
+        {
+          "stage": 2,
+          "price": 24427,
+          "date": "2026-06-29"
+        },
+        {
+          "stage": 3,
+          "price": 23373,
+          "date": "2026-06-29"
+        }
+      ],
+      "averageBuyPrice": 23970.86,
+      "latestClose": 25250,
+      "latestLow": 23150,
+      "unrealizedReturnPct": 5.34,
+      "buyPlan": {
+        "firstBuyPrice": 25450,
+        "secondBuyPrice": 24427,
+        "thirdBuyPrice": 23373,
+        "stopLossPrice": 22350
+      },
+      "thirdBuyMonitor": {
+        "version": 1,
+        "touchedDate": "2026-06-29",
+        "confirmedDate": "2026-06-29",
+        "latestDate": "2026-06-29",
+        "latestClose": 25250,
+        "status": "confirmed",
+        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-06-29",
+        "latestMentionDate": "2026-06-29",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-18 | 급등 피크 2026-03-20 | 눌림 2026-03-23~2026-06-29 | SMA20 27123 | 매수 25450/24427/23373 | ENV20 lower_band 24410/27123/29835 | 손절 22350 | 손절기준 2026-06-26 low | 점수 39",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_history_win_rate_caution"
+        ],
+        "reasons": [
+          "matched_setup",
+          "stop_valid_extended_pullback",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_hold",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "long_pullback_until_stop_probe",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "execution_gate_overridden_by_envelope",
+          "history_win_rate_caution"
+        ],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -5.31% over the recent lookback."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
+          }
+        ],
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 27122.5,
+          "upper": 29834.75,
+          "lower": 24410.25,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -6.9,
+          "distanceFromLowerPercent": 3.44,
+          "distanceFromUpperPercent": -15.37,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
+        },
+        "source": "server-universe"
+      },
+      "maxFavorablePrice": 25450,
+      "maxFavorableDate": "2026-06-29",
+      "maxFavorableReturnPct": 6.17,
+      "maxAdversePrice": 23150,
+      "maxAdverseDate": "2026-06-29",
+      "maxAdverseReturnPct": -3.42,
+      "historyOutcome": {
+        "type": "active_entered",
+        "label": "현재",
+        "category": "active",
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.",
+        "closeBasis": {
+          "lifecycleStatus": "current",
+          "rule": "현재 매수 후보 또는 관찰 후보에 같은 종목이 남아 있어 진행 중으로 봅니다.",
+          "sourceFiles": [
+            "data/server-swing-picks.json",
+            "data/server-smallcap-swing-picks.json"
+          ],
+          "includedBuckets": [
+            "executionItems",
+            "watchItems"
+          ],
+          "matchKey": "smallcap:006360"
+        }
+      },
+      "decisionSnapshot": {
+        "version": 1,
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "execution",
+        "entryBucket": "execution_probe",
+        "score": 39,
+        "referenceSma20": 27123,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 27122.5,
+          "upper": 29834.75,
+          "lower": 24410.25,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -6.9,
+          "distanceFromLowerPercent": 3.44,
+          "distanceFromUpperPercent": -15.37,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
+        },
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_history_win_rate_caution"
+        ],
+        "reasons": [
+          "matched_setup",
+          "stop_valid_extended_pullback",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_hold",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "long_pullback_until_stop_probe",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "execution_gate_overridden_by_envelope",
+          "history_win_rate_caution"
+        ],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -5.31% over the recent lookback."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
+          }
+        ],
+        "source": "server-universe",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-18 | 급등 피크 2026-03-20 | 눌림 2026-03-23~2026-06-29 | SMA20 27123 | 매수 25450/24427/23373 | ENV20 lower_band 24410/27123/29835 | 손절 22350 | 손절기준 2026-06-26 low | 점수 39"
+      },
+      "stagedBuyDiagnostics": {
+        "version": 1,
+        "executionModel": "weighted_staged_buy",
+        "weights": {
+          "stage1": 1,
+          "stage2": 2,
+          "stage3": 4
+        },
+        "buyPlan": {
+          "firstBuyPrice": 25450,
+          "secondBuyPrice": 24427,
+          "thirdBuyPrice": 23373,
+          "stopLossPrice": 22350
+        },
+        "riskBands": {
+          "firstToStopPct": -12.18,
+          "secondToStopPct": -8.5,
+          "thirdToStopPct": -4.38,
+          "averageToStopPct": -6.76
+        },
+        "stageTouches": [
+          {
+            "stage": 1,
+            "price": 25450,
+            "touchedDate": "2026-06-29",
+            "confirmedDate": "2026-06-29",
+            "executedDate": "2026-06-29",
+            "status": "executed",
+            "mode": "low_touch"
+          },
+          {
+            "stage": 2,
+            "price": 24427,
+            "touchedDate": "2026-06-29",
+            "confirmedDate": "2026-06-29",
+            "executedDate": "2026-06-29",
+            "status": "executed",
+            "mode": "low_touch"
+          },
+          {
+            "stage": 3,
+            "price": 23373,
+            "touchedDate": "2026-06-29",
+            "confirmedDate": "2026-06-29",
+            "executedDate": "2026-06-29",
+            "status": "executed",
+            "mode": "low_touch"
+          }
+        ],
+        "deepEntryPolicy": {
+          "thirdBuyRequiresConfirmation": true,
+          "thirdBuyMinStopBufferPct": 6,
+          "blockThirdBuyOnMarketShock": true
+        }
+      },
+      "outcomeDiagnostics": {
+        "version": 1,
+        "latestDate": "2026-06-29",
+        "latestClose": 25250,
+        "executedBuyCount": 3,
+        "averageBuyPrice": 23970.86,
+        "unrealizedReturnPct": 5.34,
+        "maxFavorablePrice": 25450,
+        "maxFavorableDate": "2026-06-29",
+        "maxFavorableReturnPct": 6.17,
+        "maxAdversePrice": 23150,
+        "maxAdverseDate": "2026-06-29",
+        "maxAdverseReturnPct": -3.42,
+        "currentOutcome": "active_entered"
+      }
+    },
     {
       "id": "swing:smallcap:228670:2026-06-18",
       "strategy": "swing",
@@ -296,7 +605,7 @@
       "sourceKey": "삼성에스디에스-018260",
       "openedAt": "2026-06-18T04:47:16.337Z",
       "openedDate": "2026-06-18",
-      "dataDate": "2026-06-24",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -318,7 +627,7 @@
           "date": "2026-06-19"
         }
       ],
-      "latestClose": 190300,
+      "latestClose": 198700,
       "buyPlan": {
         "firstBuyPrice": 242000,
         "secondBuyPrice": 210500,
@@ -354,8 +663,8 @@
       },
       "maxFavorablePrice": 229500,
       "maxFavorableDate": "2026-06-18",
-      "maxAdversePrice": 186100,
-      "maxAdverseDate": "2026-06-24",
+      "maxAdversePrice": 182000,
+      "maxAdverseDate": "2026-06-26",
       "historyOutcome": {
         "type": "active_entered",
         "label": "현재",
@@ -377,13 +686,13 @@
         }
       },
       "averageBuyPrice": 221000,
-      "unrealizedReturnPct": -13.89,
-      "latestLow": 186100,
+      "unrealizedReturnPct": -10.09,
+      "latestLow": 182000,
       "maxFavorableReturnPct": 3.85,
-      "maxAdverseReturnPct": -15.79,
+      "maxAdverseReturnPct": -17.65,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-06-24",
+        "capturedAt": "2026-06-29",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 58,
@@ -391,44 +700,52 @@
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 245990,
-          "upper": 270589,
-          "lower": 221391,
+          "basis": 233755,
+          "upper": 257130.5,
+          "lower": 210379.5,
           "position": "below_lower",
-          "distanceFromBasisPercent": -20.81,
-          "distanceFromLowerPercent": -12.01,
-          "distanceFromUpperPercent": -28.01,
-          "lowerBreakSessions": 3,
+          "distanceFromBasisPercent": -15,
+          "distanceFromLowerPercent": -5.55,
+          "distanceFromUpperPercent": -22.72,
+          "lowerBreakSessions": 7,
           "lowerReclaimed": false,
           "inBand": false
         },
         "tags": [
           "tag_sma20_primary",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
           "tag_support_unstable",
+          "tag_envelope_lower_break",
+          "tag_history_loss_cluster",
+          "watch_low_quality",
           "tag_envelope_lower_hold",
           "tag_carry_forward_until_stop",
-          "tag_envelope_lower_break",
-          "watch_pullback_pending",
-          "watch_low_quality"
+          "watch_pullback_pending"
         ],
         "reasons": [
           "setup_watch_only",
           "entry_zone_hit",
           "volume_contraction_ok",
           "candle_structure_ok",
-          "sma20_slope_ok",
+          "sma20_slope_negative",
           "unstable_support",
-          "envelope_lower_hold",
+          "envelope_lower_break",
           "risk_reward_ok",
+          "base_reclaim_watch",
+          "history_loss_cluster:stage:second_buy_reached:32.7%",
+          "history_win_rate_caution:tag:tag_envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:envelope_lower_break:38.1%",
+          "history_loss_cluster",
+          "execution_blocked_by_history_win_rate",
+          "sma20_slope_ok",
+          "envelope_lower_hold",
           "deep_pullback_probe",
           "above_stop",
           "long_pullback_until_stop_probe",
           "wide_pullback_candidate",
           "execution_gate_overridden_by_envelope",
           "carry_forward_until_stop",
-          "envelope_lower_break",
-          "base_reclaim_watch",
           "pullback_pending",
           "broad_review_watch",
           "probe_demoted_low_score_unstable_support",
@@ -436,26 +753,44 @@
         ],
         "penaltyFactors": [
           {
+            "code": "history_loss_cluster",
+            "label": "History loss cluster",
+            "impact": 20,
+            "reason": "stage second_buy_reached 과거 표본 49건 중 손실 33건, 승률 32.7%입니다."
+          },
+          {
             "code": "unstable_support",
             "label": "Unstable support",
             "impact": 16,
             "reason": "Support stability score dropped to 8."
           },
           {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -4.97% over the recent lookback."
+          },
+          {
             "code": "base_reclaim_pending",
             "label": "Base reclaim pending",
             "impact": 12,
-            "reason": "Current close is 3.3% below the pre-lead base at 201500."
+            "reason": "Current close is 1.4% below the pre-lead base at 201500."
           },
           {
             "code": "envelope_lower_break",
             "label": "SMA20 envelope lower break",
             "impact": 12,
-            "reason": "Reference close is 12.0% below the SMA20 -10% envelope."
+            "reason": "Reference close is 5.5% below the SMA20 -10% envelope."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
           }
         ],
-        "source": "history-carry-forward",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-05-27 | 급등 피크 2026-06-01 | 눌림 2026-06-02~2026-06-18 | SMA20 242365 | 매수 242000/210500/177800 | ENV20 lower_band 218129/242365/266602 | 손절 146100 | 손절기준 2026-04-13 low | 점수 58 | 기존 체결 유지 | 손절 146100"
+        "source": "server-universe",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-05-27 | 급등 피크 2026-06-01 | 눌림 2026-06-02~2026-06-18 | SMA20 242365 | 매수 242000/210500/177800 | ENV20 lower_band 218129/242365/266602 | 손절 146100 | 손절기준 2026-04-13 low | 점수 58"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -511,23 +846,23 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 190300,
+        "latestDate": "2026-06-29",
+        "latestClose": 198700,
         "executedBuyCount": 2,
         "averageBuyPrice": 221000,
-        "unrealizedReturnPct": -13.89,
+        "unrealizedReturnPct": -10.09,
         "maxFavorablePrice": 229500,
         "maxFavorableDate": "2026-06-18",
         "maxFavorableReturnPct": 3.85,
-        "maxAdversePrice": 186100,
-        "maxAdverseDate": "2026-06-24",
-        "maxAdverseReturnPct": -15.79,
+        "maxAdversePrice": 182000,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -17.65,
         "currentOutcome": "active_entered"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 190300,
+        "latestDate": "2026-06-29",
+        "latestClose": 198700,
         "status": "not_reached",
         "reason": "3차 매수가를 아직 터치하지 않았습니다."
       },
@@ -975,7 +1310,7 @@
       "sourceKey": "씨젠-096530",
       "openedAt": "2026-06-08T01:53:40.560Z",
       "openedDate": "2026-06-08",
-      "dataDate": "2026-06-24",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -991,7 +1326,7 @@
           "date": "2026-06-08"
         }
       ],
-      "latestClose": 27350,
+      "latestClose": 30450,
       "buyPlan": {
         "firstBuyPrice": 28350,
         "secondBuyPrice": 26255,
@@ -1025,8 +1360,8 @@
         ],
         "source": "server-universe"
       },
-      "maxFavorablePrice": 30200,
-      "maxFavorableDate": "2026-06-17",
+      "maxFavorablePrice": 30500,
+      "maxFavorableDate": "2026-06-25",
       "maxAdversePrice": 26350,
       "maxAdverseDate": "2026-06-23",
       "historyOutcome": {
@@ -1051,13 +1386,13 @@
       },
       "initialStopLossPrice": 22000,
       "averageBuyPrice": 28350,
-      "unrealizedReturnPct": -3.53,
+      "unrealizedReturnPct": 7.41,
       "latestLow": 26350,
-      "maxFavorableReturnPct": 6.53,
+      "maxFavorableReturnPct": 7.58,
       "maxAdverseReturnPct": -7.05,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-06-24",
+        "capturedAt": "2026-06-29",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 29,
@@ -1169,14 +1504,14 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 27350,
+        "latestDate": "2026-06-29",
+        "latestClose": 30450,
         "executedBuyCount": 1,
         "averageBuyPrice": 28350,
-        "unrealizedReturnPct": -3.53,
-        "maxFavorablePrice": 30200,
-        "maxFavorableDate": "2026-06-17",
-        "maxFavorableReturnPct": 6.53,
+        "unrealizedReturnPct": 7.41,
+        "maxFavorablePrice": 30500,
+        "maxFavorableDate": "2026-06-25",
+        "maxFavorableReturnPct": 7.58,
         "maxAdversePrice": 26350,
         "maxAdverseDate": "2026-06-23",
         "maxAdverseReturnPct": -7.05,
@@ -1184,12 +1519,323 @@
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 27350,
+        "latestDate": "2026-06-29",
+        "latestClose": 30450,
         "status": "not_reached",
         "reason": "3차 매수가를 아직 터치하지 않았습니다."
       },
       "outcomeStatus": "active"
+    },
+    {
+      "id": "swing:default:001250:2026-06-08",
+      "strategy": "swing",
+      "profile": "default",
+      "symbol": "001250",
+      "name": "GS글로벌",
+      "sourceKey": "GS글로벌-001250",
+      "openedAt": "2026-06-29T06:39:18.515Z",
+      "openedDate": "2026-06-08",
+      "dataDate": "2026-06-29",
+      "entryBucket": "execution_probe",
+      "status": "active",
+      "assumption": {
+        "executionModel": "weighted_staged_buy",
+        "trigger": "stage_1_2_low_touch_stage_3_reclaim_confirmation",
+        "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
+      },
+      "initialStopLossPrice": 2535,
+      "outcomeStatus": "active",
+      "executedBuyCount": 2,
+      "executedBuys": [
+        {
+          "stage": 1,
+          "price": 2735,
+          "date": "2026-06-23"
+        },
+        {
+          "stage": 2,
+          "price": 2635,
+          "date": "2026-06-24"
+        }
+      ],
+      "averageBuyPrice": 2668.33,
+      "latestClose": 2695,
+      "latestLow": 2435,
+      "unrealizedReturnPct": 1,
+      "buyPlan": {
+        "firstBuyPrice": 3280,
+        "secondBuyPrice": 3030,
+        "thirdBuyPrice": 2780,
+        "stopLossPrice": 2535
+      },
+      "thirdBuyMonitor": {
+        "version": 1,
+        "touchedDate": "2026-06-23",
+        "latestDate": "2026-06-29",
+        "latestClose": 2695,
+        "status": "waiting_reclaim",
+        "reason": "3차 가격은 터치했지만 종가가 3차 매수가를 회복하지 못해 실행을 보류합니다."
+      },
+      "initialSnapshot": {
+        "anchorDate": "2026-06-08",
+        "latestMentionDate": "2026-06-08",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-03 | 급등 피크 2026-04-08 | 눌림 2026-04-09~2026-06-08 | SMA20 3580 | 구간 3280~3195 | ENV20 below_lower 3222/3580/3938 | 손절 2535 | 손절기준 2026-04-01 low | 점수 51",
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_break",
+          "watch_pullback_pending",
+          "watch_low_quality"
+        ],
+        "reasons": [
+          "matched_setup",
+          "stop_valid_extended_pullback",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_break",
+          "risk_reward_ok",
+          "pullback_pending",
+          "broad_review_watch",
+          "above_stop",
+          "probe_demoted_low_score_unstable_support",
+          "quality_not_ready"
+        ],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -11.73% over the recent lookback."
+          },
+          {
+            "code": "envelope_lower_break",
+            "label": "SMA20 envelope lower break",
+            "impact": 12,
+            "reason": "Reference close is 11.4% below the SMA20 -10% envelope."
+          },
+          {
+            "code": "low_price_liquidity",
+            "label": "Low price liquidity drag",
+            "impact": 5,
+            "reason": "Reference price 3170 is low enough that raw share count can overstate true liquidity."
+          }
+        ],
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 3580.25,
+          "upper": 3938.28,
+          "lower": 3222.23,
+          "position": "below_lower",
+          "distanceFromBasisPercent": -20.26,
+          "distanceFromLowerPercent": -11.4,
+          "distanceFromUpperPercent": -27.51,
+          "lowerBreakSessions": 14,
+          "lowerReclaimed": false,
+          "inBand": false
+        },
+        "source": "server-universe"
+      },
+      "maxFavorablePrice": 2885,
+      "maxFavorableDate": "2026-06-23",
+      "maxFavorableReturnPct": 8.12,
+      "maxAdversePrice": 2435,
+      "maxAdverseDate": "2026-06-26",
+      "maxAdverseReturnPct": -8.74,
+      "historyOutcome": {
+        "type": "active_entered",
+        "label": "현재",
+        "category": "active",
+        "includeInReturnStats": true,
+        "description": "현재 추천 목록에 남아 있어 아직 종료하지 않습니다.",
+        "closeBasis": {
+          "lifecycleStatus": "current",
+          "rule": "현재 매수 후보 또는 관찰 후보에 같은 종목이 남아 있어 진행 중으로 봅니다.",
+          "sourceFiles": [
+            "data/server-swing-picks.json",
+            "data/server-smallcap-swing-picks.json"
+          ],
+          "includedBuckets": [
+            "executionItems",
+            "watchItems"
+          ],
+          "matchKey": "default:001250"
+        }
+      },
+      "decisionSnapshot": {
+        "version": 1,
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "execution",
+        "entryBucket": "execution_probe",
+        "score": 49,
+        "referenceSma20": 2911,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 2910.75,
+          "upper": 3201.83,
+          "lower": 2619.68,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -7.41,
+          "distanceFromLowerPercent": 2.88,
+          "distanceFromUpperPercent": -15.83,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
+        },
+        "tags": [
+          "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
+          "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_history_win_rate_caution",
+          "tag_envelope_lower_break",
+          "watch_pullback_pending",
+          "watch_low_quality"
+        ],
+        "reasons": [
+          "matched_setup",
+          "stop_valid_extended_pullback",
+          "entry_zone_pending",
+          "volume_contraction_ok",
+          "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_hold",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "long_pullback_until_stop_probe",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "execution_gate_overridden_by_envelope",
+          "history_win_rate_caution",
+          "envelope_lower_break",
+          "pullback_pending",
+          "broad_review_watch",
+          "probe_demoted_low_score_unstable_support",
+          "quality_not_ready"
+        ],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -6.82% over the recent lookback."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "low_price_liquidity",
+            "label": "Low price liquidity drag",
+            "impact": 5,
+            "reason": "Reference price 3170 is low enough that raw share count can overstate true liquidity."
+          }
+        ],
+        "source": "server-universe",
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-03 | 급등 피크 2026-04-08 | 눌림 2026-04-09~2026-06-29 | SMA20 2911 | 매수 2735/2636/2534 | ENV20 lower_band 2620/2911/3202 | 손절 2435 | 손절기준 2026-06-26 low | 점수 49"
+      },
+      "stagedBuyDiagnostics": {
+        "version": 1,
+        "executionModel": "weighted_staged_buy",
+        "weights": {
+          "stage1": 1,
+          "stage2": 2,
+          "stage3": 4
+        },
+        "buyPlan": {
+          "firstBuyPrice": 3280,
+          "secondBuyPrice": 3030,
+          "thirdBuyPrice": 2780,
+          "stopLossPrice": 2535
+        },
+        "riskBands": {
+          "firstToStopPct": -22.71,
+          "secondToStopPct": -16.34,
+          "thirdToStopPct": -8.81,
+          "averageToStopPct": -5
+        },
+        "stageTouches": [
+          {
+            "stage": 1,
+            "price": 2735,
+            "touchedDate": "2026-06-23",
+            "confirmedDate": "2026-06-23",
+            "executedDate": "2026-06-23",
+            "status": "executed",
+            "mode": "low_touch"
+          },
+          {
+            "stage": 2,
+            "price": 2635,
+            "touchedDate": "2026-06-24",
+            "confirmedDate": "2026-06-24",
+            "executedDate": "2026-06-24",
+            "status": "executed",
+            "mode": "low_touch"
+          },
+          {
+            "stage": 3,
+            "price": 2780,
+            "touchedDate": "2026-06-23",
+            "status": "pending",
+            "mode": "waiting_reclaim"
+          }
+        ],
+        "deepEntryPolicy": {
+          "thirdBuyRequiresConfirmation": true,
+          "thirdBuyMinStopBufferPct": 6,
+          "blockThirdBuyOnMarketShock": true
+        }
+      },
+      "outcomeDiagnostics": {
+        "version": 1,
+        "latestDate": "2026-06-29",
+        "latestClose": 2695,
+        "executedBuyCount": 2,
+        "averageBuyPrice": 2668.33,
+        "unrealizedReturnPct": 1,
+        "maxFavorablePrice": 2885,
+        "maxFavorableDate": "2026-06-23",
+        "maxFavorableReturnPct": 8.12,
+        "maxAdversePrice": 2435,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -8.74,
+        "currentOutcome": "active_entered"
+      }
     },
     {
       "id": "swing:smallcap:212560:2026-06-02",
@@ -1415,7 +2061,7 @@
       "sourceKey": "비에이치-090460",
       "openedAt": "2026-06-02T06:13:21.925Z",
       "openedDate": "2026-06-02",
-      "dataDate": "2026-06-17",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -1423,25 +2069,39 @@
         "trigger": "stage_1_2_low_touch_stage_3_reclaim_confirmation",
         "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
       },
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 29700,
-          "date": "2026-06-08"
+          "price": 24300,
+          "date": "2026-06-11"
         },
         {
           "stage": 2,
-          "price": 26450,
-          "date": "2026-06-08"
+          "price": 22750,
+          "date": "2026-06-24"
+        },
+        {
+          "stage": 3,
+          "price": 22500,
+          "date": "2026-06-24"
         }
       ],
-      "latestClose": 28850,
+      "latestClose": 21000,
       "buyPlan": {
         "firstBuyPrice": 29700,
         "secondBuyPrice": 26450,
-        "thirdBuyPrice": 23150,
-        "stopLossPrice": 19950
+        "thirdBuyPrice": 22500,
+        "stopLossPrice": 19950,
+        "originalThirdBuyPrice": 23150,
+        "adjustedThirdBuyPrice": 22500,
+        "thirdBuyAdjustment": {
+          "policy": "market_stability_floor_confirmed",
+          "adjustedDate": "2026-06-24",
+          "stopBufferPct": 5,
+          "supportHoldDays": 3,
+          "reason": "3차 원래 가격을 회복하지 못했지만 손절가 위에서 바닥 다짐과 반등 캔들이 확인되어 3차 매수가를 조정했습니다."
+        }
       },
       "initialSnapshot": {
         "anchorDate": "2026-06-02",
@@ -1471,23 +2131,23 @@
       },
       "maxFavorablePrice": 32050,
       "maxFavorableDate": "2026-06-16",
-      "maxAdversePrice": 23900,
-      "maxAdverseDate": "2026-06-11",
+      "maxAdversePrice": 19670,
+      "maxAdverseDate": "2026-06-26",
       "historyOutcome": {
         "type": "target_hit",
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 32,050원 기준 최대 수익률 +16.40%입니다. 종료 기준가 28,850원, 평균 매수가 27,533.33원 기준 수익률 +4.78%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 32,050원 기준 최대 수익률 +40.39%입니다. 종료 기준가 21,000원, 평균 매수가 22,828.57원 기준 수익률 -8.01%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
-          "basisPrice": 27533.33,
+          "basisPrice": 22828.57,
           "comparePriceLabel": "기간 중 최고가",
           "comparePrice": 32050,
-          "returnPct": 16.4,
+          "returnPct": 40.39,
           "thresholdLabel": "목표 수익률",
-          "thresholdPct": 10
+          "thresholdPct": 8
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
@@ -1503,44 +2163,106 @@
           "matchKey": "default:090460"
         }
       },
-      "averageBuyPrice": 27533.33,
-      "unrealizedReturnPct": 4.78,
+      "averageBuyPrice": 22828.57,
+      "unrealizedReturnPct": -8.01,
       "outcomeStatus": "active",
-      "latestLow": 23900,
-      "maxFavorableReturnPct": 16.4,
-      "maxAdverseReturnPct": -13.2,
-      "closedDate": "2026-06-17",
+      "latestLow": 19670,
+      "maxFavorableReturnPct": 40.39,
+      "maxAdverseReturnPct": -13.84,
+      "closedDate": "2026-06-16",
       "closedMonth": "2026-06",
       "initialStopLossPrice": 19950,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-06-02",
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 40,
-        "referenceSma20": 32955,
+        "score": 30,
+        "referenceSma20": 25899,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 25899,
+          "upper": 28488.9,
+          "lower": 23309.1,
+          "position": "below_lower",
+          "distanceFromBasisPercent": -18.92,
+          "distanceFromLowerPercent": -9.91,
+          "distanceFromUpperPercent": -26.29,
+          "lowerBreakSessions": 8,
+          "lowerReclaimed": false,
+          "inBand": false
+        },
         "tags": [
           "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
           "tag_sma20_slope_negative",
-          "tag_support_unstable"
+          "tag_support_unstable",
+          "tag_envelope_lower_break",
+          "watch_pullback_pending",
+          "watch_low_quality",
+          "tag_history_win_rate_caution"
         ],
         "reasons": [
-          "setup_watch_only",
+          "matched_setup",
+          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
           "sma20_slope_negative",
           "unstable_support",
-          "envelope_in_band",
+          "envelope_lower_break",
           "risk_reward_ok",
-          "long_pullback_until_stop_probe",
+          "pullback_pending",
+          "broad_review_watch",
           "above_stop",
+          "history_win_rate_caution:tag:tag_envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "probe_demoted_low_score_unstable_support",
+          "history_win_rate_caution",
+          "quality_not_ready",
+          "setup_watch_only",
+          "envelope_in_band",
+          "long_pullback_until_stop_probe",
           "entry_zone_hit",
           "execution_gate_not_cleared"
         ],
-        "penaltyFactors": [],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -11.92% over the recent lookback."
+          },
+          {
+            "code": "envelope_lower_break",
+            "label": "SMA20 envelope lower break",
+            "impact": 12,
+            "reason": "Reference close is 9.9% below the SMA20 -10% envelope."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          }
+        ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-16 | 급등 피크 2026-04-20 | 눌림 2026-04-21~2026-06-02 | SMA20 32955 | 매수 31400/27622/23729 | ENV20 below_lower 29660/32955/36251 | 손절 19950 | 손절기준 2026-04-07 low | 점수 40"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-16 | 급등 피크 2026-04-22 | 눌림 2026-04-23~2026-06-29 | SMA20 25899 | 구간 24300~23700 | ENV20 below_lower 23309/25899/28489 | 손절 19670 | 손절기준 2026-06-26 low | 점수 30"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -1553,39 +2275,51 @@
         "buyPlan": {
           "firstBuyPrice": 29700,
           "secondBuyPrice": 26450,
-          "thirdBuyPrice": 23150,
-          "stopLossPrice": 19950
+          "thirdBuyPrice": 22500,
+          "stopLossPrice": 19950,
+          "originalThirdBuyPrice": 23150,
+          "adjustedThirdBuyPrice": 22500,
+          "thirdBuyAdjustment": {
+            "policy": "market_stability_floor_confirmed",
+            "adjustedDate": "2026-06-24",
+            "stopBufferPct": 5,
+            "supportHoldDays": 3,
+            "reason": "3차 원래 가격을 회복하지 못했지만 손절가 위에서 바닥 다짐과 반등 캔들이 확인되어 3차 매수가를 조정했습니다."
+          }
         },
         "riskBands": {
           "firstToStopPct": -32.83,
           "secondToStopPct": -24.57,
-          "thirdToStopPct": -13.82,
-          "averageToStopPct": -27.54
+          "thirdToStopPct": -11.33,
+          "averageToStopPct": -12.61
         },
         "stageTouches": [
           {
             "stage": 1,
-            "price": 29700,
-            "touchedDate": "2026-06-08",
-            "confirmedDate": "2026-06-08",
-            "executedDate": "2026-06-08",
+            "price": 24300,
+            "touchedDate": "2026-06-11",
+            "confirmedDate": "2026-06-11",
+            "executedDate": "2026-06-11",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 2,
-            "price": 26450,
-            "touchedDate": "2026-06-08",
-            "confirmedDate": "2026-06-08",
-            "executedDate": "2026-06-08",
+            "price": 22750,
+            "touchedDate": "2026-06-24",
+            "confirmedDate": "2026-06-24",
+            "executedDate": "2026-06-24",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 3,
-            "price": 23150,
-            "status": "pending",
-            "mode": "not_reached"
+            "price": 22500,
+            "touchedDate": "2026-06-24",
+            "confirmedDate": "2026-06-24",
+            "executedDate": "2026-06-24",
+            "status": "executed",
+            "mode": "low_touch"
           }
         ],
         "deepEntryPolicy": {
@@ -1596,25 +2330,30 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-17",
-        "latestClose": 28850,
-        "executedBuyCount": 2,
-        "averageBuyPrice": 27533.33,
-        "unrealizedReturnPct": 4.78,
+        "latestDate": "2026-06-29",
+        "latestClose": 21000,
+        "executedBuyCount": 3,
+        "averageBuyPrice": 22828.57,
+        "unrealizedReturnPct": -8.01,
         "maxFavorablePrice": 32050,
         "maxFavorableDate": "2026-06-16",
-        "maxFavorableReturnPct": 16.4,
-        "maxAdversePrice": 23900,
-        "maxAdverseDate": "2026-06-11",
-        "maxAdverseReturnPct": -13.2,
+        "maxFavorableReturnPct": 40.39,
+        "maxAdversePrice": 19670,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -13.84,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-17",
-        "latestClose": 28850,
-        "status": "not_reached",
-        "reason": "3차 매수가를 아직 터치하지 않았습니다."
+        "touchedDate": "2026-06-23",
+        "confirmedDate": "2026-06-24",
+        "adjustedThirdBuyPrice": 22500,
+        "originalThirdBuyPrice": 23150,
+        "adjustmentReason": "3차 원래 가격을 회복하지 못했지만 손절가 위에서 바닥 다짐과 반등 캔들이 확인되어 3차 매수가를 조정했습니다.",
+        "latestDate": "2026-06-29",
+        "latestClose": 21000,
+        "status": "confirmed",
+        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       }
     },
     {
@@ -1857,7 +2596,7 @@
       "sourceKey": "삼영-003720",
       "openedAt": "2026-05-27T05:50:05.823Z",
       "openedDate": "2026-05-27",
-      "dataDate": "2026-05-29",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -1865,17 +2604,22 @@
         "trigger": "stage_1_2_low_touch_stage_3_reclaim_confirmation",
         "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
       },
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 10910,
-          "date": "2026-05-29"
+          "price": 7570,
+          "date": "2026-06-08"
         },
         {
           "stage": 2,
-          "price": 9530,
-          "date": "2026-05-29"
+          "price": 7280,
+          "date": "2026-06-23"
+        },
+        {
+          "stage": 3,
+          "price": 8110,
+          "date": "2026-06-09"
         }
       ],
       "buyPlan": {
@@ -1912,22 +2656,24 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "closed_unknown",
-        "label": "종료",
-        "category": "loss",
+        "type": "target_hit",
+        "label": "슈팅 수익",
+        "category": "profit",
         "includeInReturnStats": true,
-        "description": "후보 목록에서 이탈해 종료 케이스로 분류합니다. 종료 기준가 9,410원, 평균 매수가 9,990원 기준 수익률 -5.81%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 8,940원 기준 최대 수익률 +14.68%입니다. 종료 기준가 6,830원, 평균 매수가 7,795.71원 기준 수익률 -12.39%입니다.",
         "returnBasis": {
-          "result": "loss",
+          "result": "profit",
           "basisPriceLabel": "평균 매수가",
-          "basisPrice": 9990,
-          "comparePriceLabel": "종료 기준가",
-          "comparePrice": 9410,
-          "returnPct": -5.81
+          "basisPrice": 7795.71,
+          "comparePriceLabel": "기간 중 최고가",
+          "comparePrice": 8940,
+          "returnPct": 14.68,
+          "thresholdLabel": "목표 수익률",
+          "thresholdPct": 8
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
-          "rule": "현재 매수 후보와 관찰 후보 어디에도 같은 종목이 없어 후보 목록 이탈로 봅니다.",
+          "rule": "평균 매수가 기준 목표 수익률을 충족한 고가 경로가 확인되어 현재 후보 잔류 여부와 무관하게 슈팅 수익으로 종료합니다.",
           "sourceFiles": [
             "data/server-swing-picks.json",
             "data/server-smallcap-swing-picks.json"
@@ -1939,41 +2685,72 @@
           "matchKey": "default:003720"
         }
       },
-      "latestClose": 9410,
-      "maxFavorablePrice": 10270,
-      "maxFavorableDate": "2026-05-29",
-      "maxAdversePrice": 9100,
-      "maxAdverseDate": "2026-05-29",
-      "averageBuyPrice": 9990,
-      "unrealizedReturnPct": -5.81,
+      "latestClose": 6830,
+      "maxFavorablePrice": 8940,
+      "maxFavorableDate": "2026-06-17",
+      "maxAdversePrice": 6200,
+      "maxAdverseDate": "2026-06-26",
+      "averageBuyPrice": 7795.71,
+      "unrealizedReturnPct": -12.39,
       "outcomeStatus": "active",
-      "latestLow": 9100,
-      "maxFavorableReturnPct": 2.8,
-      "maxAdverseReturnPct": -8.91,
+      "latestLow": 6200,
+      "maxFavorableReturnPct": 14.68,
+      "maxAdverseReturnPct": -20.47,
       "initialStopLossPrice": 6740,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-05-27",
+        "capturedAt": "2026-06-29",
         "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 47,
-        "referenceSma20": 11824,
+        "score": 25,
+        "referenceSma20": 8058,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 8058,
+          "upper": 8863.8,
+          "lower": 7252.2,
+          "position": "below_lower",
+          "distanceFromBasisPercent": -15.24,
+          "distanceFromLowerPercent": -5.82,
+          "distanceFromUpperPercent": -22.95,
+          "lowerBreakSessions": 8,
+          "lowerReclaimed": false,
+          "inBand": false
+        },
         "tags": [
           "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
           "tag_support_unstable",
+          "tag_envelope_lower_break",
+          "watch_pullback_pending",
+          "watch_low_quality",
+          "tag_history_win_rate_caution",
           "tag_envelope_lower_hold",
           "tag_carry_forward_until_stop"
         ],
         "reasons": [
-          "setup_watch_only",
+          "matched_setup",
+          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
-          "sma20_slope_ok",
+          "sma20_slope_negative",
           "unstable_support",
-          "envelope_lower_hold",
+          "envelope_lower_break",
           "risk_reward_ok",
+          "pullback_pending",
+          "history_win_rate_caution:tag:tag_envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "probe_demoted_low_score_unstable_support",
+          "history_win_rate_caution",
+          "quality_not_ready",
+          "setup_watch_only",
+          "sma20_slope_ok",
+          "envelope_lower_hold",
           "long_pullback_until_stop_probe",
           "above_stop",
           "entry_zone_hit",
@@ -1981,9 +2758,40 @@
           "execution_gate_overridden_by_envelope",
           "carry_forward_until_stop"
         ],
-        "penaltyFactors": [],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 34."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -11.13% over the recent lookback."
+          },
+          {
+            "code": "envelope_lower_break",
+            "label": "SMA20 envelope lower break",
+            "impact": 12,
+            "reason": "Reference close is 5.8% below the SMA20 -10% envelope."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          }
+        ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-20 | 급등 피크 2026-04-27 | 눌림 2026-04-28~2026-05-27 | SMA20 11824 | 매수 11390/9849/8261 | ENV20 lower_band 10642/11824/13006 | 손절 6720 | 손절기준 2026-03-24 low | 점수 47"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-20 | 급등 피크 2026-04-27 | 눌림 2026-04-28~2026-06-29 | SMA20 8058 | 구간 7570~7380 | ENV20 below_lower 7252/8058/8864 | 손절 6720 | 손절기준 2026-03-24 low | 점수 25"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -2003,32 +2811,35 @@
           "firstToStopPct": -38.22,
           "secondToStopPct": -29.28,
           "thirdToStopPct": -16.89,
-          "averageToStopPct": -32.53
+          "averageToStopPct": -13.54
         },
         "stageTouches": [
           {
             "stage": 1,
-            "price": 10910,
-            "touchedDate": "2026-05-29",
-            "confirmedDate": "2026-05-29",
-            "executedDate": "2026-05-29",
+            "price": 7570,
+            "touchedDate": "2026-06-08",
+            "confirmedDate": "2026-06-08",
+            "executedDate": "2026-06-08",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 2,
-            "price": 9530,
-            "touchedDate": "2026-05-29",
-            "confirmedDate": "2026-05-29",
-            "executedDate": "2026-05-29",
+            "price": 7280,
+            "touchedDate": "2026-06-23",
+            "confirmedDate": "2026-06-23",
+            "executedDate": "2026-06-23",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 3,
             "price": 8110,
-            "status": "pending",
-            "mode": "not_reached"
+            "touchedDate": "2026-06-09",
+            "confirmedDate": "2026-06-09",
+            "executedDate": "2026-06-09",
+            "status": "executed",
+            "mode": "low_touch"
           }
         ],
         "deepEntryPolicy": {
@@ -2039,28 +2850,30 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-05-29",
-        "latestClose": 9410,
-        "executedBuyCount": 2,
-        "averageBuyPrice": 9990,
-        "unrealizedReturnPct": -5.81,
-        "maxFavorablePrice": 10270,
-        "maxFavorableDate": "2026-05-29",
-        "maxFavorableReturnPct": 2.8,
-        "maxAdversePrice": 9100,
-        "maxAdverseDate": "2026-05-29",
-        "maxAdverseReturnPct": -8.91,
-        "currentOutcome": "closed_unknown"
+        "latestDate": "2026-06-29",
+        "latestClose": 6830,
+        "executedBuyCount": 3,
+        "averageBuyPrice": 7795.71,
+        "unrealizedReturnPct": -12.39,
+        "maxFavorablePrice": 8940,
+        "maxFavorableDate": "2026-06-17",
+        "maxFavorableReturnPct": 14.68,
+        "maxAdversePrice": 6200,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -20.47,
+        "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-05-29",
-        "latestClose": 9410,
-        "status": "not_reached",
-        "reason": "3차 매수가를 아직 터치하지 않았습니다."
+        "touchedDate": "2026-06-08",
+        "confirmedDate": "2026-06-09",
+        "latestDate": "2026-06-29",
+        "latestClose": 6830,
+        "status": "confirmed",
+        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
-      "closedDate": "2026-05-29",
-      "closedMonth": "2026-05"
+      "closedDate": "2026-06-17",
+      "closedMonth": "2026-06"
     },
     {
       "id": "swing:smallcap:042940:2026-05-27",
@@ -2765,9 +3578,9 @@
         }
       ],
       "averageBuyPrice": 9862,
-      "latestClose": 6770,
+      "latestClose": 6780,
       "latestLow": 6590,
-      "unrealizedReturnPct": -31.35,
+      "unrealizedReturnPct": -31.25,
       "buyPlan": {
         "firstBuyPrice": 10630,
         "secondBuyPrice": 9478,
@@ -2812,14 +3625,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 6,770원이 손절가 7,140원 이하라 손절 종료로 확정합니다. 종료 기준가 6,770원, 평균 매수가 9,862원 기준 수익률 -31.35%입니다.",
+        "description": "시장충격 유예 후에도 종가 6,780원이 손절가 7,140원 이하라 손절 종료로 확정합니다. 종료 기준가 6,780원, 평균 매수가 9,862원 기준 수익률 -31.25%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 9862,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 6770,
-          "returnPct": -31.35,
+          "comparePrice": 6780,
+          "returnPct": -31.25,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 7140
         },
@@ -2949,10 +3762,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 6770,
+        "latestClose": 6780,
         "executedBuyCount": 2,
         "averageBuyPrice": 9862,
-        "unrealizedReturnPct": -31.35,
+        "unrealizedReturnPct": -31.25,
         "maxFavorablePrice": 10040,
         "maxFavorableDate": "2026-05-27",
         "maxFavorableReturnPct": 1.8,
@@ -2965,7 +3778,7 @@
         "version": 1,
         "touchedDate": "2026-06-02",
         "latestDate": "2026-06-24",
-        "latestClose": 6770,
+        "latestClose": 6780,
         "status": "stop_zone",
         "reason": "3차 확인 전에 손절가 구간까지 밀려 3차 매수 실행을 막습니다."
       },
@@ -3410,14 +4223,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 4,895원이 손절가 5,750원 이하라 손절 종료로 확정합니다. 종료 기준가 4,895원, 평균 매수가 6,530원 기준 수익률 -25.04%입니다.",
+        "description": "시장충격 유예 후에도 종가 4,825원이 손절가 5,750원 이하라 손절 종료로 확정합니다. 종료 기준가 4,825원, 평균 매수가 6,530원 기준 수익률 -26.11%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 6530,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 4895,
-          "returnPct": -25.04,
+          "comparePrice": 4825,
+          "returnPct": -26.11,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 5750
         },
@@ -3435,17 +4248,17 @@
           "matchKey": "smallcap:031820"
         }
       },
-      "latestClose": 4895,
+      "latestClose": 4825,
       "maxFavorablePrice": 6520,
       "maxFavorableDate": "2026-06-02",
-      "maxAdversePrice": 4855,
+      "maxAdversePrice": 4610,
       "maxAdverseDate": "2026-06-24",
       "outcomeStatus": "active",
-      "latestLow": 4855,
+      "latestLow": 4610,
       "averageBuyPrice": 6530,
-      "unrealizedReturnPct": -25.04,
+      "unrealizedReturnPct": -26.11,
       "maxFavorableReturnPct": -0.15,
-      "maxAdverseReturnPct": -25.65,
+      "maxAdverseReturnPct": -29.4,
       "initialStopLossPrice": 5750,
       "marketStopGrace": {
         "status": "expired",
@@ -3559,23 +4372,23 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 4895,
+        "latestClose": 4825,
         "executedBuyCount": 2,
         "averageBuyPrice": 6530,
-        "unrealizedReturnPct": -25.04,
+        "unrealizedReturnPct": -26.11,
         "maxFavorablePrice": 6520,
         "maxFavorableDate": "2026-06-02",
         "maxFavorableReturnPct": -0.15,
-        "maxAdversePrice": 4855,
+        "maxAdversePrice": 4610,
         "maxAdverseDate": "2026-06-24",
-        "maxAdverseReturnPct": -25.65,
+        "maxAdverseReturnPct": -29.4,
         "currentOutcome": "market_shock_stop"
       },
       "thirdBuyMonitor": {
         "version": 1,
         "touchedDate": "2026-06-05",
         "latestDate": "2026-06-24",
-        "latestClose": 4895,
+        "latestClose": 4825,
         "status": "stop_zone",
         "reason": "3차 확인 전에 손절가 구간까지 밀려 3차 매수 실행을 막습니다."
       },
@@ -4465,7 +5278,7 @@
           "date": "2026-06-16"
         }
       ],
-      "latestClose": 9590,
+      "latestClose": 9650,
       "latestLow": 9420,
       "buyPlan": {
         "firstBuyPrice": 16540,
@@ -4518,14 +5331,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 9,590원이 손절가 10,680원 이하라 손절 종료로 확정합니다. 종료 기준가 9,590원, 평균 매수가 13,180원 기준 수익률 -27.24%입니다.",
+        "description": "시장충격 유예 후에도 종가 9,650원이 손절가 10,680원 이하라 손절 종료로 확정합니다. 종료 기준가 9,650원, 평균 매수가 13,180원 기준 수익률 -26.78%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 13180,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 9590,
-          "returnPct": -27.24,
+          "comparePrice": 9650,
+          "returnPct": -26.78,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 10680
         },
@@ -4548,7 +5361,7 @@
       "maxAdversePrice": 9420,
       "maxAdverseDate": "2026-06-24",
       "averageBuyPrice": 13180,
-      "unrealizedReturnPct": -27.24,
+      "unrealizedReturnPct": -26.78,
       "maxFavorableReturnPct": -3.64,
       "maxAdverseReturnPct": -28.53,
       "initialStopLossPrice": 10680,
@@ -4678,10 +5491,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 9590,
+        "latestClose": 9650,
         "executedBuyCount": 3,
         "averageBuyPrice": 13180,
-        "unrealizedReturnPct": -27.24,
+        "unrealizedReturnPct": -26.78,
         "maxFavorablePrice": 12700,
         "maxFavorableDate": "2026-06-04",
         "maxFavorableReturnPct": -3.64,
@@ -4695,7 +5508,7 @@
         "touchedDate": "2026-06-05",
         "confirmedDate": "2026-06-16",
         "latestDate": "2026-06-24",
-        "latestClose": 9590,
+        "latestClose": 9650,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -5525,7 +6338,7 @@
       "sourceKey": "희림-037440",
       "openedAt": "2026-05-22T06:19:12.197Z",
       "openedDate": "2026-05-22",
-      "dataDate": "2026-06-24",
+      "dataDate": "2026-06-15",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -5590,7 +6403,7 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 6,450원 기준 최대 수익률 +41.83%입니다. 종료 기준가 3,955원, 평균 매수가 4,547.57원 기준 수익률 -13.03%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 6,450원 기준 최대 수익률 +41.83%입니다. 종료 기준가 5,320원, 평균 매수가 4,547.57원 기준 수익률 +16.99%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
@@ -5615,25 +6428,25 @@
           "matchKey": "default:037440"
         }
       },
-      "latestClose": 3955,
+      "latestClose": 5320,
       "maxFavorablePrice": 6450,
       "maxFavorableDate": "2026-06-15",
-      "maxAdversePrice": 3845,
-      "maxAdverseDate": "2026-06-24",
+      "maxAdversePrice": 4510,
+      "maxAdverseDate": "2026-06-08",
       "outcomeStatus": "active",
-      "latestLow": 3845,
+      "latestLow": 4510,
       "initialStopLossPrice": 3900,
       "averageBuyPrice": 4547.57,
-      "unrealizedReturnPct": -13.03,
+      "unrealizedReturnPct": 16.99,
       "maxFavorableReturnPct": 41.83,
-      "maxAdverseReturnPct": -15.45,
+      "maxAdverseReturnPct": -0.83,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-06-24",
+        "capturedAt": "2026-05-22",
         "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 38,
-        "referenceSma20": 4890,
+        "score": 40,
+        "referenceSma20": 6044,
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
@@ -5650,40 +6463,40 @@
         },
         "tags": [
           "tag_sma20_primary",
-          "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
           "tag_sma20_slope_negative",
           "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_alt_anchor_box_support",
           "tag_envelope_lower_break",
           "watch_pullback_pending",
           "watch_low_quality",
-          "tag_history_win_rate_caution",
-          "tag_envelope_lower_hold"
+          "tag_history_win_rate_caution"
         ],
         "reasons": [
-          "matched_setup",
-          "stop_valid_extended_pullback",
+          "setup_watch_only",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
           "sma20_slope_negative",
           "unstable_support",
-          "envelope_lower_break",
+          "envelope_lower_hold",
           "risk_reward_ok",
+          "long_pullback_until_stop_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "execution_gate_overridden_by_envelope",
+          "matched_setup",
+          "stop_valid_extended_pullback",
+          "envelope_lower_break",
           "pullback_pending",
           "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:40%",
           "history_win_rate_caution:tag:tag_envelope_lower_break:40%",
           "history_win_rate_caution:reason:envelope_lower_break:40%",
           "probe_demoted_low_score_unstable_support",
           "history_win_rate_caution",
-          "quality_not_ready",
-          "setup_watch_only",
-          "envelope_lower_hold",
-          "long_pullback_until_stop_probe",
-          "above_stop",
-          "entry_zone_hit",
-          "wide_pullback_candidate",
-          "execution_gate_overridden_by_envelope"
+          "quality_not_ready"
         ],
         "penaltyFactors": [
           {
@@ -5718,7 +6531,7 @@
           }
         ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-08 | 급등 피크 2026-04-09 | 눌림 2026-04-10~2026-06-24 | SMA20 4890 | 구간 4715~4600 | ENV20 below_lower 4401/4890/5379 | 손절 3900 | 손절기준 2026-04-06 low | 점수 38"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-08 | 급등 피크 2026-04-09 | 눌림 2026-04-10~2026-05-22 | SMA20 6044 | 매수 5892/5235/4557 | ENV20 lower_band 5439/6044/6648 | 손절 3900 | 손절기준 2026-04-06 low | 점수 40"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -5777,25 +6590,25 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 3955,
+        "latestDate": "2026-06-15",
+        "latestClose": 5320,
         "executedBuyCount": 3,
         "averageBuyPrice": 4547.57,
-        "unrealizedReturnPct": -13.03,
+        "unrealizedReturnPct": 16.99,
         "maxFavorablePrice": 6450,
         "maxFavorableDate": "2026-06-15",
         "maxFavorableReturnPct": 41.83,
-        "maxAdversePrice": 3845,
-        "maxAdverseDate": "2026-06-24",
-        "maxAdverseReturnPct": -15.45,
+        "maxAdversePrice": 4510,
+        "maxAdverseDate": "2026-06-08",
+        "maxAdverseReturnPct": -0.83,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
         "touchedDate": "2026-06-08",
         "confirmedDate": "2026-06-09",
-        "latestDate": "2026-06-24",
-        "latestClose": 3955,
+        "latestDate": "2026-06-15",
+        "latestClose": 5320,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -6060,7 +6873,7 @@
       "sourceKey": "동국제강-460860",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-06-23",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -6088,9 +6901,9 @@
         }
       ],
       "averageBuyPrice": 10645.71,
-      "latestClose": 8820,
-      "latestLow": 8770,
-      "unrealizedReturnPct": -17.15,
+      "latestClose": 8980,
+      "latestLow": 8310,
+      "unrealizedReturnPct": -15.65,
       "buyPlan": {
         "firstBuyPrice": 13150,
         "secondBuyPrice": 11680,
@@ -6141,7 +6954,7 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 12,480원 기준 최대 수익률 +17.23%입니다. 종료 기준가 8,820원, 평균 매수가 10,645.71원 기준 수익률 -17.15%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 12,480원 기준 최대 수익률 +17.23%입니다. 종료 기준가 8,980원, 평균 매수가 10,645.71원 기준 수익률 -15.65%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
@@ -6169,45 +6982,104 @@
       "maxFavorablePrice": 12480,
       "maxFavorableDate": "2026-05-26",
       "maxFavorableReturnPct": 17.23,
-      "maxAdversePrice": 8770,
-      "maxAdverseDate": "2026-06-23",
-      "maxAdverseReturnPct": -17.62,
+      "maxAdversePrice": 8310,
+      "maxAdverseDate": "2026-06-26",
+      "maxAdverseReturnPct": -21.94,
       "initialStopLossPrice": 8720,
-      "closedDate": "2026-06-23",
-      "closedMonth": "2026-06",
+      "closedDate": "2026-05-26",
+      "closedMonth": "2026-05",
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-05-18",
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 46,
-        "referenceSma20": 13205,
+        "score": 26,
+        "referenceSma20": 9438,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 9438,
+          "upper": 10381.8,
+          "lower": 8494.2,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -4.85,
+          "distanceFromLowerPercent": 5.72,
+          "distanceFromUpperPercent": -13.5,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
+        },
         "tags": [
           "tag_sma20_primary",
           "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
           "tag_envelope_lower_hold",
-          "tag_support_unstable"
+          "watch_pullback_pending",
+          "watch_low_quality",
+          "tag_history_win_rate_caution"
         ],
         "reasons": [
           "matched_setup",
+          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
-          "sma20_slope_ok",
-          "support_holding",
+          "sma20_slope_negative",
+          "unstable_support",
           "envelope_lower_hold",
           "risk_reward_ok",
+          "pullback_pending",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "probe_demoted_low_score_unstable_support",
+          "history_win_rate_caution",
+          "quality_not_ready",
+          "sma20_slope_ok",
+          "support_holding",
           "deep_pullback_probe",
           "above_stop",
           "long_pullback_until_stop_probe",
           "entry_zone_hit",
           "wide_pullback_candidate",
-          "execution_gate_overridden_by_envelope",
-          "unstable_support"
+          "execution_gate_overridden_by_envelope"
         ],
-        "penaltyFactors": [],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 44."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -7.06% over the recent lookback."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "small_body",
+            "label": "Small real body",
+            "impact": 8,
+            "reason": "Real body was only 26% of the full range."
+          }
+        ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-27 | 급등 피크 2026-04-29 | 눌림 2026-04-30~2026-05-18 | SMA20 13205 | 매수 12890/11514/10096 | ENV20 lower_band 11884/13205/14525 | 손절 8720 | 손절기준 2026-04-02 low | 점수 46"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-27 | 급등 피크 2026-04-29 | 눌림 2026-04-30~2026-06-29 | SMA20 9438 | 구간 - | ENV20 lower_band 8494/9438/10382 | 손절 8720 | 손절기준 2026-04-02 low | 점수 26"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -6275,25 +7147,25 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-23",
-        "latestClose": 8820,
+        "latestDate": "2026-06-29",
+        "latestClose": 8980,
         "executedBuyCount": 3,
         "averageBuyPrice": 10645.71,
-        "unrealizedReturnPct": -17.15,
+        "unrealizedReturnPct": -15.65,
         "maxFavorablePrice": 12480,
         "maxFavorableDate": "2026-05-26",
         "maxFavorableReturnPct": 17.23,
-        "maxAdversePrice": 8770,
-        "maxAdverseDate": "2026-06-23",
-        "maxAdverseReturnPct": -17.62,
+        "maxAdversePrice": 8310,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -21.94,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
         "touchedDate": "2026-06-08",
         "confirmedDate": "2026-06-12",
-        "latestDate": "2026-06-23",
-        "latestClose": 8820,
+        "latestDate": "2026-06-29",
+        "latestClose": 8980,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       }
@@ -7941,7 +8813,7 @@
       "sourceKey": "세아메카닉스-396300",
       "openedAt": "2026-05-14T05:42:09.034Z",
       "openedDate": "2026-05-14",
-      "dataDate": "2026-06-10",
+      "dataDate": "2026-06-29",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -7954,16 +8826,16 @@
       "executedBuys": [
         {
           "stage": 1,
-          "price": 4595,
-          "date": "2026-06-10"
+          "price": 4185,
+          "date": "2026-06-11"
         },
         {
           "stage": 2,
-          "price": 4225,
-          "date": "2026-06-11"
+          "price": 3895,
+          "date": "2026-06-23"
         }
       ],
-      "latestClose": 4560,
+      "latestClose": 3515,
       "buyPlan": {
         "firstBuyPrice": 5140,
         "secondBuyPrice": 4535,
@@ -7997,24 +8869,24 @@
         "source": "server-universe"
       },
       "historyOutcome": {
-        "type": "target_hit",
-        "label": "슈팅 수익",
+        "type": "deep_zone_rebound_exit",
+        "label": "딥존 반등 청산",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 5,600원 기준 최대 수익률 +28.79%입니다. 종료 기준가 4,560원, 평균 매수가 4,348.33원 기준 수익률 +4.87%입니다.",
+        "description": "3차 매수가와 손절가 사이에서 3차 체결 확인 전 반등이 발생했습니다. 3차 비중은 넣지 않고 평균 매수가 3,991.67원 기준 기간 중 최고가 5,190원에서 +30.02%를 기록해 청산 수익으로 분류합니다.",
         "returnBasis": {
           "result": "profit",
-          "basisPriceLabel": "평균 매수가",
-          "basisPrice": 4348.33,
+          "basisPriceLabel": "2차 평균 매수가",
+          "basisPrice": 3991.67,
           "comparePriceLabel": "기간 중 최고가",
-          "comparePrice": 5600,
-          "returnPct": 28.79,
-          "thresholdLabel": "목표 수익률",
+          "comparePrice": 5190,
+          "returnPct": 30.02,
+          "thresholdLabel": "딥존 반등 청산 기준",
           "thresholdPct": 10
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
-          "rule": "평균 매수가 기준 목표 수익률을 충족한 고가 경로가 확인되어 현재 후보 잔류 여부와 무관하게 슈팅 수익으로 종료합니다.",
+          "rule": "3차 매수 확인 전 딥존에서 목표 수익 반등이 나와 현재 후보 잔류 여부와 무관하게 종료합니다.",
           "sourceFiles": [
             "data/server-swing-picks.json",
             "data/server-smallcap-swing-picks.json"
@@ -8026,85 +8898,110 @@
           "matchKey": "default:396300"
         }
       },
-      "maxFavorablePrice": 5600,
-      "maxFavorableDate": "2026-06-10",
-      "maxAdversePrice": 4470,
-      "maxAdverseDate": "2026-06-10",
+      "maxFavorablePrice": 5190,
+      "maxFavorableDate": "2026-06-16",
+      "maxAdversePrice": 3100,
+      "maxAdverseDate": "2026-06-26",
       "initialStopLossPrice": 3450,
-      "averageBuyPrice": 4348.33,
-      "unrealizedReturnPct": 4.87,
-      "latestLow": 4470,
-      "maxFavorableReturnPct": 28.79,
-      "maxAdverseReturnPct": 2.8,
+      "averageBuyPrice": 3991.67,
+      "unrealizedReturnPct": -11.94,
+      "latestLow": 3100,
+      "maxFavorableReturnPct": 30.02,
+      "maxAdverseReturnPct": -22.34,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-05-14",
+        "capturedAt": "2026-06-29",
         "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 43,
-        "referenceSma20": 5276,
+        "score": 47,
+        "referenceSma20": 4457,
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 4891.25,
-          "upper": 5380.38,
-          "lower": 4402.13,
+          "basis": 4457.25,
+          "upper": 4902.98,
+          "lower": 4011.53,
           "position": "below_lower",
-          "distanceFromBasisPercent": -28.75,
-          "distanceFromLowerPercent": -20.83,
-          "distanceFromUpperPercent": -35.23,
-          "lowerBreakSessions": 13,
+          "distanceFromBasisPercent": -21.14,
+          "distanceFromLowerPercent": -12.38,
+          "distanceFromUpperPercent": -28.31,
+          "lowerBreakSessions": 17,
           "lowerReclaimed": false,
           "inBand": false
         },
         "tags": [
           "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
           "tag_support_unstable",
+          "tag_envelope_lower_break",
           "watch_pullback_pending",
           "watch_low_quality",
-          "tag_alt_anchor_box_support",
-          "tag_sma20_slope_negative",
-          "tag_envelope_lower_break"
+          "tag_history_win_rate_caution"
         ],
         "reasons": [
           "matched_setup",
+          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
-          "sma20_slope_ok",
+          "sma20_slope_negative",
           "unstable_support",
-          "envelope_in_band",
+          "envelope_lower_break",
           "risk_reward_ok",
           "pullback_pending",
+          "broad_review_watch",
+          "above_stop",
+          "history_win_rate_caution:tag:tag_envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:envelope_lower_break:38.1%",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
           "probe_demoted_low_score_unstable_support",
+          "history_win_rate_caution",
           "quality_not_ready",
-          "stop_valid_extended_pullback",
-          "sma20_slope_negative",
-          "envelope_lower_break"
+          "sma20_slope_ok",
+          "envelope_in_band"
         ],
         "penaltyFactors": [
           {
             "code": "unstable_support",
             "label": "Unstable support",
             "impact": 16,
-            "reason": "Support stability score dropped to 34."
+            "reason": "Support stability score dropped to 54."
           },
           {
             "code": "negative_sma20_slope",
             "label": "Negative SMA20 slope",
             "impact": 14,
-            "reason": "SMA20 slope is -8.95% over the recent lookback."
+            "reason": "SMA20 slope is -11.29% over the recent lookback."
           },
           {
             "code": "envelope_lower_break",
             "label": "SMA20 envelope lower break",
             "impact": 12,
-            "reason": "Reference close is 20.8% below the SMA20 -10% envelope."
+            "reason": "Reference close is 12.4% below the SMA20 -10% envelope."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason envelope_lower_break 과거 표본 21건의 승률이 38.1%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "low_price_liquidity",
+            "label": "Low price liquidity drag",
+            "impact": 5,
+            "reason": "Reference price 4615 is low enough that raw share count can overstate true liquidity."
           }
         ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-28 | 급등 피크 2026-05-07 | 눌림 2026-05-08~2026-05-14 | SMA20 5276 | 구간 5144~5012 | ENV20 upper_band 4748/5276/5803 | 손절 3310 | 손절기준 2026-03-30 low | 점수 43"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-21 | 급등 피크 2026-04-28 | 눌림 2026-04-29~2026-06-29 | SMA20 4457 | 구간 4185~4085 | ENV20 below_lower 4012/4457/4903 | 손절 3310 | 손절기준 2026-03-30 low | 점수 47"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -8124,21 +9021,12 @@
           "firstToStopPct": -32.88,
           "secondToStopPct": -23.93,
           "thirdToStopPct": -11.88,
-          "averageToStopPct": -20.66
+          "averageToStopPct": -13.57
         },
         "stageTouches": [
           {
             "stage": 1,
-            "price": 4595,
-            "touchedDate": "2026-06-10",
-            "confirmedDate": "2026-06-10",
-            "executedDate": "2026-06-10",
-            "status": "executed",
-            "mode": "low_touch"
-          },
-          {
-            "stage": 2,
-            "price": 4225,
+            "price": 4185,
             "touchedDate": "2026-06-11",
             "confirmedDate": "2026-06-11",
             "executedDate": "2026-06-11",
@@ -8146,10 +9034,20 @@
             "mode": "low_touch"
           },
           {
+            "stage": 2,
+            "price": 3895,
+            "touchedDate": "2026-06-23",
+            "confirmedDate": "2026-06-23",
+            "executedDate": "2026-06-23",
+            "status": "executed",
+            "mode": "low_touch"
+          },
+          {
             "stage": 3,
             "price": 3915,
+            "touchedDate": "2026-06-23",
             "status": "pending",
-            "mode": "not_reached"
+            "mode": "waiting_reclaim"
           }
         ],
         "deepEntryPolicy": {
@@ -8160,27 +9058,28 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-10",
-        "latestClose": 4560,
+        "latestDate": "2026-06-29",
+        "latestClose": 3515,
         "executedBuyCount": 2,
-        "averageBuyPrice": 4348.33,
-        "unrealizedReturnPct": 4.87,
-        "maxFavorablePrice": 5600,
-        "maxFavorableDate": "2026-06-10",
-        "maxFavorableReturnPct": 28.79,
-        "maxAdversePrice": 4470,
-        "maxAdverseDate": "2026-06-10",
-        "maxAdverseReturnPct": 2.8,
-        "currentOutcome": "target_hit"
+        "averageBuyPrice": 3991.67,
+        "unrealizedReturnPct": -11.94,
+        "maxFavorablePrice": 5190,
+        "maxFavorableDate": "2026-06-16",
+        "maxFavorableReturnPct": 30.02,
+        "maxAdversePrice": 3100,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -22.34,
+        "currentOutcome": "deep_zone_rebound_exit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-10",
-        "latestClose": 4560,
-        "status": "not_reached",
-        "reason": "3차 매수가를 아직 터치하지 않았습니다."
+        "touchedDate": "2026-06-23",
+        "latestDate": "2026-06-29",
+        "latestClose": 3515,
+        "status": "waiting_reclaim",
+        "reason": "3차 가격은 터치했지만 종가가 3차 매수가를 회복하지 못해 실행을 보류합니다."
       },
-      "closedDate": "2026-06-10",
+      "closedDate": "2026-06-16",
       "closedMonth": "2026-06"
     },
     {
@@ -15309,8 +16208,8 @@
       "sourceKey": "서울반도체-046890",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-06-02",
-      "entryBucket": "watch",
+      "dataDate": "2026-06-29",
+      "entryBucket": "execution_probe",
       "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -15318,17 +16217,22 @@
         "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
       },
       "outcomeStatus": "active",
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 15200,
-          "date": "2026-05-18"
+          "price": 11900,
+          "date": "2026-06-08"
         },
         {
           "stage": 2,
-          "price": 13010,
-          "date": "2026-05-29"
+          "price": 11400,
+          "date": "2026-06-08"
+        },
+        {
+          "stage": 3,
+          "price": 10750,
+          "date": "2026-06-29"
         }
       ],
       "buyPlan": {
@@ -15367,16 +16271,16 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 16,140원 기준 최대 수익률 +17.47%입니다. 종료 기준가 13,930원, 평균 매수가 13,740원 기준 수익률 +1.38%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 14,140원 기준 최대 수익률 +27.39%입니다. 종료 기준가 11,710원, 평균 매수가 11,100원 기준 수익률 +5.50%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
-          "basisPrice": 13740,
+          "basisPrice": 11100,
           "comparePriceLabel": "기간 중 최고가",
-          "comparePrice": 16140,
-          "returnPct": 17.47,
+          "comparePrice": 14140,
+          "returnPct": 27.39,
           "thresholdLabel": "목표 수익률",
-          "thresholdPct": 10
+          "thresholdPct": 8
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
@@ -15392,47 +16296,106 @@
           "matchKey": "default:046890"
         }
       },
-      "averageBuyPrice": 13740,
-      "latestClose": 13930,
-      "unrealizedReturnPct": 1.38,
-      "latestLow": 12760,
-      "maxFavorablePrice": 16140,
-      "maxFavorableDate": "2026-05-27",
-      "maxFavorableReturnPct": 17.47,
-      "maxAdversePrice": 12760,
-      "maxAdverseDate": "2026-05-29",
-      "maxAdverseReturnPct": -7.13,
-      "closedDate": "2026-06-02",
+      "averageBuyPrice": 11100,
+      "latestClose": 11710,
+      "unrealizedReturnPct": 5.5,
+      "latestLow": 10500,
+      "maxFavorablePrice": 14140,
+      "maxFavorableDate": "2026-06-10",
+      "maxFavorableReturnPct": 27.39,
+      "maxAdversePrice": 10500,
+      "maxAdverseDate": "2026-06-26",
+      "maxAdverseReturnPct": -5.41,
+      "closedDate": "2026-06-10",
       "closedMonth": "2026-06",
       "initialStopLossPrice": 8570,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-05-12",
-        "entryBucket": "watch",
-        "score": 76,
-        "referenceSma20": 13528,
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "execution",
+        "entryBucket": "execution_probe",
+        "score": 43,
+        "referenceSma20": 12663,
+        "envelope": {
+          "basisPeriod": 20,
+          "bandPercent": 10,
+          "basis": 12663,
+          "upper": 13929.3,
+          "lower": 11396.7,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -7.53,
+          "distanceFromLowerPercent": 2.75,
+          "distanceFromUpperPercent": -15.93,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
+        },
         "tags": [
           "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
+          "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_history_win_rate_caution",
           "tag_envelope_upper_extension",
           "watch_pullback_pending",
           "watch_low_quality"
         ],
         "reasons": [
           "matched_setup",
+          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
+          "sma20_slope_negative",
+          "unstable_support",
+          "envelope_lower_hold",
+          "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "long_pullback_until_stop_probe",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "execution_gate_overridden_by_envelope",
+          "history_win_rate_caution",
           "sma20_slope_ok",
           "support_holding",
           "envelope_upper_extension",
-          "risk_reward_ok",
           "pullback_pending",
           "quality_not_ready"
         ],
-        "penaltyFactors": [],
+        "penaltyFactors": [
+          {
+            "code": "unstable_support",
+            "label": "Unstable support",
+            "impact": 16,
+            "reason": "Support stability score dropped to 54."
+          },
+          {
+            "code": "negative_sma20_slope",
+            "label": "Negative SMA20 slope",
+            "impact": 14,
+            "reason": "SMA20 slope is -5.08% over the recent lookback."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
+          }
+        ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-27 | 급등 피크 2026-05-04 | 눌림 2026-05-06~2026-05-12 | SMA20 13528 | 구간 13189~12851 | ENV20 above_upper 12175/13528/14880 | 손절 8570 | 손절기준 2026-03-31 low | 점수 76"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-27 | 급등 피크 2026-05-04 | 눌림 2026-05-06~2026-06-29 | SMA20 12663 | 매수 11900/11405/10895 | ENV20 lower_band 11397/12663/13929 | 손절 10400 | 손절기준 2026-04-22 low | 점수 43"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -15452,32 +16415,35 @@
           "firstToStopPct": -43.62,
           "secondToStopPct": -34.13,
           "thirdToStopPct": -20.28,
-          "averageToStopPct": -37.63
+          "averageToStopPct": -22.79
         },
         "stageTouches": [
           {
             "stage": 1,
-            "price": 15200,
-            "touchedDate": "2026-05-18",
-            "confirmedDate": "2026-05-18",
-            "executedDate": "2026-05-18",
+            "price": 11900,
+            "touchedDate": "2026-06-08",
+            "confirmedDate": "2026-06-08",
+            "executedDate": "2026-06-08",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 2,
-            "price": 13010,
-            "touchedDate": "2026-05-29",
-            "confirmedDate": "2026-05-29",
-            "executedDate": "2026-05-29",
+            "price": 11400,
+            "touchedDate": "2026-06-08",
+            "confirmedDate": "2026-06-08",
+            "executedDate": "2026-06-08",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 3,
             "price": 10750,
-            "status": "pending",
-            "mode": "not_reached"
+            "touchedDate": "2026-06-29",
+            "confirmedDate": "2026-06-29",
+            "executedDate": "2026-06-29",
+            "status": "executed",
+            "mode": "low_touch"
           }
         ],
         "deepEntryPolicy": {
@@ -15488,25 +16454,27 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-02",
-        "latestClose": 13930,
-        "executedBuyCount": 2,
-        "averageBuyPrice": 13740,
-        "unrealizedReturnPct": 1.38,
-        "maxFavorablePrice": 16140,
-        "maxFavorableDate": "2026-05-27",
-        "maxFavorableReturnPct": 17.47,
-        "maxAdversePrice": 12760,
-        "maxAdverseDate": "2026-05-29",
-        "maxAdverseReturnPct": -7.13,
+        "latestDate": "2026-06-29",
+        "latestClose": 11710,
+        "executedBuyCount": 3,
+        "averageBuyPrice": 11100,
+        "unrealizedReturnPct": 5.5,
+        "maxFavorablePrice": 14140,
+        "maxFavorableDate": "2026-06-10",
+        "maxFavorableReturnPct": 27.39,
+        "maxAdversePrice": 10500,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -5.41,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-02",
-        "latestClose": 13930,
-        "status": "not_reached",
-        "reason": "3차 매수가를 아직 터치하지 않았습니다."
+        "touchedDate": "2026-06-26",
+        "confirmedDate": "2026-06-29",
+        "latestDate": "2026-06-29",
+        "latestClose": 11710,
+        "status": "confirmed",
+        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       }
     },
     {
@@ -17409,14 +18377,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 1,920원이 손절가 2,035원 이하라 손절 종료로 확정합니다. 종료 기준가 1,920원, 평균 매수가 2,233.33원 기준 수익률 -14.03%입니다.",
+        "description": "시장충격 유예 후에도 종가 1,914원이 손절가 2,035원 이하라 손절 종료로 확정합니다. 종료 기준가 1,914원, 평균 매수가 2,233.33원 기준 수익률 -14.30%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 2233.33,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 1920,
-          "returnPct": -14.03,
+          "comparePrice": 1914,
+          "returnPct": -14.3,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 2035
         },
@@ -17435,9 +18403,9 @@
         }
       },
       "averageBuyPrice": 2233.33,
-      "unrealizedReturnPct": -14.03,
+      "unrealizedReturnPct": -14.3,
       "outcomeStatus": "active",
-      "latestClose": 1920,
+      "latestClose": 1914,
       "latestLow": 1871,
       "maxFavorablePrice": 2375,
       "maxFavorableDate": "2026-06-04",
@@ -17556,10 +18524,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 1920,
+        "latestClose": 1914,
         "executedBuyCount": 2,
         "averageBuyPrice": 2233.33,
-        "unrealizedReturnPct": -14.03,
+        "unrealizedReturnPct": -14.3,
         "maxFavorablePrice": 2375,
         "maxFavorableDate": "2026-06-04",
         "maxFavorableReturnPct": 6.34,
@@ -17572,7 +18540,7 @@
         "version": 1,
         "touchedDate": "2026-06-04",
         "latestDate": "2026-06-24",
-        "latestClose": 1920,
+        "latestClose": 1914,
         "status": "stop_zone",
         "reason": "3차 확인 전에 손절가 구간까지 밀려 3차 매수 실행을 막습니다."
       },
@@ -20559,14 +21527,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 12,670원이 손절가 14,580원 이하라 손절 종료로 확정합니다. 종료 기준가 12,670원, 평균 매수가 17,300원 기준 수익률 -26.76%입니다.",
+        "description": "시장충격 유예 후에도 종가 12,770원이 손절가 14,580원 이하라 손절 종료로 확정합니다. 종료 기준가 12,770원, 평균 매수가 17,300원 기준 수익률 -26.18%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 17300,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 12670,
-          "returnPct": -26.76,
+          "comparePrice": 12770,
+          "returnPct": -26.18,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 14580
         },
@@ -20584,11 +21552,11 @@
           "matchKey": "smallcap:405100"
         }
       },
-      "latestClose": 12670,
+      "latestClose": 12770,
       "outcomeStatus": "active",
       "latestLow": 12040,
       "averageBuyPrice": 17300,
-      "unrealizedReturnPct": -26.76,
+      "unrealizedReturnPct": -26.18,
       "maxFavorablePrice": 16670,
       "maxFavorableDate": "2026-06-15",
       "maxFavorableReturnPct": -3.64,
@@ -20719,10 +21687,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 12670,
+        "latestClose": 12770,
         "executedBuyCount": 3,
         "averageBuyPrice": 17300,
-        "unrealizedReturnPct": -26.76,
+        "unrealizedReturnPct": -26.18,
         "maxFavorablePrice": 16670,
         "maxFavorableDate": "2026-06-15",
         "maxFavorableReturnPct": -3.64,
@@ -20736,7 +21704,7 @@
         "touchedDate": "2026-06-05",
         "confirmedDate": "2026-06-12",
         "latestDate": "2026-06-24",
-        "latestClose": 12670,
+        "latestClose": 12770,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -21794,14 +22762,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 11,790원이 손절가 13,150원 이하라 손절 종료로 확정합니다. 종료 기준가 11,790원, 평균 매수가 17,646.67원 기준 수익률 -33.19%입니다.",
+        "description": "시장충격 유예 후에도 종가 11,820원이 손절가 13,150원 이하라 손절 종료로 확정합니다. 종료 기준가 11,820원, 평균 매수가 17,646.67원 기준 수익률 -33.02%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 17646.67,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 11790,
-          "returnPct": -33.19,
+          "comparePrice": 11820,
+          "returnPct": -33.02,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 13150
         },
@@ -21820,8 +22788,8 @@
         }
       },
       "averageBuyPrice": 17646.67,
-      "latestClose": 11790,
-      "unrealizedReturnPct": -33.19,
+      "latestClose": 11820,
+      "unrealizedReturnPct": -33.02,
       "outcomeStatus": "active",
       "latestLow": 11440,
       "maxFavorablePrice": 14640,
@@ -21944,10 +22912,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 11790,
+        "latestClose": 11820,
         "executedBuyCount": 2,
         "averageBuyPrice": 17646.67,
-        "unrealizedReturnPct": -33.19,
+        "unrealizedReturnPct": -33.02,
         "maxFavorablePrice": 14640,
         "maxFavorableDate": "2026-06-15",
         "maxFavorableReturnPct": -17.04,
@@ -21960,7 +22928,7 @@
         "version": 1,
         "touchedDate": "2026-06-05",
         "latestDate": "2026-06-24",
-        "latestClose": 11790,
+        "latestClose": 11820,
         "status": "stop_zone",
         "reason": "3차 확인 전에 손절가 구간까지 밀려 3차 매수 실행을 막습니다."
       },
@@ -24190,8 +25158,8 @@
       "sourceKey": "OCI-456040",
       "openedAt": "2026-05-12T08:23:02.956Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-06-10",
-      "entryBucket": "watch",
+      "dataDate": "2026-06-29",
+      "entryBucket": "execution_probe",
       "status": "closed",
       "assumption": {
         "executionModel": "weighted_staged_buy",
@@ -24199,17 +25167,22 @@
         "note": "1차/2차는 일봉 저가가 매수가를 터치하면 체결로 보지만, 3차는 3차 가격 회복과 반등 확인 후에만 1:2:4 비중의 4를 실행한 것으로 봅니다."
       },
       "outcomeStatus": "active",
-      "executedBuyCount": 2,
+      "executedBuyCount": 3,
       "executedBuys": [
         {
           "stage": 1,
-          "price": 103900,
-          "date": "2026-06-08"
+          "price": 97400,
+          "date": "2026-06-15"
         },
         {
           "stage": 2,
-          "price": 100400,
-          "date": "2026-06-11"
+          "price": 94100,
+          "date": "2026-06-23"
+        },
+        {
+          "stage": 3,
+          "price": 90900,
+          "date": "2026-06-24"
         }
       ],
       "buyPlan": {
@@ -24251,16 +25224,16 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 115,100원 기준 최대 수익률 +13.32%입니다. 종료 기준가 105,400원, 평균 매수가 101,566.67원 기준 수익률 +3.77%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 112,900원 기준 최대 수익률 +21.73%입니다. 종료 기준가 95,300원, 평균 매수가 92,742.86원 기준 수익률 +2.76%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
-          "basisPrice": 101566.67,
+          "basisPrice": 92742.86,
           "comparePriceLabel": "기간 중 최고가",
-          "comparePrice": 115100,
-          "returnPct": 13.32,
+          "comparePrice": 112900,
+          "returnPct": 21.73,
           "thresholdLabel": "목표 수익률",
-          "thresholdPct": 10
+          "thresholdPct": 8
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
@@ -24276,64 +25249,77 @@
           "matchKey": "smallcap:456040"
         }
       },
-      "latestClose": 105400,
-      "averageBuyPrice": 101566.67,
-      "unrealizedReturnPct": 3.77,
-      "latestLow": 100700,
-      "maxFavorablePrice": 115100,
-      "maxFavorableDate": "2026-06-10",
-      "maxFavorableReturnPct": 13.32,
-      "maxAdversePrice": 100700,
-      "maxAdverseDate": "2026-06-08",
-      "maxAdverseReturnPct": -0.85,
+      "latestClose": 95300,
+      "averageBuyPrice": 92742.86,
+      "unrealizedReturnPct": 2.76,
+      "latestLow": 80200,
+      "maxFavorablePrice": 112900,
+      "maxFavorableDate": "2026-06-17",
+      "maxFavorableReturnPct": 21.73,
+      "maxAdversePrice": 80200,
+      "maxAdverseDate": "2026-06-26",
+      "maxAdverseReturnPct": -13.52,
       "initialStopLossPrice": 74900,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-05-12",
-        "sourceBucket": "watch",
-        "entryBucket": "watch",
-        "score": 48,
-        "referenceSma20": 123495,
+        "capturedAt": "2026-06-29",
+        "sourceBucket": "execution",
+        "entryBucket": "execution_probe",
+        "score": 29,
+        "referenceSma20": 103710,
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 110625,
-          "upper": 121687.5,
-          "lower": 99562.5,
-          "position": "below_lower",
-          "distanceFromBasisPercent": -15.12,
-          "distanceFromLowerPercent": -5.69,
-          "distanceFromUpperPercent": -22.84,
-          "lowerBreakSessions": 3,
-          "lowerReclaimed": false,
-          "inBand": false
+          "basis": 103710,
+          "upper": 114081,
+          "lower": 93339,
+          "position": "lower_band",
+          "distanceFromBasisPercent": -8.11,
+          "distanceFromLowerPercent": 2.1,
+          "distanceFromUpperPercent": -16.46,
+          "lowerBreakSessions": 0,
+          "lowerReclaimed": true,
+          "inBand": true
         },
         "tags": [
           "tag_sma20_primary",
+          "tag_alt_anchor_box_support",
           "tag_seed_anchor_confirmed",
           "tag_volume_turnover_strong",
+          "tag_sma20_slope_negative",
           "tag_support_unstable",
+          "tag_envelope_lower_hold",
+          "tag_history_win_rate_caution",
           "watch_pullback_pending",
           "watch_low_quality",
-          "tag_alt_anchor_box_support",
-          "tag_sma20_slope_negative",
           "tag_envelope_lower_break"
         ],
         "reasons": [
           "matched_setup",
+          "stop_valid_extended_pullback",
           "seed_anchor_confirmed",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
-          "sma20_slope_ok",
+          "sma20_slope_negative",
           "unstable_support",
-          "envelope_in_band",
+          "envelope_lower_hold",
           "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "long_pullback_until_stop_probe",
+          "entry_zone_hit",
+          "wide_pullback_candidate",
+          "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:38.2%",
+          "history_win_rate_caution:tag:tag_sma20_slope_negative:38.6%",
+          "history_win_rate_caution:reason:sma20_slope_negative:38.6%",
+          "execution_gate_overridden_by_envelope",
+          "history_win_rate_caution",
+          "sma20_slope_ok",
+          "envelope_in_band",
           "pullback_pending",
           "probe_demoted_low_score_unstable_support",
           "quality_not_ready",
-          "stop_valid_extended_pullback",
-          "sma20_slope_negative",
           "envelope_lower_break"
         ],
         "penaltyFactors": [
@@ -24341,23 +25327,29 @@
             "code": "unstable_support",
             "label": "Unstable support",
             "impact": 16,
-            "reason": "Support stability score dropped to 34."
+            "reason": "Support stability score dropped to 54."
           },
           {
             "code": "negative_sma20_slope",
             "label": "Negative SMA20 slope",
             "impact": 14,
-            "reason": "SMA20 slope is -3.88% over the recent lookback."
+            "reason": "SMA20 slope is -7.47% over the recent lookback."
           },
           {
-            "code": "envelope_lower_break",
-            "label": "SMA20 envelope lower break",
-            "impact": 12,
-            "reason": "Reference close is 5.7% below the SMA20 -10% envelope."
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "reason probe_demoted_low_score_unstable_support 과거 표본 34건의 승률이 38.2%라 실행 강도를 낮춥니다."
+          },
+          {
+            "code": "history_win_rate_caution",
+            "label": "History win-rate caution",
+            "impact": 10,
+            "reason": "tag tag_sma20_slope_negative 과거 표본 44건의 승률이 38.6%라 실행 강도를 낮춥니다."
           }
         ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-04-22 | 급등 피크 2026-04-24 | 눌림 2026-04-27~2026-05-12 | SMA20 123495 | 매수 123400/107300/90900 | ENV20 upper_band 111146/123495/135845 | 손절 74900 | 손절기준 2026-03-09 low | 점수 48"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-04-22 | 급등 피크 2026-04-24 | 눌림 2026-04-27~2026-06-29 | SMA20 103710 | 매수 97400/94199/90901 | ENV20 lower_band 93339/103710/114081 | 손절 87700 | 손절기준 2026-04-02 low | 점수 29"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -24377,32 +25369,35 @@
           "firstToStopPct": -39.3,
           "secondToStopPct": -30.2,
           "thirdToStopPct": -17.6,
-          "averageToStopPct": -26.26
+          "averageToStopPct": -19.24
         },
         "stageTouches": [
           {
             "stage": 1,
-            "price": 103900,
-            "touchedDate": "2026-06-08",
-            "confirmedDate": "2026-06-08",
-            "executedDate": "2026-06-08",
+            "price": 97400,
+            "touchedDate": "2026-06-15",
+            "confirmedDate": "2026-06-15",
+            "executedDate": "2026-06-15",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 2,
-            "price": 100400,
-            "touchedDate": "2026-06-11",
-            "confirmedDate": "2026-06-11",
-            "executedDate": "2026-06-11",
+            "price": 94100,
+            "touchedDate": "2026-06-23",
+            "confirmedDate": "2026-06-23",
+            "executedDate": "2026-06-23",
             "status": "executed",
             "mode": "low_touch"
           },
           {
             "stage": 3,
             "price": 90900,
-            "status": "pending",
-            "mode": "not_reached"
+            "touchedDate": "2026-06-24",
+            "confirmedDate": "2026-06-24",
+            "executedDate": "2026-06-24",
+            "status": "executed",
+            "mode": "low_touch"
           }
         ],
         "deepEntryPolicy": {
@@ -24413,27 +25408,29 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-10",
-        "latestClose": 105400,
-        "executedBuyCount": 2,
-        "averageBuyPrice": 101566.67,
-        "unrealizedReturnPct": 3.77,
-        "maxFavorablePrice": 115100,
-        "maxFavorableDate": "2026-06-10",
-        "maxFavorableReturnPct": 13.32,
-        "maxAdversePrice": 100700,
-        "maxAdverseDate": "2026-06-08",
-        "maxAdverseReturnPct": -0.85,
+        "latestDate": "2026-06-29",
+        "latestClose": 95300,
+        "executedBuyCount": 3,
+        "averageBuyPrice": 92742.86,
+        "unrealizedReturnPct": 2.76,
+        "maxFavorablePrice": 112900,
+        "maxFavorableDate": "2026-06-17",
+        "maxFavorableReturnPct": 21.73,
+        "maxAdversePrice": 80200,
+        "maxAdverseDate": "2026-06-26",
+        "maxAdverseReturnPct": -13.52,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-06-10",
-        "latestClose": 105400,
-        "status": "not_reached",
-        "reason": "3차 매수가를 아직 터치하지 않았습니다."
+        "touchedDate": "2026-06-23",
+        "confirmedDate": "2026-06-24",
+        "latestDate": "2026-06-29",
+        "latestClose": 95300,
+        "status": "confirmed",
+        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
-      "closedDate": "2026-06-10",
+      "closedDate": "2026-06-17",
       "closedMonth": "2026-06"
     },
     {
@@ -25033,7 +26030,7 @@
       "sourceKey": "대동금속-020400",
       "openedAt": "2026-05-11T05:49:39.475Z",
       "openedDate": "2026-05-11",
-      "dataDate": "2026-06-24",
+      "dataDate": "2026-05-26",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -25047,7 +26044,7 @@
         "thirdBuyPrice": 3290,
         "stopLossPrice": 3022
       },
-      "executedBuyCount": 3,
+      "executedBuyCount": 2,
       "executedBuys": [
         {
           "stage": 1,
@@ -25058,15 +26055,10 @@
           "stage": 2,
           "price": 3570,
           "date": "2026-05-27"
-        },
-        {
-          "stage": 3,
-          "price": 3290,
-          "date": "2026-06-16"
         }
       ],
-      "latestClose": 3060,
-      "latestLow": 2725,
+      "latestClose": 3740,
+      "latestLow": 3640,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
         "latestMentionDate": "2026-05-11",
@@ -25098,16 +26090,16 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 4,045원 기준 최대 수익률 +17.27%입니다. 종료 기준가 3,060원, 평균 매수가 3,449.29원 기준 수익률 -11.29%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 10% 이상을 충족했습니다. 기간 중 최고가 4,045원 기준 최대 수익률 +10.47%입니다. 종료 기준가 3,740원, 평균 매수가 3,661.67원 기준 수익률 +2.14%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
-          "basisPrice": 3449.29,
+          "basisPrice": 3661.67,
           "comparePriceLabel": "기간 중 최고가",
           "comparePrice": 4045,
-          "returnPct": 17.27,
+          "returnPct": 10.47,
           "thresholdLabel": "목표 수익률",
-          "thresholdPct": 8
+          "thresholdPct": 10
         },
         "closeBasis": {
           "lifecycleStatus": "closed",
@@ -25124,14 +26116,14 @@
         }
       },
       "outcomeStatus": "active",
-      "averageBuyPrice": 3449.29,
-      "unrealizedReturnPct": -11.29,
+      "averageBuyPrice": 3661.67,
+      "unrealizedReturnPct": 2.14,
       "maxFavorablePrice": 4045,
       "maxFavorableDate": "2026-05-26",
-      "maxFavorableReturnPct": 17.27,
-      "maxAdversePrice": 2725,
-      "maxAdverseDate": "2026-06-08",
-      "maxAdverseReturnPct": -21,
+      "maxFavorableReturnPct": 10.47,
+      "maxAdversePrice": 3640,
+      "maxAdverseDate": "2026-05-20",
+      "maxAdverseReturnPct": -0.59,
       "marketStopGrace": {
         "status": "recovered",
         "startedDate": "2026-06-08",
@@ -25158,11 +26150,11 @@
       "initialStopLossPrice": 3022,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-06-24",
+        "capturedAt": "2026-05-11",
         "sourceBucket": "watch",
         "entryBucket": "watch",
-        "score": 28,
-        "referenceSma20": 3177,
+        "score": 74,
+        "referenceSma20": 5951,
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
@@ -25190,25 +26182,25 @@
         ],
         "reasons": [
           "matched_setup",
-          "stop_valid_extended_pullback",
           "entry_zone_pending",
           "volume_contraction_ok",
           "candle_structure_ok",
           "sma20_slope_negative",
           "unstable_support",
-          "envelope_lower_hold",
           "risk_reward_ok",
+          "deep_pullback_probe",
+          "above_stop",
+          "entry_zone_hit",
+          "execution_gate_not_cleared",
+          "stop_valid_extended_pullback",
+          "envelope_lower_hold",
           "pullback_pending",
           "history_win_rate_caution:reason:probe_demoted_low_score_unstable_support:40%",
           "history_win_rate_caution:tag:tag_sma20_slope_negative:40.5%",
           "history_win_rate_caution:reason:sma20_slope_negative:40.5%",
           "probe_demoted_low_score_unstable_support",
           "history_win_rate_caution",
-          "quality_not_ready",
-          "deep_pullback_probe",
-          "above_stop",
-          "entry_zone_hit",
-          "execution_gate_not_cleared"
+          "quality_not_ready"
         ],
         "penaltyFactors": [
           {
@@ -25243,7 +26235,7 @@
           }
         ],
         "source": "server-universe",
-        "note": "스윙 소화형 감지 | 선행 수급 2026-03-27 | 급등 피크 2026-04-01 | 눌림 2026-04-02~2026-06-24 | SMA20 3177 | 구간 - | ENV20 lower_band 2859/3177/3495 | 손절 3022 | 손절기준 2026-03-04 low | 점수 28"
+        "note": "스윙 소화형 감지 | 선행 수급 2026-03-27 | 급등 피크 2026-03-30 | 눌림 2026-03-31~2026-05-11 | SMA20 5951 | 매수 5802/4901/3973 | 손절 3072 | 손절기준 2026-03-09 low | 점수 74"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -25263,7 +26255,7 @@
           "firstToStopPct": -21.4,
           "secondToStopPct": -15.35,
           "thirdToStopPct": -8.15,
-          "averageToStopPct": -12.39
+          "averageToStopPct": -17.47
         },
         "stageTouches": [
           {
@@ -25287,11 +26279,8 @@
           {
             "stage": 3,
             "price": 3290,
-            "touchedDate": "2026-06-16",
-            "confirmedDate": "2026-06-16",
-            "executedDate": "2026-06-16",
-            "status": "executed",
-            "mode": "low_touch"
+            "status": "pending",
+            "mode": "not_reached"
           }
         ],
         "deepEntryPolicy": {
@@ -25302,27 +26291,25 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-06-24",
-        "latestClose": 3060,
-        "executedBuyCount": 3,
-        "averageBuyPrice": 3449.29,
-        "unrealizedReturnPct": -11.29,
+        "latestDate": "2026-05-26",
+        "latestClose": 3740,
+        "executedBuyCount": 2,
+        "averageBuyPrice": 3661.67,
+        "unrealizedReturnPct": 2.14,
         "maxFavorablePrice": 4045,
         "maxFavorableDate": "2026-05-26",
-        "maxFavorableReturnPct": 17.27,
-        "maxAdversePrice": 2725,
-        "maxAdverseDate": "2026-06-08",
-        "maxAdverseReturnPct": -21,
+        "maxFavorableReturnPct": 10.47,
+        "maxAdversePrice": 3640,
+        "maxAdverseDate": "2026-05-20",
+        "maxAdverseReturnPct": -0.59,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "touchedDate": "2026-05-29",
-        "confirmedDate": "2026-06-16",
-        "latestDate": "2026-06-24",
-        "latestClose": 3060,
-        "status": "confirmed",
-        "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
+        "latestDate": "2026-05-26",
+        "latestClose": 3740,
+        "status": "not_reached",
+        "reason": "3차 매수가를 아직 터치하지 않았습니다."
       }
     },
     {
@@ -26960,7 +27947,7 @@
           "date": "2026-06-02"
         }
       ],
-      "latestClose": 3510,
+      "latestClose": 3495,
       "latestLow": 3355,
       "initialSnapshot": {
         "anchorDate": "2026-05-07",
@@ -26992,14 +27979,14 @@
         "label": "시장 충격 손절",
         "category": "loss",
         "includeInReturnStats": true,
-        "description": "시장충격 유예 후에도 종가 3,510원이 손절가 3,600원 이하라 손절 종료로 확정합니다. 종료 기준가 3,510원, 평균 매수가 3,924.57원 기준 수익률 -10.56%입니다.",
+        "description": "시장충격 유예 후에도 종가 3,495원이 손절가 3,600원 이하라 손절 종료로 확정합니다. 종료 기준가 3,495원, 평균 매수가 3,924.57원 기준 수익률 -10.95%입니다.",
         "returnBasis": {
           "result": "loss",
           "basisPriceLabel": "평균 매수가",
           "basisPrice": 3924.57,
           "comparePriceLabel": "종료 기준가",
-          "comparePrice": 3510,
-          "returnPct": -10.56,
+          "comparePrice": 3495,
+          "returnPct": -10.95,
           "thresholdLabel": "유예 후 손절가",
           "stopLossPrice": 3600
         },
@@ -27024,7 +28011,7 @@
       "maxAdverseDate": "2026-06-24",
       "maxAdverseReturnPct": -14.51,
       "averageBuyPrice": 3924.57,
-      "unrealizedReturnPct": -10.56,
+      "unrealizedReturnPct": -10.95,
       "initialStopLossPrice": 3600,
       "marketStopGrace": {
         "status": "expired",
@@ -27145,10 +28132,10 @@
       "outcomeDiagnostics": {
         "version": 1,
         "latestDate": "2026-06-24",
-        "latestClose": 3510,
+        "latestClose": 3495,
         "executedBuyCount": 3,
         "averageBuyPrice": 3924.57,
-        "unrealizedReturnPct": -10.56,
+        "unrealizedReturnPct": -10.95,
         "maxFavorablePrice": 4040,
         "maxFavorableDate": "2026-06-04",
         "maxFavorableReturnPct": 2.94,
@@ -27162,7 +28149,7 @@
         "touchedDate": "2026-06-02",
         "confirmedDate": "2026-06-02",
         "latestDate": "2026-06-24",
-        "latestClose": 3510,
+        "latestClose": 3495,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -30610,7 +31597,7 @@
       "profitExitCaseCount": 30,
       "stopBrokenCaseCount": 26,
       "marketShockStopCaseCount": 26,
-      "averageReturnPct": -7
+      "averageReturnPct": -6.87
     },
     {
       "month": "2026-05",
@@ -30618,10 +31605,10 @@
       "closedCaseCount": 26,
       "enteredCaseCount": 26,
       "noEntryCaseCount": 0,
-      "profitExitCaseCount": 8,
+      "profitExitCaseCount": 9,
       "stopBrokenCaseCount": 1,
       "marketShockStopCaseCount": 0,
-      "averageReturnPct": -6.36
+      "averageReturnPct": -6.22
     }
   ]
 }

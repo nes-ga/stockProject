@@ -2,6 +2,25 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-06-29
+
+스윙 `execution_probe` 오분류를 보정했습니다.
+
+- 사용자 화면의 `진입 가능`은 실제 매수가 도달 상태만 표시합니다.
+- 실행 후보 승격 조건은 `stage=setup`, `status=buy_ready`, `referenceClose`가 staged entry zone 안에 있는 경우로 제한했습니다.
+- `execution_probe`, `entry_zone_pending`, `long_pullback_until_stop_probe`는 관찰/확인 후보로 취급합니다.
+- 저장 파일의 `executionItems` 안에 남아 있는 과거 `execution_probe` 레코드는 읽을 때 `watchItems`로 분리합니다.
+- 프론트 bucket 해석에서도 `execution_probe`를 `execution` 탭으로 올리지 않습니다.
+- 문서 기준을 `docs/smart-money-maintenance.md`, `docs/swing-pullback-policy-2026-05-11.md`에 반영했습니다.
+
+관련 수정:
+
+- `src/services/recommendationUniverse.ts`
+- `src/services/serverSwingPicks.ts`
+- `public/app.js`
+- `docs/smart-money-maintenance.md`
+- `docs/swing-pullback-policy-2026-05-11.md`
+
 ## 2026-06-23
 
 스윙 히스토리의 현재 후보 표시와 분할매수 체결 추적을 보정했습니다.
@@ -91,10 +110,10 @@ Swing recommendation history policy was adjusted so that a candidate is not clos
 - 선행수급 전 박스 압축 필터 추가
 - KOSPI/KOSDAQ 지수 충격 구간에서는 pre-lead box 한도를 제한적으로 완화
 - 짧은 급등 후 붕괴형은 `failed_post_spike_pullback_shape`로 매수 후보에서 제외
-- 손절가 전 긴 눌림은 `long_pullback_until_stop_probe`로 실행 후보 유지 가능
-- 히스토리는 현재 후보를 `executionItems` 기준으로만 반영
+- 손절가 전 긴 눌림은 `long_pullback_until_stop_probe`로 visibility를 유지하되 현재 정책에서는 매수 승격 사유가 아님
+- 히스토리 생명주기 판단은 이후 보정으로 기존/체결 케이스에 한해 `watchItems`도 current로 반영
 - 차트 실시간 갱신은 chart-only/update 방식으로 깜빡임 완화
-- 현재 실행 후보: 기본 스윙 9개, 소형 스윙 3개, 총 12개
+- 당시 현재 실행 후보: 기본 스윙 9개, 소형 스윙 3개, 총 12개. 현재 정책에서는 `execution_probe`가 사용자 화면의 매수 후보가 아님.
 
 관련 문서:
 

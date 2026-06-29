@@ -106,7 +106,10 @@
 
 - setup/breakout 후보 평가
 - `matched`와 `actionable` 분리
-- `execution_ready`, `execution_probe`, `watch` bucket 분류`r`n- 체결된 기존 스윙 케이스는 새 스캔에서 패턴이 사라져도 손절/목표/시간 종료 전까지 `watchItems`로 보존
+- `execution_ready`, `execution_probe`, `watch` bucket 분류
+- 사용자 화면의 `진입 가능`은 `execution_ready`만 사용하며, `execution_probe`는 관찰/확인 후보로 취급
+- `entry_zone_pending`이 붙은 후보는 매수가 도달 상태가 아니므로 `watchItems`에 둠
+- 체결된 기존 스윙 케이스는 새 스캔에서 패턴이 사라져도 손절/목표/시간 종료 전까지 `watchItems`로 보존
 - SMA20 기반 눌림 진입 구간
 - breakout 추격 금지 상태
 - staged buy plan, stop-loss reference, risk/reward 계산
@@ -240,7 +243,8 @@ npx tsx src/scripts/checkVolumeProfileImpact.ts
 
 ## 14. 현재 주의사항
 
-- 매물대 점수는 단독 매수 신호가 아닙니다.`r`n- 체결된 스윙 히스토리 케이스는 손절가 이탈 전까지 새 스캔 누락만으로 종료하지 않습니다.
+- 매물대 점수는 단독 매수 신호가 아닙니다.
+- 체결된 스윙 히스토리 케이스는 손절가 이탈 전까지 새 스캔 누락만으로 종료하지 않습니다.
 - 스윙 매물대는 리스크 해석 중심이고, BUY 승격용 직접 가산으로 쓰지 않습니다.
 - 중장기 매물대는 진입 타이밍보다 구조와 보유 품질을 확인합니다.
 - 외부 데이터는 Naver, KRX, Yahoo 응답 품질과 rate limit의 영향을 받습니다.

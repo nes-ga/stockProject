@@ -1,6 +1,7 @@
 # Smart Money 유지보수 가이드
 
 기준일: 2026-05-08
+최근 갱신: 2026-06-29
 
 ## 핵심 원칙
 
@@ -8,8 +9,8 @@
 
 - `matched`: 패턴 품질이 기준을 넘었다.
 - `actionable`: 지금 실행 가능한 상태다.
-- `execution_ready`: 실제 실행 후보에 가깝다.
-- `execution_probe`: 진입권에 가까우나 품질 gate가 부족하다.
+- `execution_ready`: 실제 실행 후보다. 사용자 화면의 `진입 가능`은 이 상태만 사용한다.
+- `execution_probe`: 내부 caution/check-later 상태다. 사용자 화면과 payload 읽기에서는 관찰로 취급한다.
 - `watch`: 관찰할 가치는 있으나 아직 실행 후보는 아니다.
 
 이 구분을 흐리면 초기 watch setup이 실행 후보로 섞입니다.
@@ -40,22 +41,28 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
 실무 해석:
 
 - `matched=true`여도 너무 이르면 실행 후보가 아닙니다.
-- `buy_ready`에 가까울 때만 첫 매수 검토 대상으로 봅니다.
+- `buy_ready`이고 현재가가 staged entry zone 안에 있을 때만 첫 매수 검토 대상으로 봅니다.
 - universe scan 결과는 `execution_ready`, `execution_probe`, `watch`로 분리합니다.
-- `execution_probe`는 매수 후보가 아니라 확인 후보입니다.
+- `execution_probe`는 매수 후보가 아니라 확인 후보입니다. 사용자 화면과 서버 payload 읽기에서는 관찰로 취급합니다.
+- `entry_zone_pending`, `execution_gate_not_cleared`, `long_pullback_until_stop_probe`는 매수가 도달 신호가 아닙니다.
 
 ## Bucket 기준
 
 ### execution_ready
 
 - 엔진이 이미 실행 가능하다고 판단한 상태
+- `pattern.stage === "setup"`
+- `pattern.status === "buy_ready"`
+- `referenceClose`가 `entryZoneLow`와 `entryZoneHigh` 사이에 있음
 - 시장 국면 gate 통과
 - risk/reward와 유효기간 조건 통과
 - 거래량, 캔들, 지지 안정성, 거래정지 패널티가 치명적이지 않음
 
 ### execution_probe
 
-- SMA20 기반 진입 구간에 근접했지만 품질 gate가 부족한 상태
+- 과거 호환용 중간 상태입니다. 신규 화면에서는 매수 후보가 아니라 관찰/확인 후보로 봅니다.
+- 이미 `buy_ready`와 entry zone은 충족했지만 히스토리 승률 가드가 주의 신호를 낸 경우에만 내부적으로 남을 수 있습니다.
+- entry zone에 아직 닿지 않은 probe는 반드시 `watch`로 내려야 합니다.
 - 대표 사유:
   - `weak_volume_contraction`
   - `weak_candle_structure`
@@ -73,6 +80,29 @@ setup 후보는 SMA20 기반 1차 매수 구간이 활성화되어야 실제 실
   - `watch_low_quality`
   - `watch_halt_event`
   - `watch_halt_structural`
+
+## 진입 가능 오분류 방지 규칙
+
+2026-06-29에 `execution_probe`가 `executionItems` 안에 저장되어 사용자 화면의 `진입 가능` 탭에 노출되는 문제가 확인됐습니다. 실제 reason은 `entry_zone_pending`이었으므로 매수가 상태가 아니라 관찰 상태였습니다.
+
+재발 방지 규칙:
+
+- `executionItems`에 들어갈 수 있는 것은 `execution` 또는 `execution_ready`뿐입니다.
+- `execution_probe`는 저장 파일의 `executionItems` 배열에 있더라도 읽는 즉시 `watchItems`로 분리합니다.
+- 프론트 `resolveSwingBucket()`도 `execution_probe`를 `execution`으로 해석하면 안 됩니다.
+- `pattern.actionable` 단독으로 실행 후보를 만들면 안 됩니다. 반드시 `setup`, `buy_ready`, `withinEntryZone`을 함께 확인해야 합니다.
+- `stop_valid_extended_pullback`, `long_pullback_until_stop_probe`, `wide_pullback_candidate`는 후보 visibility를 유지하는 이유이지 매수 승격 이유가 아닙니다.
+
+확인된 사례:
+
+- 기본 스윙: GS글로벌, 서울반도체
+- 소형 스윙: GS건설, OCI
+
+관련 코드:
+
+- `src/services/recommendationUniverse.ts`: `classifySwingCandidate`
+- `src/services/serverSwingPicks.ts`: `shouldTreatAsSwingExecution`, `toSwingWatchPick`, `buildServerSwingPickPayload`
+- `public/app.js`: `resolveServerSwingBucket`, `resolveSwingBucket`
 
 ## 체결 케이스 유지 원칙
 
@@ -297,7 +327,7 @@ npm run scan:swing-universe
 확인 항목:
 
 - `execution_ready`에 실행 가능한 setup만 남는가
-- `execution_probe`가 clean execution처럼 보이지 않는가
+- `execution_probe`가 clean execution 또는 `진입 가능`처럼 보이지 않는가
 - `watchItems`가 너무 느슨해지지 않았는가
 - 매물대 양수 점수만으로 BUY가 승격되지 않는가
 - 위 매물/리테스트 실패가 제대로 감점되는가
@@ -312,6 +342,8 @@ npm run scan:swing-universe
 - 2026-06-01: 시장 충격 손절 유예와 `market_shock_grace`/`market_shock_stop` outcome 추가
 - 2026-06-17: 스윙 최초 기준 고정, watch 후보의 체결 히스토리 승격 금지, 와이어블 watch-only 기준 명문화
 - 2026-06-23: 열린 히스토리 케이스는 `watch` 강등 후에도 현재 목록에 표시하고, 고정 `buyPlan` 기준 분할매수 체결을 계속 재계산하도록 보정
+- 2026-06-29: `execution_probe`를 사용자 화면과 payload 읽기에서 관찰로 취급하도록 보정
+
 ## 3차 조정 매수 정책
 
 - 3차 매수가는 무조건 고정 대기하지 않습니다. 원래 3차 매수가와 손절가 사이에서 가격이 오래 머물 때, 지수 안정성과 종목 바닥 다짐이 확인되면 `adjustedThirdBuyPrice`를 산출해 3차 매수가를 현재 확인된 바닥 가격으로 낮춥니다.

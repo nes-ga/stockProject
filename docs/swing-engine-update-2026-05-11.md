@@ -154,7 +154,7 @@ Current interpretation:
 
 - rough pullback
 - still inside SMA20 -10% envelope
-- promoted to execution-probe as wide pullback
+- kept visible as a wide-pullback watch candidate under the current policy
 
 Envelope:
 
@@ -166,7 +166,7 @@ Envelope:
 
 Result:
 
-- bucket: `execution_probe`
+- bucket: `watch` in user-facing/current payload interpretation
 - reasons include `wide_pullback_candidate`, `envelope_lower_hold`
 
 ### 삼륭물산 `014970`
@@ -275,15 +275,21 @@ Main additions:
 - Pre-lead base shape filter: the engine checks whether the box before lead-in volume was compressed enough.
 - Market-index adjustment: KOSPI/KOSDAQ shock windows can moderately relax the pre-lead box range limit.
 - Failed post-spike exclusion: short spike-and-collapse shapes are not treated as swing buy candidates.
-- Long pullback until stop: mature pullbacks can remain `execution_probe` while still above the stop.
-- History current candidates now use `executionItems` only.
+- Long pullback until stop: mature pullbacks can remain visible while still above the stop, but this is not an execution promotion.
+- History current candidates now preserve existing/entered cases through `watchItems`; user-facing execution only shows true entry-ready names.
 - Chart refresh was changed toward chart-only updates to reduce flicker.
 
-Current execution candidates after the update:
+Historical execution candidates after the 2026-05-15 update:
 
 - default swing: 9
 - smallcap swing: 3
 - total: 12
+
+Current correction:
+
+- `execution_probe` is not user-facing execution.
+- Persisted `execution_probe` records are reclassified to `watchItems` when server swing pick payloads are read.
+- `entry_zone_pending` must not be counted as visible execution.
 
 Detailed notes:
 
@@ -292,5 +298,5 @@ Detailed notes:
 Additional validation:
 
 - current recommendation files contain no stocks with `referenceClose <= 1000`
-- `제넥신` is promoted to `execution_probe`
+- `제넥신` remains visible only if it satisfies the current watch/entry-zone policy
 - `삼륭물산` remains `watch` due to confirmed lower envelope break

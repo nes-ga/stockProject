@@ -9,7 +9,7 @@ export type ServerLongTermPick = {
   latestMentionDate?: string;
   note?: string;
   category: "longTerm";
-  longTermBucket?: "buy" | "watch";
+  longTermBucket?: "buy" | "accumulate" | "watch";
   source?: string;
 };
 

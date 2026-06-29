@@ -10,11 +10,18 @@ async function main() {
     `Long-term universe v2 scan completed: ${result.count} candidates from ${result.universeSize} symbols as of ${result.asOfDate}`
   );
   console.log(`Buy candidates: ${result.buyCount}`);
+  console.log(`Accumulate candidates: ${result.accumulateCount}`);
   console.log(`Watch candidates: ${result.watchCount}`);
 
   for (const item of result.items.slice(0, 30)) {
     console.log(
-      `- ${item.name} (${item.symbol}) | ${item.longTermBucket === "watch" ? "watch candidate" : "buy candidate"} | ${item.note ?? ""}`
+      `- ${item.name} (${item.symbol}) | ${
+        item.longTermBucket === "watch"
+          ? "watch candidate"
+          : item.longTermBucket === "accumulate"
+            ? "accumulate candidate"
+            : "buy candidate"
+      } | ${item.note ?? ""}`
     );
   }
 }

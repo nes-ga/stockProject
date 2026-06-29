@@ -16,6 +16,7 @@ const SCAN_STATE_STORAGE_KEY = "stock-project-recommendation-scan-state-v1";
 const PAGE_SIZE_ALL = 999;
 const DEFAULT_CATEGORY = "longTerm";
 const DIVIDEND_CATEGORY = "dividend";
+const VISIBLE_RECOMMENDATION_CATEGORIES = new Set([DEFAULT_CATEGORY, "swing"]);
 const DEFAULT_LONG_TERM_BUCKET = "buy";
 const DEFAULT_SWING_BUCKET = "execution";
 const DEFAULT_SWING_PROFILE = "default";
@@ -467,7 +468,7 @@ const defaultRecommendationBySymbol = new Map(defaultRecommendationCatalog.map((
 const persistedUiState = loadUiState();
 
 let recommendationCatalog = loadCatalog();
-let currentCategory = isValidCategory(persistedUiState?.currentCategory) ? persistedUiState.currentCategory : DEFAULT_CATEGORY;
+let currentCategory = isVisibleRecommendationCategory(persistedUiState?.currentCategory) ? persistedUiState.currentCategory : DEFAULT_CATEGORY;
 let currentLongTermBucket = isValidLongTermBucket(persistedUiState?.currentLongTermBucket)
   ? persistedUiState.currentLongTermBucket
   : DEFAULT_LONG_TERM_BUCKET;
@@ -886,7 +887,7 @@ stockCategoryTabs?.addEventListener("click", (event) => {
   }
 
   const category = button.dataset.category;
-  if (!category || category === currentCategory) {
+  if (!isVisibleRecommendationCategory(category) || category === currentCategory) {
     return;
   }
 
@@ -1375,7 +1376,6 @@ async function initializeApp() {
   initOnlinePresence();
   updateUniverseRecommendationButton();
   stockSearchUniverse = buildStockSearchUniverse();
-  await loadServerDividendPicks();
   await loadServerLongTermPicks();
   await loadServerSwingPicks("default");
   await loadServerSwingPicks("smallcap");
@@ -1687,8 +1687,16 @@ async function loadServerSwingPicks(profile = DEFAULT_SWING_PROFILE, force = fal
     const items =
       executionItems.length || watchItems.length
         ? [
-            ...executionItems.map((item) => ({ ...item, bucket: "execution", swingProfile: resolvedProfile })),
-            ...watchItems.map((item) => ({ ...item, bucket: "watch", swingProfile: resolvedProfile }))
+            ...executionItems.map((item) => ({
+              ...item,
+              bucket: resolveServerSwingBucket(item, "execution"),
+              swingProfile: resolvedProfile
+            })),
+            ...watchItems.map((item) => ({
+              ...item,
+              bucket: resolveServerSwingBucket(item, "watch"),
+              swingProfile: resolvedProfile
+            }))
           ]
           : Array.isArray(payload.items)
           ? payload.items.map((item) => ({ ...item, swingProfile: resolvedProfile }))
@@ -1725,14 +1733,13 @@ async function syncServerRecommendations(options = {}) {
   serverRecommendationSyncInFlight = true;
 
   try {
-    const [dividendChanged, longTermChanged, swingChanged, smallcapSwingChanged] = await Promise.all([
-      loadServerDividendPicks(true),
+    const [longTermChanged, swingChanged, smallcapSwingChanged] = await Promise.all([
       loadServerLongTermPicks(true),
       loadServerSwingPicks("default", true),
       loadServerSwingPicks("smallcap", true)
     ]);
 
-    if (!dividendChanged && !longTermChanged && !swingChanged && !smallcapSwingChanged) {
+    if (!longTermChanged && !swingChanged && !smallcapSwingChanged) {
       return;
     }
 
@@ -1760,9 +1767,8 @@ async function syncServerRecommendations(options = {}) {
       const watchCount = defaultSwingItems.filter((item) => item.swingBucket === "watch").length;
       const smallcapExecutionCount = smallcapSwingItems.filter((item) => item.swingBucket === "execution").length;
       const smallcapWatchCount = smallcapSwingItems.filter((item) => item.swingBucket === "watch").length;
-      const dividendCount = recommendationCatalog.filter((item) => (item.category ?? DEFAULT_CATEGORY) === DIVIDEND_CATEGORY).length;
       showSummary(
-        `서버 추천 종목을 다시 반영했습니다. 배당 ${dividendCount}개 / 배당 상장지수펀드 ${dividendEtfRecommendations.length}개 / 기본 스윙 매수후보 ${executionCount}개·관심후보 ${watchCount}개 / 소형 스윙 매수후보 ${smallcapExecutionCount}개·관심후보 ${smallcapWatchCount}개입니다.`
+        `서버 추천 종목을 다시 반영했습니다. 기본 스윙 진입 가능 ${executionCount}개·관찰 ${watchCount}개 / 소형 스윙 진입 가능 ${smallcapExecutionCount}개·관찰 ${smallcapWatchCount}개입니다.`
       );
     }
   } catch (error) {
@@ -3456,6 +3462,7 @@ function getMarketFlowThemeColor(theme) {
     Semiconductor: "#005f73",
     Battery: "#2a9d8f",
     AutoIndustrial: "#5c7cfa",
+    Defense: "#6f4e37",
     Materials: "#8c6d46",
     Construction: "#c97b2b",
     Consumer: "#d1495b",
@@ -5070,6 +5077,7 @@ function formatMarketEventTodayLabel(dateText) {
 }
 
 const macroThemeRules = [
+  { label: "방산/항공우주", keywords: ["방산", "국방", "군수", "무기", "탄약", "미사일", "항공우주", "항공기", "우주항공", "레이더"] },
   { label: "반도체/전자", keywords: ["반도체", "전자부품", "전자집적", "디스플레이", "광학", "센서"] },
   { label: "소프트웨어/플랫폼", keywords: ["소프트웨어", "정보서비스", "포털", "데이터베이스", "컴퓨터 프로그래밍"] },
   { label: "통신/네트워크장비", keywords: ["통신", "방송 장비", "네트워크", "무선", "유선"] },
@@ -5293,12 +5301,76 @@ function getMarketOperationEventLabel(event) {
   return `${marketLabel} ${typeLabel}`;
 }
 
+function getSeoulDateTimeParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  })
+    .formatToParts(date)
+    .reduce((mapped, part) => {
+      if (part.type !== "literal") {
+        mapped[part.type] = part.value;
+      }
+      return mapped;
+    }, {});
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute)
+  };
+}
+
+function parseMarketOperationOccurredAt(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    date: match[1],
+    minutes: match[2] && match[3] ? Number(match[2]) * 60 + Number(match[3]) : null
+  };
+}
+
+function shouldToastMarketOperationEvent(event) {
+  const occurred = parseMarketOperationOccurredAt(event?.occurredAt);
+  if (!occurred) {
+    return false;
+  }
+
+  const now = getSeoulDateTimeParts();
+  const marketCloseGraceMinutes = 15 * 60 + 35;
+  if (now.minutes >= marketCloseGraceMinutes) {
+    return false;
+  }
+
+  if (occurred.date !== now.date || occurred.minutes == null) {
+    return false;
+  }
+
+  const eventAgeMinutes = now.minutes - occurred.minutes;
+  return eventAgeMinutes >= 0 && eventAgeMinutes <= 60;
+}
+
 function notifyMarketOperationEvents(events) {
   if (!Array.isArray(events) || !events.length) {
     return;
   }
 
   for (const event of events.slice(0, 5)) {
+    if (!shouldToastMarketOperationEvent(event)) {
+      continue;
+    }
+
     if (!event?.id || marketOperationEventToastIds.has(event.id)) {
       continue;
     }
@@ -6516,7 +6588,11 @@ function renderSelector() {
       const selected = item.key === selectedKey;
       const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
       const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPattern) : null;
-      const swingTradePlan = item.category === "swing" ? getSwingCardTradePlan(item.note, swingPattern, item.swingBucket) : null;
+      const swingDecision =
+        item.category === "swing"
+          ? buildSwingDecisionView(swingPattern ? { pattern: swingPattern } : null, swingAssessment, item.note, item.swingBucket)
+          : null;
+      const swingTradePlan = item.category === "swing" ? swingDecision?.tradePlan ?? getSwingCardTradePlan(item.note, swingPattern, item.swingBucket) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
       const dividendInfoLine = buildDividendInfoLine(item);
@@ -6571,14 +6647,28 @@ function renderSelector() {
           : "";
       const swingGuardHtml = renderSwingExecutionGuardBadge(item);
       const swingStatusHtml =
-        item.category === "swing" && (swingAssessment || swingGuardHtml)
+        item.category === "swing" && (swingDecision || swingAssessment || swingGuardHtml)
           ? `
-            <span class="stock-card-badges">
+            <span class="stock-card-swing-summary">
               ${
-                swingAssessment
+                swingDecision
                   ? `
-                    <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">상태: ${escapeHtml(swingAssessment.label)}</span>
-                    <span class="stock-pattern-score">최근 ${SWING_LOOKBACK_DAYS}거래일 기준 / ${escapeHtml(swingAssessment.action)}</span>
+                    <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingDecision.stageLabel)}</span>
+                    <span class="stock-card-swing-line">${escapeHtml(swingDecision.summary)}</span>
+                    ${
+                      swingDecision.cardReasons.length
+                        ? `<span class="stock-card-swing-reasons">
+                            ${swingDecision.cardReasons
+                              .map((reason) => `<span class="stock-card-swing-reason">✓ ${escapeHtml(reason)}</span>`)
+                              .join("")}
+                          </span>`
+                        : ""
+                    }
+                  `
+                  : swingAssessment
+                    ? `
+                    <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingAssessment.label)}</span>
+                    <span class="stock-card-swing-line">${escapeHtml(swingAssessment.action)}</span>
                   `
                   : ""
               }
@@ -6720,6 +6810,10 @@ function persistUiState() {
 }
 
 function restoreUiState() {
+  if (!isVisibleRecommendationCategory(currentCategory)) {
+    currentCategory = DEFAULT_CATEGORY;
+  }
+
   if (pageSizeSelect) {
     pageSizeSelect.value = PAGE_SIZE_OPTIONS.has(itemsPerPage) ? String(itemsPerPage) : "5";
   }
@@ -6901,6 +6995,13 @@ function renderCategoryTabs() {
   }
 
   for (const tab of stockCategoryTabs.querySelectorAll("[data-category]")) {
+    const category = tab.dataset.category;
+    const isVisible = isVisibleRecommendationCategory(category);
+    tab.classList.toggle("hidden", !isVisible);
+    if (!isVisible) {
+      continue;
+    }
+
     tab.classList.toggle("active", tab.dataset.category === currentCategory);
   }
 
@@ -6972,7 +7073,7 @@ function getRecommendationScanSessionEntries() {
       return false;
     }
 
-    return session.category === DEFAULT_CATEGORY || session.category === DIVIDEND_CATEGORY || session.category === "swing";
+    return isVisibleRecommendationCategory(session.category);
   });
 }
 
@@ -7009,10 +7110,10 @@ async function handleRestoredRecommendationScanCompletion(scopeKey, session, sta
   const diffCount = Array.isArray(result?.universeDiff?.changes) ? result.universeDiff.changes.length : 0;
   const countText =
     result?.category === "swing"
-      ? `매수후보 ${result.executionCount ?? 0}개, 관심후보 ${result.watchCount ?? 0}개`
+      ? `진입 가능 ${result.executionCount ?? 0}개, 관찰 ${result.watchCount ?? 0}개`
       : result?.category === DIVIDEND_CATEGORY
-        ? `후보 ${result.buyCount ?? 0}개, 관찰군 ${result.watchCount ?? 0}개`
-        : `매수후보 ${result?.buyCount ?? 0}개, 관찰군 ${result?.watchCount ?? 0}개`;
+        ? `후보 ${result.buyCount ?? 0}개, 관찰 ${result.watchCount ?? 0}개`
+        : `본격매수 ${result?.buyCount ?? 0}개, 분할매수 ${result?.accumulateCount ?? 0}개, 관찰 ${result?.watchCount ?? 0}개`;
 
   showSummary(`${label} 추천 검색이 완료되어 결과를 다시 불러왔습니다.${result ? ` ${countText}를 반영했습니다.` : ""}`);
   showAppToast({
@@ -7154,11 +7255,11 @@ function renderRecommendationScopePanel() {
   if (recommendationScopeHelp) {
     recommendationScopeHelp.textContent = isSwingCategory(currentCategory)
       ? currentSwingProfile === "smallcap"
-        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 소형주형 기준으로 추린 매수후보와 관심후보를 같은 화면에서 넘겨보며 관리합니다."
-        : "상단에서 스윙 흐름을 고르고, 매수후보와 관심후보를 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
+        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 소형주형 기준으로 추린 진입 가능 종목과 관찰 종목을 같은 화면에서 넘겨보며 관리합니다."
+        : "상단에서 스윙 흐름을 고르고, 진입 가능 종목과 관찰 종목을 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
       : isDividendCategory(currentCategory)
         ? "배당 탭은 배당 추천 종목과 별도 배당 상장지수펀드 섹션을 함께 보여 주되, 상장지수펀드는 점수 엔진이 아닌 전용 필터 목록으로 분리해 관리합니다."
-        : "상단에서 중장기 흐름을 유지한 채 매수후보군과 관찰군을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
+        : "상단에서 중장기 흐름을 유지한 채 본격매수, 분할매수, 관찰을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
   }
 
   if (openAddStockBtn) {
@@ -7207,10 +7308,19 @@ function renderLongTermBucketTabs() {
     return;
   }
 
+  if (isDividendCategory(currentCategory) && currentLongTermBucket === "accumulate") {
+    currentLongTermBucket = DEFAULT_LONG_TERM_BUCKET;
+  }
+
   const counts = getLongTermBucketCounts(currentCategory);
   for (const tab of longTermBucketTabs.querySelectorAll("[data-long-term-bucket]")) {
     const bucket = tab.dataset.longTermBucket;
     if (!isValidLongTermBucket(bucket)) {
+      continue;
+    }
+    const hideForDividend = isDividendCategory(currentCategory) && bucket === "accumulate";
+    tab.classList.toggle("hidden", hideForDividend);
+    if (hideForDividend) {
       continue;
     }
 
@@ -7311,12 +7421,22 @@ async function runRecommendationUniverseScan() {
       const items =
         executionItems.length || watchItems.length
           ? [
-              ...executionItems.map((item) => ({ ...item, bucket: "execution", swingProfile: requestedSwingProfile })),
-              ...watchItems.map((item) => ({ ...item, bucket: "watch", swingProfile: requestedSwingProfile }))
+              ...executionItems.map((item) => ({
+                ...item,
+                bucket: resolveServerSwingBucket(item, "execution"),
+                swingProfile: requestedSwingProfile
+              })),
+              ...watchItems.map((item) => ({
+                ...item,
+                bucket: resolveServerSwingBucket(item, "watch"),
+                swingProfile: requestedSwingProfile
+              }))
             ]
           : Array.isArray(payload.items)
             ? payload.items.map((item) => ({ ...item, swingProfile: requestedSwingProfile }))
             : [];
+      const visibleExecutionCount = items.filter((item) => resolveSwingBucket(item) === "execution").length;
+      const visibleWatchCount = items.filter((item) => resolveSwingBucket(item) === "watch").length;
 
       recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items, requestedSwingProfile);
       serverSwingPicksLoadedByProfile[requestedSwingProfile] = true;
@@ -7324,9 +7444,9 @@ async function runRecommendationUniverseScan() {
 
       if (currentCategory === "swing" && currentSwingProfile === requestedSwingProfile) {
         currentPage = 1;
-        if (currentSwingBucket === "execution" && !executionItems.length && watchItems.length) {
+        if (currentSwingBucket === "execution" && !visibleExecutionCount && visibleWatchCount) {
           currentSwingBucket = "watch";
-        } else if (currentSwingBucket === "watch" && !watchItems.length && executionItems.length) {
+        } else if (currentSwingBucket === "watch" && !visibleWatchCount && visibleExecutionCount) {
           currentSwingBucket = "execution";
         }
         selectedKey = getFilteredCatalog()[0]?.key ?? null;
@@ -7345,11 +7465,11 @@ async function runRecommendationUniverseScan() {
 
       const swingDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
       showSummary(
-        `${requestedLabel} universe 검색이 완료되었습니다. 매수후보 ${payload.executionCount ?? executionItems.length}개 / 관심후보 ${payload.watchCount ?? watchItems.length}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+        `${requestedLabel} universe 검색이 완료되었습니다. 진입 가능 ${visibleExecutionCount}개 / 관찰 ${visibleWatchCount}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
       );
       showAppToast({
         title: `${requestedLabel} 추천 검색 완료`,
-        message: `매수후보 ${payload.executionCount ?? executionItems.length}개, 관심후보 ${payload.watchCount ?? watchItems.length}개를 반영했습니다.`,
+        message: `진입 가능 ${visibleExecutionCount}개, 관찰 ${visibleWatchCount}개를 반영했습니다.`,
         tone: swingDiffCount ? "positive" : "neutral"
       });
       return;
@@ -7362,6 +7482,9 @@ async function runRecommendationUniverseScan() {
 
       if (currentCategory === DIVIDEND_CATEGORY) {
         currentPage = 1;
+        if (currentLongTermBucket === "accumulate") {
+          currentLongTermBucket = "buy";
+        }
         if (currentLongTermBucket === "buy" && !payload.buyCount && payload.watchCount) {
           currentLongTermBucket = "watch";
         } else if (currentLongTermBucket === "watch" && !payload.watchCount && payload.buyCount) {
@@ -7383,11 +7506,11 @@ async function runRecommendationUniverseScan() {
 
       const dividendDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
       showSummary(
-        `배당 universe 검색이 완료되었습니다. 후보 ${payload.buyCount ?? 0}개 / 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.${dividendDiffCount ? ` 변화 ${dividendDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+        `배당 universe 검색이 완료되었습니다. 후보 ${payload.buyCount ?? 0}개 / 관찰 ${payload.watchCount ?? 0}개를 반영했습니다.${dividendDiffCount ? ` 변화 ${dividendDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
       );
       showAppToast({
         title: "배당 추천 검색 완료",
-        message: `후보 ${payload.buyCount ?? 0}개, 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.`,
+        message: `후보 ${payload.buyCount ?? 0}개, 관찰 ${payload.watchCount ?? 0}개를 반영했습니다.`,
         tone: dividendDiffCount ? "positive" : "neutral"
       });
       return;
@@ -7399,10 +7522,17 @@ async function runRecommendationUniverseScan() {
 
     if (currentCategory === DEFAULT_CATEGORY) {
       currentPage = 1;
-      if (currentLongTermBucket === "buy" && !payload.buyCount && payload.watchCount) {
-        currentLongTermBucket = "watch";
-      } else if (currentLongTermBucket === "watch" && !payload.watchCount && payload.buyCount) {
-        currentLongTermBucket = "buy";
+      const longTermCounts = {
+        buy: payload.buyCount ?? 0,
+        accumulate: payload.accumulateCount ?? 0,
+        watch: payload.watchCount ?? 0
+      };
+      if (!longTermCounts[currentLongTermBucket]) {
+        currentLongTermBucket = longTermCounts.buy
+          ? "buy"
+          : longTermCounts.accumulate
+            ? "accumulate"
+            : "watch";
       }
       selectedKey = getFilteredCatalog()[0]?.key ?? null;
     }
@@ -7420,11 +7550,11 @@ async function runRecommendationUniverseScan() {
 
     const longTermDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
     showSummary(
-      `중장기 universe 검색이 완료되었습니다. 매수후보 ${payload.buyCount ?? 0}개 / 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.${longTermDiffCount ? ` 변화 ${longTermDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+      `중장기 universe 검색이 완료되었습니다. 본격매수 ${payload.buyCount ?? 0}개 / 분할매수 ${payload.accumulateCount ?? 0}개 / 관찰 ${payload.watchCount ?? 0}개를 반영했습니다.${longTermDiffCount ? ` 변화 ${longTermDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
     );
     showAppToast({
       title: "중장기 추천 검색 완료",
-      message: `매수후보 ${payload.buyCount ?? 0}개, 관찰군 ${payload.watchCount ?? 0}개를 반영했습니다.`,
+      message: `본격매수 ${payload.buyCount ?? 0}개, 분할매수 ${payload.accumulateCount ?? 0}개, 관찰 ${payload.watchCount ?? 0}개를 반영했습니다.`,
       tone: longTermDiffCount ? "positive" : "neutral"
     });
   } catch (error) {
@@ -7510,6 +7640,10 @@ function resolveLongTermBucket(item) {
     return "watch";
   }
 
+  if (item?.longTermBucket === "accumulate") {
+    return "accumulate";
+  }
+
   if (item?.longTermBucket === "buy") {
     return "buy";
   }
@@ -7523,12 +7657,16 @@ function inferLongTermBucketFromNote(note) {
     return DEFAULT_LONG_TERM_BUCKET;
   }
 
+  if (normalizedNote.includes("분할매수") || normalizedNote.includes("accumulate")) {
+    return "accumulate";
+  }
+
   const watchKeywords = ["관찰", "돌파 여부", "삭제 전 목록", "as 글", "언급"];
   return watchKeywords.some((keyword) => normalizedNote.includes(keyword)) ? "watch" : "buy";
 }
 
 function isValidLongTermBucket(value) {
-  return value === "buy" || value === "watch";
+  return value === "buy" || value === "accumulate" || value === "watch";
 }
 
 function resolveSwingProfile(value) {
@@ -7549,6 +7687,10 @@ function isSwingCategory(category) {
 
 function isDividendCategory(category) {
   return category === DIVIDEND_CATEGORY;
+}
+
+function isVisibleRecommendationCategory(value) {
+  return VISIBLE_RECOMMENDATION_CATEGORIES.has(value);
 }
 
 function resolveRecommendationCategory(category) {
@@ -7584,6 +7726,18 @@ function isValidCategory(value) {
   return value === "swing" || value === DIVIDEND_CATEGORY || value === DEFAULT_CATEGORY;
 }
 
+function resolveServerSwingBucket(item, sourceBucket = DEFAULT_SWING_BUCKET) {
+  const rawBucket = item?.swingBucket ?? item?.bucket;
+  // execution_probe means "check later", not "buy now"; keep it out of the execution tab.
+  if (rawBucket === "watch" || rawBucket === "execution_probe") {
+    return "watch";
+  }
+  if (rawBucket === "execution" || rawBucket === "execution_ready") {
+    return "execution";
+  }
+  return sourceBucket === "watch" ? "watch" : "execution";
+}
+
 function resolveSwingBucket(item) {
   if (item?.swingBucket === "watch" || item?.bucket === "watch") {
     return "watch";
@@ -7592,10 +7746,8 @@ function resolveSwingBucket(item) {
   if (
     item?.swingBucket === "execution" ||
     item?.swingBucket === "execution_ready" ||
-    item?.swingBucket === "execution_probe" ||
     item?.bucket === "execution" ||
-    item?.bucket === "execution_ready" ||
-    item?.bucket === "execution_probe"
+    item?.bucket === "execution_ready"
   ) {
     return "execution";
   }
@@ -7608,15 +7760,21 @@ function isValidSwingBucket(value) {
 }
 
 function getSwingBucketLabel(bucket) {
-  return bucket === "watch" ? "관심후보" : "매수후보";
+  return bucket === "watch" ? "관찰" : "진입 가능";
 }
 
 function getLongTermBucketLabel(bucket) {
-  return bucket === "watch" ? "관찰군" : "매수후보군";
+  if (bucket === "buy") {
+    return "본격매수";
+  }
+  if (bucket === "accumulate") {
+    return "분할매수";
+  }
+  return "관찰";
 }
 
 function getDividendBucketLabel(bucket) {
-  return bucket === "watch" ? "관찰군" : "배당후보군";
+  return bucket === "watch" ? "관찰" : "배당후보";
 }
 
 function getNonSwingBucketLabel(category, bucket) {
@@ -7917,7 +8075,7 @@ function getEnginePanelTitle(category) {
 
 function getEngineBucketLabel(category, group) {
   if (isDividendCategory(category)) {
-    return group === "watch candidate" ? "배당 관찰군" : "배당 후보군";
+    return group === "watch candidate" ? "배당 관찰" : "배당 후보";
   }
 
   return formatLongTermGroupLabel(group);
@@ -8225,12 +8383,18 @@ function syncLongTermBucketField() {
   }
 
   const buyOption = longTermBucketSelect?.querySelector('option[value="buy"]');
+  const accumulateOption = longTermBucketSelect?.querySelector('option[value="accumulate"]');
   const watchOption = longTermBucketSelect?.querySelector('option[value="watch"]');
   if (buyOption) {
-    buyOption.textContent = isDividendCategory(category) ? "배당후보군" : "매수후보군";
+    buyOption.textContent = isDividendCategory(category) ? "배당후보" : "본격매수";
+  }
+  if (accumulateOption) {
+    accumulateOption.textContent = isDividendCategory(category) ? "배당후보" : "분할매수";
+    accumulateOption.disabled = isDividendCategory(category);
+    accumulateOption.hidden = isDividendCategory(category);
   }
   if (watchOption) {
-    watchOption.textContent = "관찰군";
+    watchOption.textContent = "관찰";
   }
 
   if (latestDividendDateInput) {
@@ -8253,11 +8417,11 @@ function getLongTermBucketCounts(category = DEFAULT_CATEGORY) {
     .filter((item) => (item.category ?? DEFAULT_CATEGORY) === category)
     .reduce(
       (counts, item) => {
-        const bucket = item.longTermBucket === "watch" ? "watch" : "buy";
+        const bucket = isValidLongTermBucket(item.longTermBucket) ? item.longTermBucket : DEFAULT_LONG_TERM_BUCKET;
         counts[bucket] += 1;
         return counts;
       },
-      { buy: 0, watch: 0 }
+      { buy: 0, accumulate: 0, watch: 0 }
     );
 }
 
@@ -8293,8 +8457,8 @@ function getSwingBucketCounts() {
 function getCurrentFilterEmptyMessage() {
   if (isSwingCategory(currentCategory)) {
     return currentSwingBucket === "watch"
-      ? `${getSwingProfileLabel(currentSwingProfile)} 관심후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`
-      : `${getSwingProfileLabel(currentSwingProfile)} 매수후보 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`;
+      ? `${getSwingProfileLabel(currentSwingProfile)} 관찰 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`
+      : `${getSwingProfileLabel(currentSwingProfile)} 진입 가능 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`;
   }
 
   return `${getNonSwingBucketLabel(currentCategory, currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;
@@ -8875,7 +9039,13 @@ function showMoversError(text) {
 }
 
 function formatLongTermGroupLabel(group) {
-  return group === "buy candidate" ? "매수 가능 후보군" : "관찰 후보군";
+  if (group === "buy candidate") {
+    return "본격매수";
+  }
+  if (group === "accumulate candidate") {
+    return "분할매수";
+  }
+  return "관찰";
 }
 
 function formatLongTermLabel(label) {
@@ -8916,6 +9086,7 @@ const REVIEW_REASON_LABELS = {
   long_consolidation: "긴 박스권",
   constructive_higher_lows: "저점 높임 흐름",
   accumulation_support: "매집 수급 지지",
+  accumulate_candidate: "분할매수 후보",
   trend_improving: "추세 개선",
   financial_stable: "재무 안정",
   leader_quality: "대표주 성격",
@@ -9101,9 +9272,71 @@ function extractLongTermKeywords(note, bucket = DEFAULT_LONG_TERM_BUCKET) {
     if (
       normalized.includes("중장기 관찰 후보군") ||
       normalized.includes("중장기 매수 가능 후보군") ||
+      normalized.includes("중장기 본격 매수 후보군") ||
+      normalized.includes("중장기 분할매수 후보군") ||
       normalized.includes("watch candidate") ||
-      normalized.includes("buy candidate")
+      normalized.includes("accumulate candidate") ||
+      normalized.includes("buy candidate") ||
+      normalized === "관찰" ||
+      normalized === "분할매수" ||
+      normalized === "본격매수"
     ) {
+      continue;
+    }
+
+    if (normalized.includes("할인 충분")) {
+      pushKeyword("할인 충분");
+      continue;
+    }
+
+    if (normalized.includes("조건 충족")) {
+      pushKeyword("조건 충족");
+      continue;
+    }
+
+    if (normalized.includes("재무 우수")) {
+      pushKeyword("재무 우수");
+      continue;
+    }
+
+    if (normalized.includes("재무 확인")) {
+      pushKeyword("재무 확인");
+      continue;
+    }
+
+    if (normalized.includes("장기 추세 양호")) {
+      pushKeyword("추세 양호");
+      continue;
+    }
+
+    if (normalized.includes("장기 추세 보통")) {
+      pushKeyword("추세 보통");
+      continue;
+    }
+
+    if (normalized.includes("추세 회복 대기")) {
+      pushKeyword("추세 대기");
+      continue;
+    }
+
+    if (normalized.includes("바닥 안정")) {
+      pushKeyword("바닥 안정");
+      continue;
+    }
+
+    if (normalized.includes("바닥 확인 중")) {
+      pushKeyword("바닥 확인 중");
+      continue;
+    }
+
+    if (normalized.includes("바닥 대기")) {
+      pushKeyword("바닥 대기");
+      continue;
+    }
+
+    const simpleDrawdownMatch = normalized.match(/(\d+(?:\.\d+)?)%\s*조정/i);
+    if (simpleDrawdownMatch) {
+      pushKeyword(`${Math.round(Number(simpleDrawdownMatch[1]))}% 조정`);
       continue;
     }
 
@@ -9301,7 +9534,19 @@ function buildLongTermInsightFromReview(review, category = DEFAULT_CATEGORY) {
     return null;
   }
 
-  const bucket = candidate.candidateGroup === "watch candidate" ? "watch" : "buy";
+  const bucket =
+    candidate.candidateGroup === "buy candidate"
+      ? "buy"
+      : candidate.candidateGroup === "accumulate candidate"
+        ? "accumulate"
+        : "watch";
+  const decisionView = category === DIVIDEND_CATEGORY ? null : buildLongTermDecisionView(candidate);
+  const longTermCardSummary =
+    decisionView?.stage === "buy"
+      ? "조건 충족"
+      : decisionView?.stage === "accumulate"
+        ? "할인 충분 + 확인 필요"
+        : "관찰 유지";
   const keywords =
     category === DIVIDEND_CATEGORY
       ? [
@@ -9316,20 +9561,12 @@ function buildLongTermInsightFromReview(review, category = DEFAULT_CATEGORY) {
           candidate.dividendMetrics?.payoutRatio != null ? `배당성향 ${Math.round(candidate.dividendMetrics.payoutRatio)}%` : null
         ].filter(Boolean)
       : [
-          formatLongTermLabel(candidate.label),
-          `총점 ${candidate.scores.totalScore}점`,
-          candidate.drawdownPct != null ? `낙폭 ${Math.round(Math.abs(candidate.drawdownPct))}%` : null,
-          candidate.baseStructure.isStabilizing
-            ? "바닥 안정화"
-            : candidate.baseStructure.higherLowCount >= 2
-              ? "바닥 형성 중"
-              : "바닥 미완성",
-          candidate.financials?.financialMomentum === "deteriorating"
-            ? "실적 둔화"
-            : candidate.financials?.operatingProfitTrend === "improving" || candidate.financials?.netIncomeTrend === "improving"
-              ? "실적 개선"
-              : null
-        ].filter(Boolean);
+          longTermCardSummary,
+          ...(decisionView?.positives ?? []),
+          ...(decisionView?.negatives ?? [])
+        ]
+          .filter(Boolean)
+          .slice(0, 4);
 
   return {
     bucket,
@@ -9390,11 +9627,21 @@ function getLongTermReviewAssessment(review, category = DEFAULT_CATEGORY) {
       className: "ready",
       groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
       statusLabel: formatLongTermLabel(candidate.label),
-      action: category === DIVIDEND_CATEGORY ? "배당 후보군 검토 가능" : "분할매수 검토 가능",
+      action: category === DIVIDEND_CATEGORY ? "배당 후보 검토 가능" : "본격 매수 검토 가능",
       summary:
         category === DIVIDEND_CATEGORY
           ? formatDividendReviewSummary(candidate.reasonSummary)
           : formatLongTermSummary(candidate.reasonSummary, "buy")
+    };
+  }
+
+  if (review.enginePass && candidate.candidateGroup === "accumulate candidate") {
+    return {
+      className: "caution",
+      groupLabel: getEngineBucketLabel(category, candidate.candidateGroup),
+      statusLabel: formatLongTermLabel(candidate.label),
+      action: "분할매수 검토 가능",
+      summary: formatLongTermSummary(candidate.reasonSummary, "accumulate")
     };
   }
 
@@ -9411,7 +9658,14 @@ function getLongTermReviewAssessment(review, category = DEFAULT_CATEGORY) {
     summary:
       category === DIVIDEND_CATEGORY
         ? formatDividendReviewSummary(candidate.reasonSummary)
-        : formatLongTermSummary(candidate.reasonSummary, candidate.candidateGroup === "buy candidate" ? "buy" : "watch")
+        : formatLongTermSummary(
+            candidate.reasonSummary,
+            candidate.candidateGroup === "buy candidate"
+              ? "buy"
+              : candidate.candidateGroup === "accumulate candidate"
+                ? "accumulate"
+                : "watch"
+          )
   };
 }
 
@@ -9425,76 +9679,6 @@ function formatVolumeProfilePrice(value) {
 
 function formatVolumeProfilePercent(value) {
   return Number.isFinite(value) ? `${formatDecimal(value * 100, 1)}%` : "-";
-}
-
-function renderSwingVolumeProfilePanel(profile) {
-  if (!profile?.baseTerm) {
-    return "";
-  }
-  const advanced = profile.advancedVolumeProfile ?? profile.baseTerm.advancedVolumeProfile ?? {};
-
-  return `
-    <section class="swing-pattern-panel">
-      <div class="swing-pattern-head">
-        <div>
-          <h4>스윙 매물대 분석</h4>
-          <div class="swing-pattern-copy">${escapeHtml(profile.summary ?? profile.baseTerm.comment ?? "")}</div>
-        </div>
-        <span class="stock-pattern-pill ${profile.score > 8 ? "complete" : profile.score < -8 ? "caution" : "watch"}">${formatSignedDecimal(profile.score)}점</span>
-      </div>
-      <div class="metric-grid swing-metric-grid">
-        <div class="metric">
-          <span class="metric-label">단기 위/아래 매물비</span>
-          <span class="metric-value">${escapeHtml(formatVolumeProfileRatio(profile.shortTerm?.supplyRatio))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">스윙 매물대 점수</span>
-          <span class="metric-value">${formatSignedDecimal(profile.score)}점</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">주요 단기 매물대</span>
-          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(profile.shortTerm?.nearestMajorVolumePrice))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">추격 위험</span>
-          <span class="metric-value">${formatNumber(profile.chaseRiskBySupply)}점</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">돌파 신뢰도</span>
-          <span class="metric-value">${formatNumber(profile.breakoutReliabilityBySupply)}점</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">눌림 지지 품질</span>
-          <span class="metric-value">${formatNumber(profile.pullbackSupportQuality)}점</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">다음 저항 여력</span>
-          <span class="metric-value">${escapeHtml(formatVolumeProfilePercent(advanced.upsideToResistance))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">손익비</span>
-          <span class="metric-value">${escapeHtml(formatDecimal(advanced.rewardRiskRatio, 2))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">POC / VA</span>
-          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(advanced.pocPrice))} / ${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaLow))}~${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaHigh))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">리테스트</span>
-          <span class="metric-value">${formatSignedDecimal(advanced.retestSuccessScore ?? 0, 0)} / ${formatSignedDecimal(advanced.retestFailureRisk ?? 0, 0)}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">Profile 신뢰도</span>
-          <span class="metric-value">${formatNumber(advanced.profileReliability)}점</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">동적 bin / ATR</span>
-          <span class="metric-value">${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
-        </div>
-      </div>
-      <div class="swing-pattern-copy">매물대 점수는 보조 지표이며 단독 매수 신호가 아닙니다.</div>
-    </section>
-  `;
 }
 
 function renderLongTermVolumeProfilePanel(profile) {
@@ -9562,6 +9746,302 @@ function renderLongTermVolumeProfilePanel(profile) {
   `;
 }
 
+function renderLongTermStageExplanation(explanation) {
+  if (!explanation || !Array.isArray(explanation.factors)) {
+    return "";
+  }
+
+  const stageLabel =
+    explanation.stage === "buy" ? "BUY" : explanation.stage === "accumulate" ? "ACCUMULATE" : "WATCH";
+
+  return `
+    <div class="engine-explain-panel">
+      <div class="engine-explain-head">
+        <span class="engine-explain-stage">${escapeHtml(stageLabel)}</span>
+        <span>${escapeHtml(explanation.summary ?? "")}</span>
+      </div>
+      <div class="engine-explain-list">
+        ${explanation.factors
+          .map(
+            (factor) => `
+              <div class="engine-explain-item ${escapeHtml(factor.tone ?? "caution")}">
+                <span>${escapeHtml(factor.label ?? "")}</span>
+                ${factor.score != null ? `<strong>${formatSignedDecimal(factor.score, 0)}점</strong>` : ""}
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function getLongTermStage(candidate) {
+  if (candidate?.candidateGroup === "buy candidate") {
+    return "buy";
+  }
+  if (candidate?.candidateGroup === "accumulate candidate") {
+    return "accumulate";
+  }
+  return "watch";
+}
+
+function getLongTermStageLabel(stage) {
+  if (stage === "buy") {
+    return "본격매수";
+  }
+  if (stage === "accumulate") {
+    return "분할매수";
+  }
+  return "관찰";
+}
+
+function getLongTermTypeLabel(type) {
+  switch (type) {
+    case "leader":
+      return "대표주";
+    case "quality":
+      return "우량주";
+    case "deep_value":
+      return "가치주";
+    case "turnaround":
+      return "턴어라운드";
+    default:
+      return "-";
+  }
+}
+
+function getLongTermAxisState(score, good = 65, normal = 48) {
+  if (score >= good) {
+    return { stateLabel: "좋음", className: "good", stars: "★★★★★" };
+  }
+  if (score >= normal) {
+    return { stateLabel: "보통", className: "normal", stars: "★★★☆☆" };
+  }
+  return { stateLabel: "부족", className: "weak", stars: "★★☆☆☆" };
+}
+
+function buildLongTermDecisionView(candidate) {
+  if (!candidate) {
+    return null;
+  }
+
+  const stage = getLongTermStage(candidate);
+  const drawdown = Math.abs(candidate.drawdownPct ?? 0);
+  const volumeScore = candidate.scores?.volumeProfileScore ?? 0;
+  const trendScore = candidate.scores?.trendScore ?? 0;
+  const stabilizationScore = candidate.scores?.stabilizationScore ?? 0;
+  const financialScore = candidate.scores?.financialScore ?? 0;
+  const priceScore = candidate.scores?.correctionScore ?? 0;
+  const liquidityScore = candidate.scores?.liquidityScore ?? 0;
+  const isStableBase = Boolean(candidate.baseStructure?.isStabilizing);
+  const hasBaseProgress = isStableBase || (candidate.baseStructure?.higherLowCount ?? 0) >= 1;
+  const hasFinancialStrength = financialScore >= 65 && candidate.financials?.financialMomentum !== "deteriorating";
+  const trendGood = trendScore >= 55;
+  const volumeSupport = volumeScore >= 8;
+  const overheadRisk = volumeScore < 0;
+
+  const statusCopy =
+    stage === "buy"
+      ? "할인, 추세, 재무, 바닥 안정성이 함께 맞아 본격 매수를 검토할 수 있습니다."
+      : stage === "accumulate"
+        ? "충분한 할인은 나왔지만 바닥 안정화나 추세 확인은 조금 더 필요합니다."
+        : "좋은 후보일 수 있지만 아직 가격, 추세, 바닥 조건 중 확인할 항목이 남아 있습니다.";
+
+  const actionItems =
+    stage === "buy"
+      ? ["본격 매수 검토 가능", "단기 급등 구간에서는 한 번에 따라붙지 않기", "기준 이탈 시 비중 축소 기준 먼저 정하기"]
+      : stage === "accumulate"
+        ? ["1차 분할매수 가능", "추격매수는 권장하지 않음", "추가 조정 또는 바닥 확인 시 비중 확대"]
+        : ["아직 관찰 유지", "장기 추세와 바닥 안정화 확인", "거래량 증가 또는 저점 상승 구조 확인 후 진입"];
+
+  const axes = [
+    {
+      key: "discount",
+      label: "가격 할인",
+      value: drawdown ? `${Math.round(drawdown)}% 조정` : "-",
+      ...getLongTermAxisState(priceScore, 68, 50)
+    },
+    {
+      key: "trend",
+      label: "장기 추세",
+      value: trendGood ? "회복 구간" : trendScore >= 42 ? "확인 중" : "약함",
+      ...getLongTermAxisState(trendScore, 58, 42)
+    },
+    {
+      key: "base",
+      label: "바닥 안정성",
+      value: isStableBase ? "안정화" : hasBaseProgress ? "형성 중" : "미완성",
+      ...getLongTermAxisState(stabilizationScore, 62, 45)
+    },
+    {
+      key: "financial",
+      label: "재무 안정성",
+      value: hasFinancialStrength ? "우수" : financialScore >= 55 ? "보통" : "확인 필요",
+      ...getLongTermAxisState(financialScore, 65, 52)
+    },
+    {
+      key: "supply",
+      label: "매물대",
+      value: volumeSupport ? "지지" : overheadRisk ? "저항" : "중립",
+      ...getLongTermAxisState(volumeScore + 50, 58, 48)
+    }
+  ];
+
+  const positives = [];
+  const negatives = [];
+  if (priceScore >= 68) positives.push("충분한 가격 할인");
+  else negatives.push("아직 할인 폭이 부족하거나 애매함");
+  if (hasFinancialStrength) positives.push("재무 안정성 양호");
+  else negatives.push("재무 회복 확인 필요");
+  if (trendGood) positives.push("장기 추세 회복 흐름");
+  else negatives.push("장기 추세 확인 필요");
+  if (isStableBase) positives.push("바닥 안정화 확인");
+  else if (hasBaseProgress) negatives.push("바닥 형성은 진행 중");
+  else negatives.push("바닥 안정화 부족");
+  if (volumeSupport) positives.push("장기 매물대 지지");
+  else if (overheadRisk) negatives.push("위 매물대 저항 존재");
+  if ((candidate.structure?.priceVsMA120Pct ?? 0) > 12) {
+    negatives.push("최근 반등폭이 커 추격매수 부담");
+  }
+
+  return {
+    stage,
+    stageLabel: getLongTermStageLabel(stage),
+    typeLabel: getLongTermTypeLabel(candidate.candidateType),
+    statusCopy,
+    actionItems,
+    axes,
+    positives: positives.slice(0, 4),
+    negatives: negatives.slice(0, 4),
+    score: candidate.scores?.totalScore,
+    debug: {
+      rawScore: candidate.scores?.rawScore,
+      baseScore: candidate.scores?.baseScore,
+      bonusScore: candidate.scores?.bonusScore
+    }
+  };
+}
+
+function renderLongTermDecisionPanel(candidate) {
+  const view = buildLongTermDecisionView(candidate);
+  if (!view) {
+    return "";
+  }
+
+  return `
+    <div class="long-term-decision">
+      <div class="long-term-decision-hero ${escapeHtml(view.stage)}">
+        <div>
+          <span class="long-term-stage-label">${escapeHtml(view.stageLabel)}</span>
+          <p>${escapeHtml(view.statusCopy)}</p>
+        </div>
+        <span class="long-term-type-pill">${escapeHtml(view.typeLabel)}</span>
+      </div>
+      <div class="long-term-action-box">
+        <h5>추천 전략</h5>
+        <ul>
+          ${view.actionItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </div>
+      <div class="long-term-axis-grid">
+        ${view.axes
+          .map(
+            (axis) => `
+              <div class="long-term-axis ${escapeHtml(axis.className)}">
+                <span>${escapeHtml(axis.label)}</span>
+                <strong>${escapeHtml(axis.stateLabel)}</strong>
+                <em>${escapeHtml(axis.stars)}</em>
+                <small>${escapeHtml(axis.value)}</small>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+      <div class="long-term-explain-columns">
+        <div>
+          <h5>좋은 점</h5>
+          <ul>
+            ${(view.positives.length ? view.positives : ["아직 뚜렷한 강점 확인 전"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </div>
+        <div>
+          <h5>부족한 점</h5>
+          <ul>
+            ${(view.negatives.length ? view.negatives : ["큰 결함은 제한적"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderLongTermAdvancedDetails(candidate) {
+  if (!candidate) {
+    return "";
+  }
+
+  const profile = candidate.longTermVolumeProfile;
+  const representative = profile?.threeYear?.lookbackDays >= 480 ? profile.threeYear : profile?.twoYear?.lookbackDays >= 240 ? profile.twoYear : profile?.oneYear;
+  const advanced = profile?.advancedVolumeProfile ?? representative?.advancedVolumeProfile ?? {};
+
+  return `
+    <details class="long-term-debug-details">
+      <summary>고급 지표 보기</summary>
+      <div class="metric-grid swing-metric-grid">
+        <div class="metric">
+          <span class="metric-label">총점 / 원시 / 기본 / 보조</span>
+          <span class="metric-value">${candidate.scores.totalScore} / ${formatNumber(candidate.scores.rawScore)} / ${formatNumber(candidate.scores.baseScore)} / ${formatSignedDecimal(candidate.scores.bonusScore, 0)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">내부 유형</span>
+          <span class="metric-value">${escapeHtml(getLongTermTypeLabel(candidate.candidateType))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">대표성 / 가격 매력</span>
+          <span class="metric-value">${candidate.scores.leaderScore} / ${candidate.scores.correctionScore}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">장기 추세 / 바닥 안정성</span>
+          <span class="metric-value">${candidate.scores.trendScore} / ${candidate.scores.stabilizationScore}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">거래 안정성 / 재무 안정성</span>
+          <span class="metric-value">${candidate.scores.liquidityScore} / ${candidate.scores.financialScore}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">저점 상승 구조</span>
+          <span class="metric-value">${candidate.baseStructure.higherLowQualityScore != null ? `${formatNumber(candidate.baseStructure.higherLowQualityScore)}점` : "-"}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">MA120 / MA240 기울기</span>
+          <span class="metric-value">${formatSignedDecimal(candidate.structure.ma120Slope)} / ${formatSignedDecimal(candidate.structure.ma240Slope)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">최근 저점 / Base 기간</span>
+          <span class="metric-value">${formatNumber(candidate.baseStructure.daysSinceLastLowBreak)}일 / ${formatNumber(candidate.baseStructure.baseDurationDays)}일</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">매물대 점수 / 위아래 매물비</span>
+          <span class="metric-value">${profile ? `${formatSignedDecimal(profile.score)}점 / ${escapeHtml(formatVolumeProfileRatio(representative?.supplyRatio))}` : "-"}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">POC / VA</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(advanced.pocPrice))} / ${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaLow))}~${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaHigh))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Profile / Bin / ATR</span>
+          <span class="metric-value">${formatNumber(advanced.profileReliability)} / ${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">매출 / 영업이익 / ROE / 부채</span>
+          <span class="metric-value">${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.revenueTrend ?? candidate.fundamentals?.revenueTrend))} / ${escapeHtml(formatLongTermFundamentalTrend(candidate.financials?.operatingProfitTrend ?? candidate.fundamentals?.operatingProfitTrend))} / ${(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe) != null ? `${formatSignedDecimal(candidate.financials?.latestRoe ?? candidate.fundamentals?.latestRoe)}%` : "-"} / ${(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio) != null ? `${formatDecimal(candidate.financials?.latestDebtRatio ?? candidate.fundamentals?.latestDebtRatio)}%` : "-"}</span>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = null) {
   if (!review) {
     return "";
@@ -9572,12 +10052,28 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
   const engineLabel = getEngineDisplayLabel(category);
   const candidateGroupLabel = candidate ? getEngineBucketLabel(category, candidate.candidateGroup) : "-";
   const dividendHistoryPanel = buildDividendHistoryPanel(item);
+
+  if (!isDividendCategory(category)) {
+    return `
+      <section class="swing-pattern-panel long-term-user-panel">
+        <div class="swing-pattern-head">
+          <div>
+            <h4>중장기 판단</h4>
+          </div>
+          <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
+        </div>
+        ${candidate ? renderLongTermDecisionPanel(candidate) : `<div class="swing-pattern-copy">${escapeHtml(assessment.summary)}</div>`}
+        ${candidate ? renderLongTermAdvancedDetails(candidate) : ""}
+      </section>
+    `;
+  }
+
   const metricGrid = candidate
     ? category === DIVIDEND_CATEGORY
       ? `
             <div class="metric-grid swing-metric-grid">
               <div class="metric">
-                <span class="metric-label">후보군</span>
+                <span class="metric-label">상태</span>
                 <span class="metric-value">${escapeHtml(candidateGroupLabel)}</span>
               </div>
               <div class="metric">
@@ -9649,7 +10145,7 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
       : `
             <div class="metric-grid swing-metric-grid">
               <div class="metric">
-                <span class="metric-label">후보군</span>
+                <span class="metric-label">상태</span>
                 <span class="metric-value">${escapeHtml(candidateGroupLabel)}</span>
               </div>
               <div class="metric">
@@ -9659,6 +10155,14 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
               <div class="metric">
                 <span class="metric-label">총점</span>
                 <span class="metric-value">${candidate.scores.totalScore}점</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">원시/기본/보조</span>
+                <span class="metric-value">${formatNumber(candidate.scores.rawScore)} / ${formatNumber(candidate.scores.baseScore)} / ${formatSignedDecimal(candidate.scores.bonusScore, 0)}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">내부 유형</span>
+                <span class="metric-value">${escapeHtml(candidate.candidateType ?? "-")}</span>
               </div>
               <div class="metric">
                 <span class="metric-label">고점 대비</span>
@@ -9745,6 +10249,7 @@ function renderLongTermReviewPanel(review, category = DEFAULT_CATEGORY, item = n
         <span class="stock-pattern-pill ${escapeHtml(assessment.className)}">${escapeHtml(assessment.groupLabel)}</span>
       </div>
       ${metricGrid}
+      ${!isDividendCategory(category) ? renderLongTermStageExplanation(candidate?.stageExplanation) : ""}
       ${dividendHistoryPanel}
     </section>
   `;
@@ -9766,13 +10271,57 @@ function renderCard(item) {
           <div class="meta-line" data-live-sync-line>실시간 시세 동기화 대기</div>
           ${dividendInfoLine ? `<div class="meta-line">${escapeHtml(dividendInfoLine)}</div>` : ""}
           ${
-            item.swingAssessment
-              ? `<div class="meta-line">스윙 판정 ${escapeHtml(item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
+            item.swingAssessment && item.swingPatternAnalysis
+              ? `<div class="meta-line">스윙 대응 ${escapeHtml(buildSwingDecisionView(item.swingPatternAnalysis, item.swingAssessment, item.note, item.swingBucket)?.stageLabel ?? item.swingAssessment.label)} / ${escapeHtml(item.swingAssessment.action)}</div>`
               : ""
           }
         </div>
         <div class="return-pill ${returnClass}" data-live-return-pill>
           ${formatPercent(item.returnSinceAnchor)}
+        </div>
+      </div>
+
+      ${item.category === "swing" ? renderSwingDecisionPanel(item.swingPatternAnalysis, item.swingAssessment, item) : ""}
+      ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview, item.category ?? DEFAULT_CATEGORY, item) : ""}
+
+      <div class="chart-wrap">
+        <div class="chart-toolbar">
+          ${timeframes
+            .map(
+              (timeframe) => `
+                <button class="timeframe-tab ${timeframe === item.activeTimeframe ? "active" : ""}" type="button" data-timeframe="${timeframe}">
+                  ${timeframeLabels[timeframe]}
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+        <div class="chart-box interactive-chart-box">
+          <div class="chart-hint">마우스 휠로 확대/축소, 드래그로 이동, 십자선 툴팁을 지원합니다.</div>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-line ma5"></span>5일선</span>
+            <span class="legend-item"><span class="legend-line ma20"></span>20일선</span>
+            <span class="legend-item"><span class="legend-line ma60"></span>60일선</span>
+            <span class="legend-item"><span class="legend-line ma120"></span>120일선</span>
+            ${
+              item.category === "swing"
+                ? `
+                  <span class="legend-item"><span class="legend-line envelope-upper"></span>상단 기준선</span>
+                  <span class="legend-item"><span class="legend-line envelope-lower"></span>하단 기준선</span>
+                `
+                : ""
+            }
+          </div>
+          <div id="chartStack" class="chart-stack">
+            <div id="priceChartContainer" class="chart-canvas chart-canvas-price"></div>
+            <div id="volumeChartContainer" class="chart-canvas chart-canvas-volume"></div>
+          </div>
+          <div id="chartTooltip" class="chart-tooltip hidden"></div>
+          <div class="chart-caption">
+            <span class="timeframe-caption">${timeframeLabels[item.activeTimeframe]}</span>
+            <span data-live-chart-start>${escapeHtml(item.chartWindow.startDate)}</span>
+            <span data-live-chart-end>${escapeHtml(item.chartWindow.endDate)}</span>
+          </div>
         </div>
       </div>
 
@@ -9810,52 +10359,6 @@ function renderCard(item) {
           <span class="metric-value" data-live-latest-volume-ratio>${formatMultiplier(item.latestVolumeVs20d)}</span>
         </div>
       </div>
-
-      <div class="chart-wrap">
-        <div class="chart-toolbar">
-          ${timeframes
-            .map(
-              (timeframe) => `
-                <button class="timeframe-tab ${timeframe === item.activeTimeframe ? "active" : ""}" type="button" data-timeframe="${timeframe}">
-                  ${timeframeLabels[timeframe]}
-                </button>
-              `
-            )
-            .join("")}
-        </div>
-        <div class="chart-box interactive-chart-box">
-          <div class="chart-hint">마우스 휠로 확대/축소, 드래그로 이동, 십자선 툴팁을 지원합니다.</div>
-          <div class="chart-legend">
-            <span class="legend-item"><span class="legend-line ma5"></span>5일선</span>
-            <span class="legend-item"><span class="legend-line ma20"></span>20일선</span>
-            <span class="legend-item"><span class="legend-line ma60"></span>60일선</span>
-            <span class="legend-item"><span class="legend-line ma120"></span>120일선</span>
-            ${
-              item.category === "swing"
-                ? `
-                  <span class="legend-item"><span class="legend-line envelope-upper"></span>엔벨로프 상단</span>
-                  <span class="legend-item"><span class="legend-line envelope-lower"></span>엔벨로프 하단</span>
-                `
-                : ""
-            }
-          </div>
-          <div id="chartStack" class="chart-stack">
-            <div id="priceChartContainer" class="chart-canvas chart-canvas-price"></div>
-            <div id="volumeChartContainer" class="chart-canvas chart-canvas-volume"></div>
-          </div>
-          <div id="chartTooltip" class="chart-tooltip hidden"></div>
-          <div class="chart-caption">
-            <span class="timeframe-caption">${timeframeLabels[item.activeTimeframe]}</span>
-            <span data-live-chart-start>${escapeHtml(item.chartWindow.startDate)}</span>
-            <span data-live-chart-end>${escapeHtml(item.chartWindow.endDate)}</span>
-          </div>
-        </div>
-      </div>
-
-      ${renderSwingPatternPanel(item.swingPatternAnalysis, item.swingAssessment)}
-      ${item.category === "swing" ? renderSwingVolumeProfilePanel(item.swingPatternAnalysis?.pattern?.swingVolumeProfile) : ""}
-      ${item.category !== "swing" ? renderLongTermReviewPanel(item.longTermReview, item.category ?? DEFAULT_CATEGORY, item) : ""}
-      ${item.category !== "swing" ? renderLongTermVolumeProfilePanel(item.longTermReview?.candidate?.longTermVolumeProfile) : ""}
 
       <div class="fundamentals-wrap">
         ${renderFundamentals(item.fundamentals, {
@@ -10304,21 +10807,209 @@ function formatSwingBuyLevel(segment, index) {
   return `${index + 1}차 ${trimmed}`;
 }
 
-function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
-  if (!swingPatternAnalysis || !swingPatternAnalysis.pattern || !swingAssessment) {
-    return "";
+function getSwingAxisState(score, good = 70, normal = 45) {
+  if (score >= good) {
+    return { stateLabel: "좋음", className: "good", stars: "★★★★★" };
+  }
+  if (score >= normal) {
+    return { stateLabel: "보통", className: "normal", stars: "★★★☆☆" };
+  }
+  return { stateLabel: "부족", className: "weak", stars: "★★☆☆☆" };
+}
+
+function buildSwingDecisionView(swingPatternAnalysis, swingAssessment, note = "", swingBucket = DEFAULT_SWING_BUCKET) {
+  const pattern = swingPatternAnalysis?.pattern;
+  if (!pattern || !swingAssessment) {
+    return null;
   }
 
-  const pattern = swingPatternAnalysis.pattern;
-  const scoreReasons = encodeURIComponent(JSON.stringify(pattern.reasons?.length ? pattern.reasons : [pattern.summary]));
-  const scoreDescription = encodeURIComponent(swingAssessment.description);
-  const scoreSummary = encodeURIComponent(pattern.summary ?? "");
-  const scoreGuide = encodeURIComponent(swingScoreGuideText);
-  const scoreAction = encodeURIComponent(swingAssessment.action);
-  const scoreEntry = encodeURIComponent(formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh));
-  const scoreInvalidation = encodeURIComponent(
-    typeof pattern.invalidationPrice === "number" ? `${formatNumber(pattern.invalidationPrice)}원` : "-"
-  );
+  const profile = pattern.swingVolumeProfile;
+  const advanced = profile?.advancedVolumeProfile ?? profile?.baseTerm?.advancedVolumeProfile ?? {};
+  const tradePlan = getSwingCardTradePlan(note, pattern, swingBucket);
+  const tradeOverlay = getSwingTradeOverlay(note, pattern);
+  const status = swingAssessment.status;
+  const currentPriceDistance = pattern.referenceCloseVsBreakoutLevelPercent;
+  const priceScore =
+    status === "buy_ready"
+      ? 85
+      : status === "pullback_ready" || status === "breakout_ready"
+        ? 65
+        : status === "breakout_confirmed"
+          ? 58
+          : status === "breakout_extended"
+            ? 25
+            : status === "broken"
+              ? 12
+              : 40;
+  const pullbackScore =
+    status === "buy_ready" || status === "pullback_ready"
+      ? 82
+      : status === "pullback_early"
+        ? 48
+        : status === "breakout_ready" || status === "breakout_confirmed"
+          ? 62
+          : status === "breakout_extended"
+            ? 28
+            : 35;
+  const flowScore =
+    status === "none"
+      ? 30
+      : pattern.leadInDate
+        ? status === "broken"
+          ? 42
+          : 66
+        : 45;
+  const supplyScore =
+    profile?.pullbackSupportQuality != null || profile?.score != null
+      ? Math.max(0, Math.min(100, 50 + (profile.score ?? 0) + (profile.pullbackSupportQuality ?? 0) * 0.35 - (profile.chaseRiskBySupply ?? 0) * 0.25))
+      : 45;
+  const chaseRisk = profile?.chaseRiskBySupply ?? (status === "breakout_extended" ? 80 : 35);
+  const riskScore =
+    status === "broken"
+      ? 12
+      : status === "breakout_extended"
+        ? 18
+        : status === "buy_ready" && chaseRisk < 55
+          ? 78
+          : status === "pullback_ready" || status === "breakout_ready"
+            ? 60
+            : 42;
+
+  const stage =
+    status === "buy_ready"
+      ? "buy"
+      : status === "breakout_ready" || status === "breakout_confirmed"
+        ? "wait_breakout"
+        : status === "breakout_extended" || status === "broken"
+          ? "no_chase"
+          : "watch";
+  const stageLabel =
+    stage === "buy"
+      ? "매수 가능"
+      : stage === "wait_breakout"
+        ? "돌파 대기"
+        : stage === "no_chase"
+          ? "추격 금지"
+          : "관찰";
+  const className =
+    stage === "buy"
+      ? "buy"
+      : stage === "wait_breakout"
+        ? "wait-breakout"
+        : stage === "no_chase"
+          ? "no-chase"
+          : "watch";
+  const statusCopy =
+    stage === "buy"
+      ? "진입 구간에 도달했습니다. 분할매수와 손절 기준을 함께 확인할 구간입니다."
+      : stage === "wait_breakout"
+        ? "구조는 살아 있지만 지금 바로 따라가기보다 돌파 안착을 기다리는 구간입니다."
+        : stage === "no_chase"
+          ? status === "broken"
+            ? "핵심 가격을 이탈해 신규 진입을 피해야 하는 상태입니다."
+            : "급등 이후 가격 부담이 커 신규 추격 진입은 불리합니다."
+          : "아직 눌림이나 가격 확인이 충분하지 않습니다.";
+
+  const actionItems =
+    stage === "buy"
+      ? [
+          tradePlan.buyLevels.length ? `현재 분할매수 가능: ${tradePlan.buyLevels.join(" / ")}` : "현재 분할매수 가능",
+          `손절 기준: ${tradePlan.stop}`,
+          "목표는 이전 고점 또는 돌파 후 힘이 약해지는 구간"
+        ]
+      : stage === "wait_breakout"
+        ? [
+            "지금은 돌파 안착 확인 대기",
+            tradePlan.buySummary !== "-" ? `진입 구간: ${tradePlan.buySummary}` : "진입 구간 재접근 시 분할매수 검토",
+            `이탈 시 관찰 종료: ${tradePlan.stop}`
+          ]
+        : stage === "no_chase"
+          ? [
+              "신규 추격매수 금지",
+              "눌림이 다시 형성될 때까지 대기",
+              tradePlan.stop !== "-" ? `기준 이탈 가격: ${tradePlan.stop}` : "핵심 지지선 회복 전까지 보류"
+            ]
+          : [
+              "아직 관찰",
+              tradePlan.buySummary !== "-" ? `진입 구간 도달 시 분할매수 검토: ${tradePlan.buySummary}` : "눌림이 충분해질 때까지 대기",
+              tradePlan.stop !== "-" ? `이탈 시 제외 기준: ${tradePlan.stop}` : "이탈 기준이 명확해질 때까지 대기"
+            ];
+
+  const supportPrice = profile?.shortTerm?.nearestMajorVolumePrice;
+  const axes = [
+    {
+      key: "price",
+      label: "가격 위치",
+      value:
+        currentPriceDistance == null
+          ? swingAssessment.label
+          : currentPriceDistance > 8
+            ? "돌파선과 거리 큼"
+            : currentPriceDistance >= -3
+              ? "핵심 가격 근처"
+              : "재확인 필요",
+      ...getSwingAxisState(priceScore, 70, 45)
+    },
+    {
+      key: "pullback",
+      label: "눌림 품질",
+      value: pattern.pullbackRangePercent == null ? swingAssessment.label : `${formatDecimal(pattern.pullbackRangePercent, 1)}% 소화`,
+      ...getSwingAxisState(pullbackScore, 70, 45)
+    },
+    {
+      key: "flow",
+      label: "수급",
+      value: pattern.leadInDate ? "선행 수급 확인" : "확인 필요",
+      ...getSwingAxisState(flowScore, 62, 42)
+    },
+    {
+      key: "supply",
+      label: "매물대",
+      value: Number.isFinite(supportPrice) ? `지지 ${formatNumber(supportPrice)}원` : profile?.score > 0 ? "지지 우위" : "확인 필요",
+      ...getSwingAxisState(supplyScore, 62, 44)
+    },
+    {
+      key: "risk",
+      label: "위험도",
+      value: chaseRisk >= 60 || stage === "no_chase" ? "추격 부담" : "관리 가능",
+      ...getSwingAxisState(riskScore, 65, 45)
+    }
+  ];
+
+  const positives = [];
+  const negatives = [];
+  if (stage === "buy") positives.push("진입 구간 도달");
+  if (pullbackScore >= 70) positives.push("충분한 눌림");
+  else negatives.push("아직 눌림 확인 부족");
+  if (pattern.leadInDate) positives.push("선행 수급 확인");
+  else negatives.push("수급 근거 확인 필요");
+  if ((profile?.pullbackSupportQuality ?? 0) >= 6 || (profile?.score ?? 0) > 8) positives.push("지지 매물 존재");
+  else if (profile?.score != null && profile.score < -8) negatives.push("상단 매물 부담 존재");
+  if (stage === "wait_breakout") negatives.push("아직 돌파 확인 안됨");
+  if (stage === "no_chase" || chaseRisk >= 60) negatives.push("추격 시 손익비 불리");
+  if (status === "broken") negatives.push("핵심 지지선 이탈");
+  if (advanced.rewardRiskRatio != null && advanced.rewardRiskRatio < 1.2) negatives.push("손익비 매력 부족");
+
+  return {
+    stage,
+    stageLabel,
+    className,
+    summary: swingAssessment.label,
+    statusCopy,
+    actionItems,
+    axes,
+    positives: positives.slice(0, 4),
+    negatives: negatives.slice(0, 4),
+    cardReasons: [...positives, ...negatives].slice(0, 3),
+    score: pattern.finalRankScore ?? pattern.regimeAdjustedScore ?? pattern.patternScore,
+    tradePlan,
+    tradeOverlay,
+    advanced,
+    profile
+  };
+}
+
+function renderSwingAdvancedDetails(pattern, profile, advanced, swingAssessment) {
   const priceLocation =
     pattern.referenceCloseVsBreakoutLevelPercent == null
       ? "-"
@@ -10327,47 +11018,16 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
         }`;
 
   return `
-    <section class="swing-pattern-panel">
-      <div class="swing-pattern-head">
-        <div>
-          <h4>스윙 패턴 판정</h4>
-        </div>
-        <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingAssessment.label)}</span>
-      </div>
-
+    <details class="long-term-debug-details swing-debug-details">
+      <summary>고급 지표 보기</summary>
       <div class="metric-grid swing-metric-grid">
-        <button
-          class="metric metric-button"
-          type="button"
-          data-score-explain-toggle="modal"
-          data-score-label="${escapeHtml(swingAssessment.label)}"
-          data-score-description="${escapeHtml(scoreDescription)}"
-          data-score-summary="${escapeHtml(scoreSummary)}"
-          data-score-guide="${escapeHtml(scoreGuide)}"
-          data-score-action="${escapeHtml(scoreAction)}"
-          data-score-entry="${escapeHtml(scoreEntry)}"
-          data-score-invalidation="${escapeHtml(scoreInvalidation)}"
-          data-score-reasons="${escapeHtml(scoreReasons)}"
-        >
-          <span class="metric-label">상태 설명</span>
-          <span class="metric-value">${escapeHtml(swingAssessment.label)}</span>
-          <span class="metric-hint">눌러서 전략 보기</span>
-        </button>
+        <div class="metric">
+          <span class="metric-label">상태 / 내부 구조</span>
+          <span class="metric-value">${escapeHtml(swingAssessment.label)} / ${escapeHtml(getSwingStructureLabel(pattern))}</span>
+        </div>
         <div class="metric">
           <span class="metric-label">기준 윈도우</span>
           <span class="metric-value">${SWING_LOOKBACK_DAYS}거래일</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">내부 구조</span>
-          <span class="metric-value">${escapeHtml(getSwingStructureLabel(pattern))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">진입 구간</span>
-          <span class="metric-value">${escapeHtml(formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh))}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">이탈 기준</span>
-          <span class="metric-value">${typeof pattern.invalidationPrice === "number" ? `${formatNumber(pattern.invalidationPrice)}원` : "-"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">선행 수급일</span>
@@ -10379,11 +11039,7 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
         </div>
         <div class="metric">
           <span class="metric-label">급등 유지</span>
-          <span class="metric-value">${
-            pattern.surgeContinuationSessions == null
-              ? "-"
-              : `${escapeHtml(String(pattern.surgeContinuationSessions + 1))}거래일`
-          }</span>
+          <span class="metric-value">${pattern.surgeContinuationSessions == null ? "-" : `${escapeHtml(String(pattern.surgeContinuationSessions + 1))}거래일`}</span>
         </div>
         <div class="metric">
           <span class="metric-label">눌림 구간</span>
@@ -10413,7 +11069,122 @@ function renderSwingPatternPanel(swingPatternAnalysis, swingAssessment) {
                 : `${escapeHtml(String(pattern.sessionsSincePeak))}거래일`
           }</span>
         </div>
+        <div class="metric">
+          <span class="metric-label">매물대 점수 / 단기 매물비</span>
+          <span class="metric-value">${profile ? `${formatSignedDecimal(profile.score)}점 / ${escapeHtml(formatVolumeProfileRatio(profile.shortTerm?.supplyRatio))}` : "-"}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">추격 위험 / 돌파 신뢰도</span>
+          <span class="metric-value">${profile ? `${formatNumber(profile.chaseRiskBySupply)}점 / ${formatNumber(profile.breakoutReliabilityBySupply)}점` : "-"}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">POC / VA</span>
+          <span class="metric-value">${escapeHtml(formatVolumeProfilePrice(advanced.pocPrice))} / ${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaLow))}~${escapeHtml(formatVolumeProfilePrice(advanced.valueAreaHigh))}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">리테스트</span>
+          <span class="metric-value">${formatSignedDecimal(advanced.retestSuccessScore ?? 0, 0)} / ${formatSignedDecimal(advanced.retestFailureRisk ?? 0, 0)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Profile 신뢰도</span>
+          <span class="metric-value">${formatNumber(advanced.profileReliability)}점</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Dynamic Bin / ATR</span>
+          <span class="metric-value">${escapeHtml(formatDecimal(advanced.dynamicBinSize, 2))} / ${escapeHtml(formatDecimal(advanced.atr14, 2))}</span>
+        </div>
       </div>
+    </details>
+  `;
+}
+
+function renderSwingDecisionPanel(swingPatternAnalysis, swingAssessment, item = null) {
+  const view = buildSwingDecisionView(swingPatternAnalysis, swingAssessment, item?.note ?? "", item?.swingBucket ?? DEFAULT_SWING_BUCKET);
+  if (!view) {
+    return "";
+  }
+
+  const pattern = swingPatternAnalysis.pattern;
+  const scoreReasons = encodeURIComponent(JSON.stringify(pattern.reasons?.length ? pattern.reasons : [pattern.summary]));
+  const scoreDescription = encodeURIComponent(swingAssessment.description);
+  const scoreSummary = encodeURIComponent(pattern.summary ?? "");
+  const scoreGuide = encodeURIComponent(swingScoreGuideText);
+  const scoreAction = encodeURIComponent(swingAssessment.action);
+  const scoreEntry = encodeURIComponent(formatSwingPriceBand(pattern.entryZoneLow, pattern.entryZoneHigh));
+  const scoreInvalidation = encodeURIComponent(
+    typeof pattern.invalidationPrice === "number" ? `${formatNumber(pattern.invalidationPrice)}원` : "-"
+  );
+
+  return `
+    <section class="swing-pattern-panel swing-user-panel">
+      <div class="swing-pattern-head">
+        <div>
+          <h4>스윙 대응 전략</h4>
+        </div>
+        <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(view.summary)}</span>
+      </div>
+
+      <div class="long-term-decision swing-decision">
+        <div class="long-term-decision-hero ${escapeHtml(view.className)}">
+          <div>
+            <span class="long-term-stage-label">${escapeHtml(view.stageLabel)}</span>
+            <p>${escapeHtml(view.statusCopy)}</p>
+          </div>
+          ${view.score != null ? `<span class="long-term-type-pill">점수 ${formatNumber(view.score)}</span>` : ""}
+        </div>
+        <div class="long-term-action-box">
+          <h5>추천 행동</h5>
+          <ul>
+            ${view.actionItems.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}
+          </ul>
+        </div>
+        <div class="long-term-axis-grid">
+          ${view.axes
+            .map(
+              (axis) => `
+                <div class="long-term-axis ${escapeHtml(axis.className)}">
+                  <span>${escapeHtml(axis.label)}</span>
+                  <strong>${escapeHtml(axis.stateLabel)}</strong>
+                  <em>${escapeHtml(axis.stars)}</em>
+                  <small>${escapeHtml(axis.value)}</small>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+        <div class="long-term-explain-columns">
+          <div>
+            <h5>좋은 점</h5>
+            <ul>
+              ${(view.positives.length ? view.positives : ["명확한 강점은 아직 제한적"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </div>
+          <div>
+            <h5>부족한 점</h5>
+            <ul>
+              ${(view.negatives.length ? view.negatives : ["큰 결함은 제한적"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </div>
+        </div>
+        <button
+          class="metric metric-button swing-score-help"
+          type="button"
+          data-score-explain-toggle="modal"
+          data-score-label="${escapeHtml(swingAssessment.label)}"
+          data-score-description="${escapeHtml(scoreDescription)}"
+          data-score-summary="${escapeHtml(scoreSummary)}"
+          data-score-guide="${escapeHtml(scoreGuide)}"
+          data-score-action="${escapeHtml(scoreAction)}"
+          data-score-entry="${escapeHtml(scoreEntry)}"
+          data-score-invalidation="${escapeHtml(scoreInvalidation)}"
+          data-score-reasons="${escapeHtml(scoreReasons)}"
+        >
+          <span class="metric-label">판정 설명</span>
+          <span class="metric-value">왜 ${escapeHtml(view.stageLabel)}인지 보기</span>
+          <span class="metric-hint">눌러서 전략 설명 보기</span>
+        </button>
+      </div>
+      ${renderSwingAdvancedDetails(pattern, view.profile, view.advanced, swingAssessment)}
     </section>
   `;
 }

@@ -44,6 +44,41 @@ function passesUniverseLeaderProxy(entry: LongTermRankedEntry, filters: LongTerm
   );
 }
 
+function shouldLoadFinancialRescueCandidate(entry: LongTermRankedEntry, filters: LongTermScanFilters) {
+  if (!passesUniverseLeaderProxy(entry, filters)) {
+    return false;
+  }
+
+  if ((entry.chartPoints?.length ?? 0) < filters.minimumHistorySessions) {
+    return false;
+  }
+
+  const drawdown = Math.abs(entry.metrics.drawdown2yPct ?? entry.metrics.drawdown52wPct ?? 0);
+  const representativeEnough =
+    entry.seedSource === "curated" ||
+    ((entry.turnoverRank ?? Number.POSITIVE_INFINITY) <= Math.floor(filters.minimumAdHocTurnoverRank * 0.6) &&
+      (entry.metrics.liquidity.avgTurnover60 ?? 0) >= filters.minimumAdHocTradableTurnover60 * 1.5);
+
+  return representativeEnough && drawdown >= filters.leaderCorrectionMinPct;
+}
+
+function isFinancialRescueCandidate(
+  entry: LongTermRankedEntry,
+  candidate: ReturnType<typeof buildLongTermCandidate>,
+  filters: LongTermScanFilters
+) {
+  return (
+    candidate.scores.totalScore >= 62 &&
+    candidate.scores.financialScore >= 75 &&
+    candidate.scores.liquidityScore >= 60 &&
+    candidate.scores.leaderScore >= filters.minimumAdHocLeaderScore &&
+    Math.abs(candidate.drawdownPct ?? 0) >= filters.leaderCorrectionMinPct &&
+    entry.financialEvaluation.snapshot.financialMomentum !== "deteriorating" &&
+    entry.financialEvaluation.snapshot.earningsState !== "persistent_loss" &&
+    entry.financialEvaluation.snapshot.debtState !== "dangerous"
+  );
+}
+
 function resolveLongTermSeed(symbol: string, name?: string): {
   seed: LongTermUniverseSeed;
   seedSource: "curated" | "ad_hoc";
@@ -189,9 +224,10 @@ function buildScanResult(
     })
     .filter((entry) => entry.filterReasons.length === 0)
     .map((entry) => entry.candidate)
-    .sort((left, right) => right.scores.totalScore - left.scores.totalScore);
+    .sort((left, right) => right.scores.totalScore - left.scores.totalScore || right.scores.rawScore - left.scores.rawScore);
 
   const buyCandidates = candidates.filter((candidate) => candidate.candidateGroup === "buy candidate");
+  const accumulateCandidates = candidates.filter((candidate) => candidate.candidateGroup === "accumulate candidate");
   const watchCandidates = candidates.filter((candidate) => candidate.candidateGroup === "watch candidate");
 
   logger.info("scan:finish", {
@@ -199,6 +235,7 @@ function buildScanResult(
     loadedCount: rankedItems.length,
     candidateCount: candidates.length,
     buyCandidateCount: buyCandidates.length,
+    accumulateCandidateCount: accumulateCandidates.length,
     watchCandidateCount: watchCandidates.length
   });
 
@@ -209,6 +246,7 @@ function buildScanResult(
     candidates,
     groupedCandidates: {
       buyCandidates,
+      accumulateCandidates,
       watchCandidates
     }
   };
@@ -333,7 +371,16 @@ export async function scanLongTermUniverse(options?: {
     return true;
   });
 
-  const enrichedEntries = await enrichRankedMetricsWithFundamentals(prelimEntries, filters);
+  const prelimSymbols = new Set(prelimEntries.map((item) => item.seed.symbol));
+  const rescueEntries = ranked
+    .filter((item) => !prelimSymbols.has(item.seed.symbol))
+    .filter((item) => shouldLoadFinancialRescueCandidate(item, filters))
+    .sort(
+      (left, right) =>
+        (right.metrics.liquidity.avgTurnover60 ?? 0) - (left.metrics.liquidity.avgTurnover60 ?? 0)
+    )
+    .slice(0, 24);
+  const enrichedEntries = await enrichRankedMetricsWithFundamentals([...prelimEntries, ...rescueEntries], filters);
   const candidates = enrichedEntries
     .map((item) => ({
       item,
@@ -353,16 +400,18 @@ export async function scanLongTermUniverse(options?: {
         return false;
       }
 
-      if (candidate.scores.totalScore < 66) {
+      const rescuedByFinancialQuality = isFinancialRescueCandidate(item, candidate, filters);
+      if (candidate.scores.totalScore < 66 && !rescuedByFinancialQuality) {
         return false;
       }
 
       return true;
     })
     .map(({ candidate }) => candidate)
-    .sort((left, right) => right.scores.totalScore - left.scores.totalScore);
+    .sort((left, right) => right.scores.totalScore - left.scores.totalScore || right.scores.rawScore - left.scores.rawScore);
 
   const buyCandidates = candidates.filter((candidate) => candidate.candidateGroup === "buy candidate");
+  const accumulateCandidates = candidates.filter((candidate) => candidate.candidateGroup === "accumulate candidate");
   const watchCandidates = candidates.filter((candidate) => candidate.candidateGroup === "watch candidate");
 
   logger.info("scan:finish", {
@@ -370,8 +419,10 @@ export async function scanLongTermUniverse(options?: {
     universeSize: targets.length,
     loadedCount: loaded.length,
     prelimCount: prelimEntries.length,
+    rescuePrelimCount: rescueEntries.length,
     candidateCount: candidates.length,
     buyCandidateCount: buyCandidates.length,
+    accumulateCandidateCount: accumulateCandidates.length,
     watchCandidateCount: watchCandidates.length
   });
 
@@ -382,6 +433,7 @@ export async function scanLongTermUniverse(options?: {
     candidates,
     groupedCandidates: {
       buyCandidates,
+      accumulateCandidates,
       watchCandidates
     }
   };

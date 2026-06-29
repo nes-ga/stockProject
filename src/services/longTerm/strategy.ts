@@ -1,5 +1,6 @@
 import type {
   ChartPoint,
+  LongTermCandidateType,
   LongTermScanCandidate,
   LongTermScanFilters,
   LongTermScoreBreakdown,
@@ -8,11 +9,12 @@ import type {
 } from "../../types.js";
 import { passesBaseLiquidityFloor } from "../sharedLiquidity.js";
 import { analyzeLongTermVolumeProfile } from "../volumeProfile.js";
-import { calculateCorrectionScore, hasMeaningfulCorrection, resolveLongTermCorrectionContext } from "./correctionScore.js";
+import { calculateCorrectionScore, resolveLongTermCorrectionContext } from "./correctionScore.js";
 import { evaluateLongTermFinancials, type LongTermFinancialEvaluation } from "./fundamentalScore.js";
 import {
   buildLongTermExplainability,
   buildLongTermReasonSummary,
+  buildLongTermStageExplanation,
   classifyLongTermCandidateGroup,
   classifyLongTermLabel
 } from "./labels.js";
@@ -21,6 +23,7 @@ import { calculateLiquidityScore } from "./liquidityScore.js";
 import type { LongTermMetricSnapshot } from "./metrics.js";
 import { calculateStabilizationScore } from "./stabilizationScore.js";
 import { calculateTrendScore } from "./trendScore.js";
+import { clamp } from "./utils.js";
 
 export type LongTermRankedEntry = {
   seed: LongTermUniverseSeed;
@@ -35,8 +38,8 @@ export type LongTermRankedEntry = {
   financialEvaluation: LongTermFinancialEvaluation;
 };
 
-function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">, filters: LongTermScanFilters) {
-  const baseScore = Math.round(
+function calculateBaseScore(scores: Omit<LongTermScoreBreakdown, "totalScore" | "baseScore" | "bonusScore" | "rawScore">, filters: LongTermScanFilters) {
+  return Math.round(
     scores.leaderScore * filters.leaderWeight +
       scores.correctionScore * filters.correctionWeight +
       scores.trendScore * filters.trendWeight +
@@ -44,7 +47,31 @@ function calculateTotalScore(scores: Omit<LongTermScoreBreakdown, "totalScore">,
       scores.stabilizationScore * filters.stabilizationWeight +
       scores.financialScore * filters.financialWeight
   );
-  return baseScore + (scores.volumeProfileScore ?? 0) + (scores.higherTimeframeScore ?? 0);
+}
+
+function calculateBonusScore(scores: Pick<LongTermScoreBreakdown, "volumeProfileScore" | "higherTimeframeScore">) {
+  return (scores.volumeProfileScore ?? 0) + (scores.higherTimeframeScore ?? 0);
+}
+
+function normalizeLongTermScore(baseScore: number, bonusScore: number) {
+  const compressedBonus = clamp(bonusScore, -30, 40) * 0.35;
+  return clamp(Math.round(baseScore + compressedBonus), 0, 100);
+}
+
+function calculateScoreTotals(
+  scores: Omit<LongTermScoreBreakdown, "totalScore" | "baseScore" | "bonusScore" | "rawScore">,
+  filters: LongTermScanFilters
+) {
+  const baseScore = calculateBaseScore(scores, filters);
+  const bonusScore = calculateBonusScore(scores);
+  const rawScore = baseScore + bonusScore;
+
+  return {
+    baseScore,
+    bonusScore,
+    rawScore,
+    totalScore: normalizeLongTermScore(baseScore, bonusScore)
+  };
 }
 
 function isStructurallyBroken(metrics: LongTermMetricSnapshot, filters: LongTermScanFilters) {
@@ -63,7 +90,7 @@ function hasSufficientLongTermHistory(entry: LongTermRankedEntry, filters: LongT
 export function qualifiesLongTermSecondaryRecovery(
   entry: LongTermRankedEntry,
   filters: LongTermScanFilters,
-  scores: Omit<LongTermScoreBreakdown, "totalScore"> & { totalScore?: number }
+  scores: Omit<LongTermScoreBreakdown, "totalScore" | "baseScore" | "bonusScore" | "rawScore"> & Partial<Pick<LongTermScoreBreakdown, "totalScore">>
 ) {
   if (entry.seedSource !== "ad_hoc") {
     return false;
@@ -82,6 +109,60 @@ export function qualifiesLongTermSecondaryRecovery(
     !snapshot.strongRevenueDecline &&
     !isStructurallyBroken(entry.metrics, filters)
   );
+}
+
+export function resolveLongTermRequiredCorrectionPct(candidateType: LongTermCandidateType, filters: LongTermScanFilters) {
+  switch (candidateType) {
+    case "leader":
+      return filters.leaderCorrectionMinPct;
+    case "quality":
+      return filters.qualityCorrectionMinPct;
+    case "turnaround":
+      return filters.turnaroundCorrectionMinPct;
+    case "deep_value":
+    default:
+      return filters.deepValueCorrectionMinPct;
+  }
+}
+
+function classifyLongTermCandidateType(
+  entry: LongTermRankedEntry,
+  scores: Omit<LongTermScoreBreakdown, "totalScore" | "baseScore" | "bonusScore" | "rawScore">
+): LongTermCandidateType {
+  const snapshot = entry.financialEvaluation.snapshot;
+  const curatedLeader =
+    entry.seedSource === "curated" &&
+    scores.leaderScore >= 82 &&
+    scores.financialScore >= 58 &&
+    scores.liquidityScore >= 55 &&
+    snapshot.earningsState !== "persistent_loss" &&
+    snapshot.debtState !== "dangerous";
+
+  if (curatedLeader) {
+    return "leader";
+  }
+
+  const qualityBusiness =
+    scores.financialScore >= 72 &&
+    scores.liquidityScore >= 60 &&
+    scores.trendScore >= 48 &&
+    snapshot.financialMomentum !== "deteriorating" &&
+    snapshot.earningsState !== "persistent_loss" &&
+    snapshot.debtState !== "dangerous" &&
+    snapshot.businessClarity !== "unclear";
+
+  if (qualityBusiness) {
+    return "quality";
+  }
+
+  const turnaround =
+    snapshot.financialMomentum !== "deteriorating" &&
+    (snapshot.earningsState !== "profitable" ||
+      snapshot.operatingProfitTrend === "improving" ||
+      snapshot.netIncomeTrend === "improving") &&
+    scores.financialScore >= 45;
+
+  return turnaround ? "turnaround" : "deep_value";
 }
 
 export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: LongTermScanFilters): LongTermScanCandidate {
@@ -116,12 +197,13 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     stabilizationScore,
     financialScore,
     volumeProfileScore,
-    higherTimeframeScore,
-    durabilityScore: financialScore
+    higherTimeframeScore
   };
 
+  const candidateType = classifyLongTermCandidateType(entry, partialScores);
+  const requiredCorrectionPct = resolveLongTermRequiredCorrectionPct(candidateType, filters);
   const scores: LongTermScoreBreakdown = {
-    totalScore: calculateTotalScore(partialScores, filters),
+    ...calculateScoreTotals(partialScores, filters),
     ...partialScores
   };
 
@@ -129,7 +211,9 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
   const classificationOptions = {
     allowBuy: !secondaryRecovery,
     secondaryRecovery,
-    isCurated: entry.seedSource === "curated"
+    isCurated: entry.seedSource === "curated",
+    candidateType,
+    requiredCorrectionPct
   };
   const baseLabel = classifyLongTermLabel(scores, entry.metrics, entry.financialEvaluation.snapshot);
   const candidateGroup = classifyLongTermCandidateGroup(
@@ -146,6 +230,15 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     baseLabel,
     filters,
     entry.financialEvaluation.snapshot,
+    classificationOptions
+  );
+  const stageExplanation = buildLongTermStageExplanation(
+    scores,
+    entry.metrics,
+    baseLabel,
+    filters,
+    entry.financialEvaluation.snapshot,
+    candidateGroup,
     classificationOptions
   );
   const label = explainability.tags.includes("buy_contrarian_accumulation")
@@ -171,6 +264,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
     financials: entry.financialEvaluation.snapshot,
     fundamentals: entry.financialEvaluation.snapshot,
     longTermVolumeProfile,
+    candidateType,
     candidateGroup,
     label,
     reasonSummary: buildLongTermReasonSummary(
@@ -179,6 +273,7 @@ export function buildLongTermCandidate(entry: LongTermRankedEntry, filters: Long
       entry.financialEvaluation.snapshot,
       correctionContext
     ),
+    stageExplanation,
     strengths: explainability.strengths,
     weaknesses: explainability.weaknesses,
     failureReasons: explainability.failureReasons,
@@ -203,8 +298,12 @@ export function resolveLongTermFilterReasons(
     );
   }
 
-  if (!hasMeaningfulCorrection(entry.metrics, filters)) {
-    reasons.push("Price has not corrected enough from the prior high.");
+  const correctionContext = resolveLongTermCorrectionContext(entry.metrics, filters);
+  const requiredCorrectionPct = candidate
+    ? resolveLongTermRequiredCorrectionPct(candidate.candidateType, filters)
+    : filters.minimumDrawdownPct;
+  if (Math.abs(correctionContext.drawdownPct ?? 0) < requiredCorrectionPct) {
+    reasons.push(`Price has not corrected enough from the prior high (${requiredCorrectionPct}% required for this type).`);
   }
 
   if (!passesBaseLiquidityFloor(entry.metrics.liquidity, filters)) {

@@ -2,6 +2,6 @@
 > stockmon-api@0.1.0 dev
 > tsx watch src/server.ts
 
-[2026-05-18T16:21:13.688+09:00] INFO server listening port=3000
-[2026-05-18T16:21:13.774+09:00] INFO newsSignals news-signals:refreshed articleCount=0 signalCount=0 sectorCount=0 collectedAt="2026-05-18T07:21:13.495Z" refreshIntervalMinutes=5
-[2026-05-18T16:21:13.775+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5
+[2026-06-29T16:36:24.101+09:00] INFO server listening port=3000
+[2026-06-29T16:36:36.663+09:00] INFO newsSignals news-signals:refreshed articleCount=53 signalCount=13 sectorCount=5 targetCount=29 collectedAt="2026-06-29T07:36:24.096Z" refreshIntervalMinutes=5
+[2026-06-29T16:36:36.664+09:00] INFO newsSignals news-signals:collector-started refreshIntervalMinutes=5

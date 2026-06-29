@@ -85,14 +85,15 @@
 
 14. 최종 후보 bucket을 분류한다.
     - `execution_ready`: 엔진 기준 매수 준비 완료 + 품질 양호
-    - `execution_probe`: 품질 약점은 있지만 매수 후보로 볼 구조가 있음
+    - `execution_probe`: 과거에는 약한 실행 후보로 보았으나, 현재 정책에서는 사용자 화면의 매수 후보가 아니라 관찰/확인 후보로 본다.
     - `watch`: 관찰 후보
 
 15. 현재 후보와 히스토리를 저장한다.
-    - `execution_ready`와 `execution_probe`만 현재 매수 후보로 취급한다.
+    - 현재 정책 기준으로 사용자 화면의 매수 후보는 `execution_ready`만 취급한다.
+    - `execution_probe`, `entry_zone_pending`, `long_pullback_until_stop_probe`는 visibility 유지 사유이지 매수 승격 사유가 아니다.
     - 기본 스윙은 `data/server-swing-picks.json`에 저장한다.
     - 소형 스윙은 `data/server-smallcap-swing-picks.json`에 저장한다.
-    - 히스토리는 `executionItems`만 현재 후보로 반영한다.
+    - 히스토리 생명주기 판단은 기존/체결 케이스에 한해 `watchItems`도 current로 본다.
 
 ## Engine Changes
 
@@ -112,7 +113,7 @@
 - 같은 기간 KOSPI/KOSDAQ 변동폭이 20% 이상이면 시장 충격으로 본다.
 - 일간 급변동이 8% 이상이어도 시장 충격으로 본다.
 - 박스 변동폭 한도는 최대 8%p까지 완화한다.
-- 삼륭물산은 2026-03-04 전후 지수 급락/반등 구간과 겹쳐 이 보정으로 `execution_probe`에 복귀했다.
+- 삼륭물산은 2026-03-04 전후 지수 급락/반등 구간과 겹쳐 visibility가 유지됐다. 현재 정책에서는 이 경로를 사용자 화면의 매수 후보로 보지 않는다.
 
 ### Failed Post-Spike Pullback Exclusion
 
@@ -137,7 +138,7 @@
 - ENV20 상단 과열이 아님
 - 현재가가 손절/무효화선 위
 
-위 조건이면 `long_pullback_until_stop_probe` reason으로 `execution_probe`에 올릴 수 있다.
+위 조건이면 `long_pullback_until_stop_probe` reason으로 후보 visibility를 유지할 수 있다. 현재 정책에서는 이 사유만으로 `execution_probe` 또는 매수 후보로 올리지 않는다.
 
 ### Stop-Loss Reference Fix
 
@@ -171,9 +172,9 @@
 
 주요 판정 변화:
 
-- 삼륭물산: 지수 충격 보정 후 `execution_probe` 복귀
-- 흥국화재: 같은 보정과 긴 눌림 기준으로 `execution_probe` 복귀
-- 제이오: 손절가 전 긴 눌림 원칙으로 `execution_probe` 유지
+- 삼륭물산: 지수 충격 보정 후 visibility 유지. 현재 정책에서는 관찰/확인 후보.
+- 흥국화재: 같은 보정과 긴 눌림 기준으로 visibility 유지. 현재 정책에서는 관찰/확인 후보.
+- 제이오: 손절가 전 긴 눌림 원칙으로 visibility 유지. 현재 정책에서는 관찰/확인 후보.
 - 씨아이에스/SK오션플랜트: 긴 눌림 후보 유지
 - 대명에너지: 차트 모양 문제로 종료/제외
 - 오이솔루션: 매수 후보 차트 축에서 제외
@@ -184,9 +185,11 @@
 
 ### Recommendation History
 
-히스토리는 현재 매수 후보를 `executionItems` 기준으로만 읽도록 정리했다.
+히스토리는 당시 `executionItems` 기준으로 정리했으나, 이후 정책이 보정됐다.
 
-- watch 후보는 현재 매수 후보 히스토리로 넣지 않는다.
+- 현재 사용자 화면의 매수 후보는 `execution_ready`만 표시한다.
+- 신규 watch 후보는 히스토리 케이스로 열지 않는다.
+- 기존/체결 케이스는 `watchItems`로 내려가도 손절/목표/시간 종료 전까지 current로 유지한다.
 - 기존 히스토리 케이스는 보존한다.
 - 대명에너지는 현재 후보/히스토리 현재 케이스에서 제거됐다.
 - 시공테크와 필에너지는 현재 후보 히스토리에 다시 반영됐다.
@@ -201,10 +204,21 @@
 The previous note said swing history should treat only `executionItems` as current. That policy was corrected.
 
 - `watchItems` now count as current for existing or entered swing history cases.
-- Moving from `execution_ready`/`execution_probe` down to `watch` is a downgrade, not a close.
+- Moving from `execution_ready` down to `watch` is a downgrade, not a close. Persisted `execution_probe` is read as `watch` under the current policy.
 - A case closes only when a real close condition is reached, such as stop break, target/exit classification, timeout, or complete removal from the swing universe.
 - New watch-only names are not opened as history cases unless they already have an entry assumption.
-- `삼륭물산`은 기준 사례입니다. 하단 밴드/지지 품질 악화로 `watch`로 내려가도 손절가를 깨지 않았으면 active로 유지합니다.`r`n- 2026-05-27 보정: 새 스캔에서 패턴 자체가 사라진 기존 체결 케이스도 손절/목표/시간 종료 전이면 `history-carry-forward`로 `watchItems`에 다시 병합합니다.`r`n- `펄어비스`는 기준 사례입니다. 손절가 39,800원 위에 있는데 새 스캔 누락만으로 종료 처리되면 안 됩니다.
+- `삼륭물산`은 기준 사례입니다. 하단 밴드/지지 품질 악화로 `watch`로 내려가도 손절가를 깨지 않았으면 active로 유지합니다.
+- 2026-05-27 보정: 새 스캔에서 패턴 자체가 사라진 기존 체결 케이스도 손절/목표/시간 종료 전이면 `history-carry-forward`로 `watchItems`에 다시 병합합니다.
+- `펄어비스`는 기준 사례입니다. 손절가 39,800원 위에 있는데 새 스캔 누락만으로 종료 처리되면 안 됩니다.
+
+### 2026-06-29 Execution Probe Correction
+
+This work summary contains older wording where `execution_probe` was treated as a current buy candidate. That is no longer the policy.
+
+- `execution_probe` is an internal caution/check-later state, not a user-facing buy candidate.
+- Persisted `execution_probe` records are read as `watchItems`.
+- `entry_zone_pending` must not appear in visible execution counts.
+- User-facing `진입 가능` requires `setup + buy_ready + withinEntryZone`.
 
 ### Chart Refresh
 

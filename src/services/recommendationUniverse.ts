@@ -41,6 +41,7 @@ type RecommendationUniverseScanResult =
       category: "longTerm";
       count: number;
       buyCount: number;
+      accumulateCount: number;
       watchCount: number;
       asOfDate: string;
       universeSize: number;
@@ -123,10 +124,8 @@ function pushLongTermHighlight(highlights: string[], label: string | undefined, 
 function buildLongTermHighlights(candidate: LongTermUniverseCandidate) {
   const highlights: string[] = [];
 
-  pushLongTermHighlight(highlights, `총점 ${candidate.scores.totalScore}점`);
-
   if (candidate.drawdownPct != null) {
-    pushLongTermHighlight(highlights, `낙폭 ${Math.round(Math.abs(candidate.drawdownPct))}%`);
+    pushLongTermHighlight(highlights, `${Math.round(Math.abs(candidate.drawdownPct))}% 조정`);
   }
 
   if (
@@ -134,34 +133,57 @@ function buildLongTermHighlights(candidate: LongTermUniverseCandidate) {
     candidate.financials?.operatingProfitTrend === "improving" ||
     candidate.financials?.netIncomeTrend === "improving"
   ) {
-    pushLongTermHighlight(highlights, "실적 개선");
+    pushLongTermHighlight(highlights, "재무 우수");
   } else if (candidate.financials?.financialMomentum === "deteriorating") {
-    pushLongTermHighlight(highlights, "실적 둔화");
+    pushLongTermHighlight(highlights, "재무 확인 필요");
   }
 
   if (candidate.baseStructure.isStabilizing) {
-    pushLongTermHighlight(highlights, "바닥 안정화");
+    pushLongTermHighlight(highlights, "바닥 안정");
   } else if (candidate.baseStructure.higherLowCount >= 2) {
-    pushLongTermHighlight(highlights, "바닥 형성 중");
+    pushLongTermHighlight(highlights, "바닥 확인 중");
   } else {
-    pushLongTermHighlight(highlights, "바닥 미완성");
+    pushLongTermHighlight(highlights, "바닥 대기");
   }
 
   if ((candidate.structure.ma120Slope ?? 0) >= 1) {
-    pushLongTermHighlight(highlights, "MA120 상향");
+    pushLongTermHighlight(highlights, "장기 추세 양호");
   } else if ((candidate.structure.ma120Slope ?? 0) >= -0.5) {
-    pushLongTermHighlight(highlights, "MA120 평탄");
+    pushLongTermHighlight(highlights, "장기 추세 보통");
   } else {
-    pushLongTermHighlight(highlights, "MA120 하락");
+    pushLongTermHighlight(highlights, "추세 회복 대기");
   }
 
-  return highlights;
+  return highlights.slice(0, 3);
 }
 
 function buildLongTermNote(candidate: LongTermUniverseCandidate) {
-  const groupLabel = candidate.candidateGroup === "buy candidate" ? "중장기 매수 가능 후보군" : "중장기 관찰 후보군";
+  const stageLabel =
+    candidate.candidateGroup === "buy candidate"
+      ? "본격매수"
+      : candidate.candidateGroup === "accumulate candidate"
+        ? "분할매수"
+        : "관찰";
+  const summary =
+    candidate.candidateGroup === "buy candidate"
+      ? "조건 충족"
+      : candidate.candidateGroup === "accumulate candidate"
+        ? "할인 충분 + 확인 필요"
+        : "대기";
 
-  return [groupLabel, formatLongTermNoteLabel(candidate.label), ...buildLongTermHighlights(candidate)].join(" | ");
+  return [stageLabel, summary, ...buildLongTermHighlights(candidate)].join(" | ");
+}
+
+function resolveLongTermBucket(candidate: LongTermUniverseCandidate): "buy" | "accumulate" | "watch" {
+  if (candidate.candidateGroup === "buy candidate") {
+    return "buy";
+  }
+
+  if (candidate.candidateGroup === "accumulate candidate") {
+    return "accumulate";
+  }
+
+  return "watch";
 }
 
 function buildDividendNote(candidate: DividendUniverseCandidate) {
@@ -193,12 +215,14 @@ function buildSwingNote(
   const isExecutionCandidate = classification != null && classification.bucket !== "watch";
   const stageLabel =
     pattern.status === "breakout_extended"
-      ? "스윙 추격 금지 감지"
+      ? "추격 금지"
       : pattern.stage === "breakout"
-        ? "스윙 완성형 감지"
+        ? "돌파 대기"
         : pattern.status === "buy_ready"
-          ? "스윙 1차매수 구간 감지"
-          : "스윙 소화형 감지";
+          ? "1차 매수 가능"
+          : isExecutionCandidate
+            ? "분할매수 준비"
+            : "관찰";
   const resolvedStopPrice = pattern.buyPlan?.stopLossPrice ?? pattern.invalidationPrice;
   const derivedFirstBuyPrice =
     pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? Math.max(pattern.entryZoneLow, pattern.entryZoneHigh) : undefined;
@@ -213,31 +237,25 @@ function buildSwingNote(
       : `매수 ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
   const displayEntryZoneText =
     pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneHigh)}~${Math.round(pattern.entryZoneLow)}` : "-";
-  const displayBuyPlanText = pattern.buyPlan
-    ? buyPlanText
-    : `${pattern.stage === "breakout" ? "관찰" : "구간"} ${pattern.entryZoneLow != null && pattern.entryZoneHigh != null ? `${Math.round(pattern.entryZoneLow)}~${Math.round(pattern.entryZoneHigh)}` : "-"}`;
   const resolvedDisplayBuyPlanText = pattern.buyPlan
     ? buyPlanText
     : `${pattern.stage === "breakout" ? "관찰" : "구간"} ${displayEntryZoneText}`;
   const stopText = `손절 ${resolvedStopPrice != null && resolvedStopPrice > 0 ? Math.round(resolvedStopPrice) : "-"}`;
-  const stopRefText = `손절기준 ${pattern.stopLossReferenceDate ?? "-"} ${pattern.stopLossReferenceType === "close_fallback" ? "close" : "low"}`;
-  const envelopeText = pattern.envelope
-    ? `ENV20 ${pattern.envelope.position} ${Math.round(pattern.envelope.lower)}/${Math.round(pattern.envelope.basis)}/${Math.round(pattern.envelope.upper)}`
-    : undefined;
-
   const finalDisplayBuyPlanText = isExecutionCandidate ? buyPlanText : resolvedDisplayBuyPlanText;
+  const actionText =
+    pattern.status === "breakout_extended"
+      ? "신규 추격매수 금지"
+      : pattern.stage === "breakout"
+        ? "돌파 안착 확인"
+        : pattern.status === "buy_ready"
+          ? "1차 진입 검토"
+          : "눌림 확인 대기";
 
   return [
     stageLabel,
-    `선행 수급 ${pattern.leadInDate ?? "-"}`,
-    `급등 피크 ${pattern.surgePeakDate ?? pattern.breakoutDate ?? "-"}`,
-    `눌림 ${pattern.pullbackStartDate ?? "-"}~${pattern.pullbackEndDate ?? "-"}`,
-    `SMA20 ${pattern.referenceSma20 != null ? Math.round(pattern.referenceSma20) : "-"}`,
+    actionText,
     finalDisplayBuyPlanText,
-    envelopeText,
-    stopText,
-    stopRefText,
-    `점수 ${pattern.finalRankScore ?? pattern.patternScore}`
+    stopText
   ].filter(Boolean).join(" | ");
 }
 
@@ -753,8 +771,18 @@ export function classifySwingCandidate(
     pattern.postEntryOutcome?.status === "target_hit_after_first_buy" ||
     pattern.postEntryOutcome?.status === "target_hit_after_second_buy" ||
     pattern.postEntryOutcome?.status === "target_hit_after_third_buy";
-  const readyByEngine = pattern.actionable && !haltWatchOnly && !haltPenalty;
-  // Setup names should stay on watch until the pullback has progressed to the engine's buy-ready state.
+  // User-facing execution means "buy price reached now".
+  // Do not promote actionable/probe/long-pullback visibility unless the setup is buy_ready
+  // and the reference close is inside the staged entry zone.
+  const readyByEngine =
+    pattern.actionable &&
+    pattern.stage === "setup" &&
+    pattern.status === "buy_ready" &&
+    withinEntryZone &&
+    !haltWatchOnly &&
+    !haltPenalty;
+  // Setup names should stay on watch until the pullback has progressed to the engine's buy-ready state
+  // and the reference close is actually inside the staged entry zone.
   const probeByLocation =
     pattern.matched &&
     !haltWatchOnly &&
@@ -900,10 +928,13 @@ export function classifySwingCandidate(
     ]);
 
     return {
-      bucket: "execution_probe",
+      // These are visible swing ideas, not buy candidates. In particular,
+      // entry_zone_pending and long_pullback_until_stop_probe must stay out of executionItems.
+      bucket: "watch",
       reasons: probeReasons,
       tags: dedupeStrings([
         ...(pattern.tags ?? []),
+        "watch_pullback_pending" as const,
         ...(unstableSupport ? (["tag_support_unstable"] as const) : []),
         ...(envelopeWidePullbackCandidate ? (["tag_envelope_lower_hold"] as const) : []),
         ...(historyGuardEvaluation.shouldCautionExecution ? (["tag_history_win_rate_caution"] as const) : [])
@@ -1056,7 +1087,7 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
       anchorDate: result.asOfDate,
       note: buildLongTermNote(candidate),
       category: "longTerm" as const,
-      longTermBucket: candidate.candidateGroup === "watch candidate" ? ("watch" as const) : ("buy" as const),
+      longTermBucket: resolveLongTermBucket(candidate),
       source: "server-universe" as const
     }))
   );
@@ -1065,6 +1096,7 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
     category: "longTerm",
     count: items.length,
     buyCount: result.groupedCandidates.buyCandidates.length,
+    accumulateCount: result.groupedCandidates.accumulateCandidates.length,
     watchCount: result.groupedCandidates.watchCandidates.length,
     asOfDate: result.asOfDate,
     universeSize: result.universeSize,

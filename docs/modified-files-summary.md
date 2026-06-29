@@ -40,6 +40,7 @@
 주요 변경:
 
 - `execution_ready`, `execution_probe`, `watch` bucket 유지
+- 사용자 화면/서버 payload 읽기 기준에서 `execution_probe`는 관찰 후보로 취급하고, `execution_ready`만 진입 가능으로 표시
 - 매물대 양수 점수는 `patternScore`를 직접 올리지 않음
 - 매물대 음수 점수는 리스크 조정으로 반영
 - `finalRankScore`에는 양수 매물대 보조 가산을 제한적으로만 반영

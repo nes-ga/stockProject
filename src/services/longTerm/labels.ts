@@ -1,10 +1,12 @@
 import type { LongTermMetricSnapshot } from "./metrics.js";
 import type {
   LongTermCandidateGroup,
+  LongTermCandidateType,
   LongTermFinancialSnapshot,
   LongTermScanFilters,
   LongTermScanLabel,
   LongTermScoreBreakdown,
+  LongTermStageExplanation,
   LongTermWatchTag
 } from "../../types.js";
 
@@ -12,10 +14,14 @@ type LongTermClassificationOptions = {
   allowBuy?: boolean;
   secondaryRecovery?: boolean;
   isCurated?: boolean;
+  candidateType?: LongTermCandidateType;
+  requiredCorrectionPct?: number;
 };
 
 export type LongTermBuyReadiness = {
   canBuy: boolean;
+  canAccumulate: boolean;
+  candidateGroup: LongTermCandidateGroup;
   failureReasons: string[];
   tags: LongTermWatchTag[];
 };
@@ -133,6 +139,9 @@ export function evaluateLongTermBuyReadiness(
 ): LongTermBuyReadiness {
   const failureReasons: string[] = [];
   const watchTags = new Set<LongTermWatchTag>();
+  const candidateType = options?.candidateType ?? "deep_value";
+  const requiredCorrectionPct = options?.requiredCorrectionPct ?? filters.strongDrawdownPct;
+  const absoluteDrawdown = Math.abs(metrics.drawdownPct ?? 0);
   const priceVsMa120Pct = metrics.structure.priceVsMA120Pct ?? 0;
   const ma120Slope = metrics.structure.ma120Slope ?? 0;
   const ma240Slope = metrics.structure.ma240Slope ?? 0;
@@ -142,23 +151,33 @@ export function evaluateLongTermBuyReadiness(
   const noFreshLowBreak = metrics.baseStructure.daysSinceLastLowBreak > filters.lowBreakPenaltyDays;
   const hasConstructiveBase = metrics.baseStructure.higherLowCount >= 2;
   const constructiveTrend = scores.trendScore >= 55 && ma120Slope >= -0.5 && ma240Slope >= -0.5;
+  const trendNotBroken = scores.trendScore >= 42 && ma240Slope > -3 && (metrics.structure.priceVsMA240Pct ?? 0) >= -filters.farBelowMa240Pct;
   const stableEnough = scores.stabilizationScore >= 55;
   const higherLowQualityReady = higherLowQualityScore >= filters.higherLowQualityBuyFloor;
+  const baseEmerging =
+    baseDurationDays >= filters.minimumBaseDays || metrics.baseStructure.higherLowCount >= 1 || higherLowQualityScore >= 45;
   const longBaseReady = baseDurationDays >= Math.max(filters.minimumBaseDays * 2, 30);
-  const strongCorrectionReady = Math.abs(metrics.drawdownPct ?? 0) >= filters.strongDrawdownPct;
+  const typeCorrectionReady = absoluteDrawdown >= requiredCorrectionPct;
+  const strongCorrectionReady = absoluteDrawdown >= Math.max(requiredCorrectionPct, filters.strongDrawdownPct);
   const financiallyAcceptable =
     scores.financialScore >= 55 &&
     financials?.earningsState !== "persistent_loss" &&
     financials?.financialMomentum !== "deteriorating" &&
     financials?.debtState !== "dangerous";
-  const scoreQualified = scores.totalScore >= 70;
+  const accumulationFinancialFloor =
+    scores.financialScore >= (candidateType === "turnaround" ? 48 : candidateType === "leader" ? 56 : 52) &&
+    !(financials?.earningsState === "persistent_loss" && financials?.financialMomentum === "deteriorating") &&
+    financials?.debtState !== "dangerous";
+  const scoreQualified = scores.totalScore >= filters.buyScoreMin;
+  const accumulateScoreQualified = scores.totalScore >= filters.accumulateScoreMin;
+  const noImmediateLowBreak = metrics.baseStructure.daysSinceLastLowBreak > Math.floor(filters.lowBreakPenaltyDays / 2);
   const higherTimeframeSupport =
     (metrics.higherTimeframe?.score ?? 0) >= 10 ||
     ((metrics.higherTimeframe?.weeklyTrendScore ?? 0) >= 70 && (metrics.higherTimeframe?.monthlyCycleScore ?? 0) >= 65);
   const contrarianAccumulationBuy =
     options?.isCurated === true &&
     strongCorrectionReady &&
-    scoreQualified &&
+    scores.totalScore >= filters.buyScoreMin &&
     scores.leaderScore >= 80 &&
     scores.financialScore >= 70 &&
     scores.liquidityScore >= 60 &&
@@ -171,6 +190,37 @@ export function evaluateLongTermBuyReadiness(
     priceVsMa120Pct >= -18 &&
     priceVsMa120Pct <= 8 &&
     (metrics.baseStructure.distanceFromLowPct ?? 100) <= 8;
+
+  const buyCorrectionReady =
+    candidateType === "leader"
+      ? absoluteDrawdown >= Math.max(requiredCorrectionPct + 5, 25)
+      : candidateType === "quality"
+        ? absoluteDrawdown >= Math.max(requiredCorrectionPct + 5, 30)
+        : absoluteDrawdown >= requiredCorrectionPct + 5;
+  const standardBuy =
+    scoreQualified &&
+    buyCorrectionReady &&
+    financiallyAcceptable &&
+    constructiveTrend &&
+    stableEnough &&
+    higherLowQualityReady &&
+    noFreshLowBreak &&
+    (candidateType === "leader" ? baseDurationDays >= 20 : longBaseReady) &&
+    (label === "base-forming candidate" || label === "leader correction watch");
+
+  const accumulateCandidate =
+    !options?.secondaryRecovery &&
+    accumulateScoreQualified &&
+    typeCorrectionReady &&
+    accumulationFinancialFloor &&
+    trendNotBroken &&
+    noImmediateLowBreak &&
+    baseEmerging &&
+    priceVsMa120Pct <= filters.overextendedVsMa120Pct &&
+    (candidateType === "leader" ||
+      candidateType === "quality" ||
+      scores.stabilizationScore >= 45 ||
+      financials?.financialMomentum === "improving");
 
   if (label === "deep value review") {
     failureReasons.push("label_deep_value_review");
@@ -186,7 +236,7 @@ export function evaluateLongTermBuyReadiness(
     failureReasons.push("totalScore_low");
   }
 
-  if (!strongCorrectionReady) {
+  if (!buyCorrectionReady) {
     failureReasons.push("correction_not_deep_enough_for_buy");
     watchTags.add("watch_leader_correction");
   }
@@ -244,11 +294,20 @@ export function evaluateLongTermBuyReadiness(
   ]);
   const contrarianFailureOnly = failureReasons.every((reason) => contrarianAllowedFailures.has(reason));
   const isContrarianBuy = contrarianAccumulationBuy && contrarianFailureOnly;
-  const canBuy = (options?.allowBuy ?? true) && (failureReasons.length === 0 || isContrarianBuy);
+  const canBuy = (options?.allowBuy ?? true) && (standardBuy || isContrarianBuy);
+  const canAccumulate = !canBuy && accumulateCandidate;
   return {
     canBuy,
+    canAccumulate,
+    candidateGroup: canBuy ? "buy candidate" : canAccumulate ? "accumulate candidate" : "watch candidate",
     failureReasons: canBuy ? [] : [...new Set(failureReasons)],
-    tags: canBuy ? (isContrarianBuy ? ["buy_contrarian_accumulation"] : []) : [...watchTags]
+    tags: canBuy
+      ? isContrarianBuy
+        ? ["buy_contrarian_accumulation"]
+        : []
+      : canAccumulate
+        ? ["accumulate_candidate", ...watchTags]
+        : [...watchTags]
   };
 }
 
@@ -260,9 +319,110 @@ export function classifyLongTermCandidateGroup(
   financials?: LongTermFinancialSnapshot,
   options?: LongTermClassificationOptions
 ): LongTermCandidateGroup {
-  return evaluateLongTermBuyReadiness(scores, metrics, label, filters, financials, options).canBuy
-    ? "buy candidate"
-    : "watch candidate";
+  return evaluateLongTermBuyReadiness(scores, metrics, label, filters, financials, options).candidateGroup;
+}
+
+function buildStageFactor(label: string, score: number | undefined, tone: "positive" | "caution" | "negative") {
+  return { label, score, tone };
+}
+
+export function buildLongTermStageExplanation(
+  scores: LongTermScoreBreakdown,
+  metrics: LongTermMetricSnapshot,
+  label: LongTermScanLabel,
+  filters: LongTermScanFilters,
+  financials: LongTermFinancialSnapshot | undefined,
+  candidateGroup: LongTermCandidateGroup,
+  options?: LongTermClassificationOptions
+): LongTermStageExplanation {
+  const requiredCorrectionPct = options?.requiredCorrectionPct ?? filters.strongDrawdownPct;
+  const drawdown = Math.abs(metrics.drawdownPct ?? 0);
+  const factors: LongTermStageExplanation["factors"] = [];
+
+  factors.push(
+    buildStageFactor(
+      drawdown >= requiredCorrectionPct
+        ? `${Math.round(drawdown)}% 조정으로 유형별 할인 기준 통과`
+        : `낙폭 ${Math.round(drawdown)}%로 유형별 할인 기준(${requiredCorrectionPct}%) 미달`,
+      scores.correctionScore,
+      drawdown >= requiredCorrectionPct ? "positive" : "caution"
+    )
+  );
+
+  factors.push(
+    buildStageFactor(
+      scores.trendScore >= 55
+        ? "장기 추세가 회복 구간에 있음"
+        : scores.trendScore >= 42
+          ? "장기 추세는 훼손보다 관찰 가능한 수준"
+          : "장기 추세 확인이 부족함",
+      scores.trendScore,
+      scores.trendScore >= 55 ? "positive" : scores.trendScore >= 42 ? "caution" : "negative"
+    )
+  );
+
+  factors.push(
+    buildStageFactor(
+      metrics.baseStructure.isStabilizing
+        ? "Base 안정화 확인"
+        : metrics.baseStructure.higherLowCount >= 1
+          ? "저점 높임은 보이나 Base 확인은 진행 중"
+          : "Base 형성이 아직 부족함",
+      scores.stabilizationScore,
+      metrics.baseStructure.isStabilizing ? "positive" : metrics.baseStructure.higherLowCount >= 1 ? "caution" : "negative"
+    )
+  );
+
+  factors.push(
+    buildStageFactor(
+      scores.financialScore >= 70
+        ? "재무 품질 우수"
+        : scores.financialScore >= 55
+          ? "재무는 허용 범위"
+          : "재무 회복 확인 필요",
+      scores.financialScore,
+      scores.financialScore >= 70 ? "positive" : scores.financialScore >= 55 ? "caution" : "negative"
+    )
+  );
+
+  factors.push(
+    buildStageFactor(
+      scores.liquidityScore >= 60 ? "거래대금과 거래량 안정성 양호" : "유동성은 보수적으로 확인 필요",
+      scores.liquidityScore,
+      scores.liquidityScore >= 60 ? "positive" : "caution"
+    )
+  );
+
+  if (scores.volumeProfileScore != null) {
+    factors.push(
+      buildStageFactor(
+        scores.volumeProfileScore >= 10
+          ? "장기 매물대가 보유 품질을 지지"
+          : scores.volumeProfileScore < 0
+            ? "장기 매물대 부담 존재"
+            : "장기 매물대 영향은 중립",
+        scores.volumeProfileScore,
+        scores.volumeProfileScore >= 10 ? "positive" : scores.volumeProfileScore < 0 ? "negative" : "caution"
+      )
+    );
+  }
+
+  const stage =
+    candidateGroup === "buy candidate" ? "buy" : candidateGroup === "accumulate candidate" ? "accumulate" : "watch";
+  const summary =
+    stage === "buy"
+      ? "본격 매수 검토가 가능한 수준으로 할인, 재무, 추세, 안정화 조건이 함께 충족됐습니다."
+      : stage === "accumulate"
+        ? "분할매수 검토는 가능하지만 Base 또는 추세 확인이 아직 완전하지 않습니다."
+        : label === "leader correction watch"
+          ? "기업 품질은 볼 만하지만 할인 폭 또는 진입 안정화가 아직 부족합니다."
+          : "장기 관찰 가치는 있으나 매수 전 확인해야 할 조건이 남아 있습니다.";
+
+  return {
+    stage,
+    summary,
+    factors
+  };
 }
 
 export function buildLongTermExplainability(

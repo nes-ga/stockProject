@@ -61,6 +61,21 @@ export const themeGroups: ThemeGroup[] = [
     ]
   },
   {
+    name: "Defense",
+    label: "방산 / 항공우주",
+    category: "Defensive",
+    benchmark: "KOSPI",
+    tickers: ["012450", "079550", "047810", "272210", "064350", "103140"],
+    members: [
+      { symbol: "012450", name: "한화에어로스페이스" },
+      { symbol: "079550", name: "LIG넥스원" },
+      { symbol: "047810", name: "한국항공우주" },
+      { symbol: "272210", name: "한화시스템" },
+      { symbol: "064350", name: "현대로템" },
+      { symbol: "103140", name: "풍산" }
+    ]
+  },
+  {
     name: "Materials",
     label: "철강 / 화학",
     category: "Cyclical",
