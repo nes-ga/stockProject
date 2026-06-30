@@ -40,6 +40,7 @@
  
 ## Recent Work
 
+- [2026-06-30 스윙 추천 히스토리 Cycle/Recovery 구조 정리](./work-summary-2026-06-30-swing-history-cycle.md)
 - [2026-06-29 스윙 `execution_probe` 오분류 보정](./smart-money-maintenance.md#진입-가능-오분류-방지-규칙)
 - [2026-06-01 시장충격 손절 유예/삼륭물산 히스토리 보정](./work-summary-2026-06-01.md)
 - [2026-06-02 Naver 지수 분봉 조사](./naver-index-intraday-investigation-2026-06-02.md)

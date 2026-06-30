@@ -1,24 +1,24 @@
 {
-  "date": "2026-06-29",
+  "date": "2026-06-30",
   "global": {
     "score": 3,
     "state": "RISK_ON"
   },
   "local": {
-    "score": 3,
-    "state": "SELECTIVE"
+    "score": 1.5,
+    "state": "WEAK"
   },
-  "themeRotationScore": 34.67,
-  "marketMode": "SELECTIVE",
+  "themeRotationScore": 30.08,
+  "marketMode": "NEUTRAL",
   "topThemes": [
-    "헬스케어 / 바이오",
+    "금융",
     "반도체",
-    "소비 / 화장품"
+    "헬스케어 / 바이오"
   ],
   "bottomThemes": [
+    "AI / 플랫폼",
     "자동차 / 산업재",
-    "철강 / 화학",
-    "방산 / 항공우주"
+    "철강 / 화학"
   ],
-  "updatedAt": "2026-06-29T17:17:48.493+09:00"
+  "updatedAt": "2026-06-30T17:13:45.480+09:00"
 }

@@ -1233,18 +1233,19 @@ body {
 
 .history-summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .history-summary-card {
   display: grid;
-  gap: 7px;
-  min-height: 112px;
-  padding: 13px;
+  align-content: center;
+  gap: 5px;
+  min-height: 78px;
+  padding: 9px 10px;
   border: 1px solid rgba(17, 50, 62, 0.1);
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
 }
 
@@ -1256,15 +1257,15 @@ body {
 
 .history-summary-card strong {
   color: var(--text);
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1;
 }
 
 .history-summary-card p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 10px;
+  line-height: 1.25;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
@@ -1287,6 +1288,7 @@ body {
 .history-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: flex-start;
   gap: 16px;
 }
 
@@ -1349,7 +1351,9 @@ body {
 .history-section {
   display: grid;
   gap: 12px;
+  align-self: flex-start;
   min-width: 0;
+  height: auto;
   padding: 18px;
   border: 1px solid rgba(17, 50, 62, 0.1);
   border-radius: 20px;
@@ -1424,17 +1428,32 @@ body {
 .history-case-scroll {
   display: flex;
   flex-direction: column;
-  height: 520px;
-  min-height: 520px;
-  overflow: auto;
+  max-height: 520px;
+  overflow-y: auto;
   scrollbar-gutter: stable;
   padding-right: 4px;
+}
+
+#recommendationHistoryCurrentCases .history-case-scroll {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+  padding-right: 0;
+}
+
+#recommendationHistoryClosedCases .history-case-scroll {
+  height: 520px;
+  min-height: 520px;
+  max-height: 520px;
+  overflow-y: auto;
 }
 
 .history-case-list {
   display: grid;
   grid-template-columns: 1fr;
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   gap: 10px;
 }
 
@@ -1444,11 +1463,17 @@ body {
   z-index: 4;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
   padding-bottom: 2px;
   background: linear-gradient(180deg, rgba(250, 247, 239, 0.98), rgba(250, 247, 239, 0.88));
   backdrop-filter: blur(8px);
+}
+
+#recommendationHistoryCurrentCases .history-current-stage-summary {
+  position: static;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .history-closed-outcome-tabs {
@@ -1456,9 +1481,9 @@ body {
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
   padding-bottom: 2px;
   background: linear-gradient(180deg, rgba(250, 247, 239, 0.98), rgba(250, 247, 239, 0.88));
   backdrop-filter: blur(8px);
@@ -1467,13 +1492,13 @@ body {
 .history-closed-outcome-tab {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 8px;
+  gap: 2px 6px;
   align-items: center;
   min-width: 0;
-  min-height: 68px;
-  padding: 10px 11px;
+  min-height: 52px;
+  padding: 7px 8px;
   border: 1px solid rgba(17, 50, 62, 0.1);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
   color: inherit;
   text-align: left;
@@ -1507,14 +1532,15 @@ body {
 
 .history-closed-outcome-tab span {
   color: var(--text);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 900;
-  line-height: 1.25;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .history-closed-outcome-tab strong {
   color: #2563eb;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1;
 }
@@ -1531,16 +1557,17 @@ body {
   grid-column: 1 / -1;
   color: var(--muted);
   font-style: normal;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 800;
-  line-height: 1.25;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .history-current-stage-card {
   display: grid;
   min-width: 0;
-  min-height: 68px;
-  padding: 10px 11px;
+  min-height: 50px;
+  padding: 7px 8px;
   border: 1px solid rgba(17, 50, 62, 0.1);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.58);
@@ -1568,7 +1595,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .history-current-stage-card-head > div {
@@ -1579,13 +1606,13 @@ body {
 
 .history-current-stage-card-head strong {
   color: var(--text);
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.2;
 }
 
 .history-current-stage-card-head span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 800;
 }
 
@@ -1594,7 +1621,7 @@ body {
   align-items: center;
   justify-content: center;
   min-width: 28px;
-  height: 28px;
+  height: 24px;
   border-radius: 999px;
   background: rgba(37, 99, 235, 0.1);
   color: #2563eb;
@@ -1615,6 +1642,9 @@ body {
 .history-case-card.current {
   border-color: rgba(37, 99, 235, 0.14);
   background: rgba(37, 99, 235, 0.06);
+  align-self: flex-start;
+  gap: 8px;
+  padding: 10px;
 }
 
 .history-case-card[data-history-chart-symbol] {
@@ -1634,7 +1664,7 @@ body {
 }
 
 .history-case-card.closed .history-case-main {
-  grid-template-columns: minmax(0, 1fr) minmax(188px, 220px);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
   align-items: start;
   gap: 8px;
 }
@@ -1651,7 +1681,7 @@ body {
 .history-case-card.closed .history-buy-levels {
   justify-self: stretch;
   align-self: start;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
   gap: 4px;
   padding: 4px;
   overflow: visible;
@@ -1667,7 +1697,7 @@ body {
 }
 
 .history-case-card.closed .history-buy-level strong {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .history-case-card.closed .history-case-metrics {
@@ -1688,6 +1718,57 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
   align-items: center;
   gap: 12px;
+}
+
+.history-case-card.current .history-case-main {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 8px;
+}
+
+.history-case-card.current .history-case-copy {
+  gap: 7px;
+}
+
+.history-case-card.current .history-case-head {
+  align-items: center;
+  gap: 8px;
+}
+
+.history-case-card.current .history-case-metrics {
+  gap: 5px;
+}
+
+.history-case-card.current .history-case-metrics span {
+  padding: 4px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.history-case-card.current .history-buy-levels {
+  justify-self: stretch;
+  align-self: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+}
+
+.history-case-card.current .history-buy-level {
+  min-height: 38px;
+  padding: 5px 6px;
+}
+
+.history-case-card.current .history-buy-level em {
+  font-size: 9px;
+}
+
+.history-case-card.current .history-buy-level strong {
+  font-size: 11px;
+}
+
+.history-case-card.current .history-third-buy-status {
+  padding: 6px 8px;
+  font-size: 11px;
 }
 
 .history-case-copy {
@@ -1755,6 +1836,34 @@ body {
 .history-execution-badge.stage-3 {
   background: rgba(216, 76, 63, 0.13);
   color: #b13828;
+}
+
+.history-cycle-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.history-cycle-badge.recovery {
+  background: rgba(184, 113, 34, 0.14);
+  color: #9a5a12;
+}
+
+.history-cycle-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #9a5a12;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .history-case-return {
@@ -1934,6 +2043,47 @@ body {
   white-space: nowrap;
 }
 
+.history-buy-levels.compact .history-buy-level strong {
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 3px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.history-buy-levels.compact .history-buy-level {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 5px;
+  overflow: hidden;
+}
+
+.history-buy-levels.compact .history-buy-level em {
+  flex: 0 0 auto;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.history-buy-levels.compact .history-buy-level strong span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-buy-levels.compact .history-buy-level strong small {
+  display: inline;
+  flex: 0 0 auto;
+  max-width: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9px;
+}
+
 .history-buy-level strong span {
   min-width: 0;
 }
@@ -2097,6 +2247,62 @@ body {
 
 .history-chart-modal-summary strong.neutral {
   color: var(--neutral);
+}
+
+.history-cycle-summary-strip {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  border: 1px solid rgba(17, 50, 62, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-cycle-timeline {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(17, 50, 62, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.history-cycle-timeline-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.history-cycle-timeline-row {
+  display: grid;
+  grid-template-columns: 76px 104px minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-cycle-timeline-row strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.history-cycle-timeline-row em {
+  color: var(--text);
+  font-style: normal;
+  text-align: right;
+}
+
+.history-cycle-timeline-row.recovery span:first-child {
+  color: #9a5a12;
 }
 
 .history-chart-modal-shell {
@@ -6755,7 +6961,6 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .history-summary-grid,
   .history-chart-modal-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6860,7 +7065,6 @@ body {
   .market-liquidity-grid,
   .market-liquidity-compare-grid,
   .market-liquidity-compare-bars,
-  .history-summary-grid,
   .history-chart-modal-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7011,6 +7215,10 @@ body {
     grid-template-columns: 1fr;
   }
 
+  #recommendationHistoryCurrentCases .history-current-stage-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .history-closed-outcome-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7027,6 +7235,10 @@ body {
   .market-flow-interpretation {
     padding: 14px;
     border-radius: 18px;
+  }
+
+  .history-case-card.current {
+    padding: 10px;
   }
 
   .market-flow-chart {

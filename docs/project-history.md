@@ -280,3 +280,17 @@ npx tsx src/scripts/checkVolumeProfileImpact.ts
 - 원래 3차 매수가와 손절가 사이에서 가격이 오래 머물 때, 지수 안정성과 종목 바닥 다짐이 확인되면 `adjustedThirdBuyPrice`를 산출해 3차 매수가를 조정합니다.
 - 조정 3차가는 손절가 대비 최소 6% 여유, 2차 매수가보다 낮은 가격, 지수 risk-off 아님, 종목 지지 안정/거래량 수축/캔들 회복 조건을 통과해야 합니다.
 - JSON에는 `originalThirdBuyPrice`, `adjustedThirdBuyPrice`, `thirdBuyAdjustment`, `thirdBuyMonitor.adjustmentReason`을 남기고, 이후 3차 체결/평단/슈팅/손절 판정은 조정가 기준으로 계산합니다.
+
+## 2026-06-30 - 스윙 추천 히스토리 Cycle/Recovery 정리
+
+- 스윙 추천 히스토리 화면을 `진행 중 추천`, `거래 완료`, `미진입 제외` 기준으로 분리했다.
+- 평균 수익률과 수익/손절 통계는 실제 매수가 발생한 거래완료 케이스 기준으로 계산하도록 정리했다.
+- 같은 `strategy/profile/symbol` 반복 추천을 Cycle 1, Cycle 2처럼 응답 DTO에서 계산한다.
+- 손실 종료 이후 120일 이내 재추천된 active/entered 케이스는 Recovery Cycle로 표시한다.
+- `no_entry`는 Cycle 번호에는 포함하지만 Recovery 원인/대상에서는 제외한다.
+- 종료 케이스 필터 기본값을 `거래완료`로 바꾸고, `미진입 제외`는 별도 필터에서 확인하도록 했다.
+- 종료 카드 매수가 영역은 `1차 12,345 06-30` 형태의 한 줄 표시로 정리했다.
+
+관련 문서:
+
+- [2026-06-30 스윙 추천 히스토리 Cycle/Recovery 작업 요약](./work-summary-2026-06-30-swing-history-cycle.md)

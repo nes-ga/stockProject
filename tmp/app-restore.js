@@ -47,7 +47,7 @@ const DEFAULT_MARKET_FLOW_RANGE = "6M";
 const MARKET_FLOW_CHART_RANGES = ["3M", "6M", "1Y", "2Y"];
 const APP_VIEWS = ["news", "index", "history", "analysis", "movers"];
 const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
-const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["entered", "all", "profit", "loss", "no_entry", "other"]);
+const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["all", "profit", "loss", "other"]);
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -525,7 +525,7 @@ let recommendationHistoryLoading = false;
 let recommendationHistoryError = "";
 let recommendationHistoryClosedMonth = "";
 let recommendationHistoryClosedSearch = "";
-let recommendationHistoryClosedOutcomeFilter = "entered";
+let recommendationHistoryClosedOutcomeFilter = "all";
 let recommendationHistoryCurrentStageFilter = "all";
 let activeHistoryChartItem = null;
 let historyChartState = null;
@@ -1144,7 +1144,7 @@ recommendationHistoryClosedCases?.addEventListener("click", (event) => {
   const outcomeFilter = event.target.closest("[data-history-closed-outcome-filter]");
   if (outcomeFilter) {
     const nextFilter = outcomeFilter.dataset.historyClosedOutcomeFilter;
-    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "entered";
+    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "all";
     renderRecommendationHistoryBoard();
     return;
   }
@@ -1167,7 +1167,7 @@ recommendationHistoryClosedCases?.addEventListener("keydown", (event) => {
   if (outcomeFilter) {
     event.preventDefault();
     const nextFilter = outcomeFilter.dataset.historyClosedOutcomeFilter;
-    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "entered";
+    recommendationHistoryClosedOutcomeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(nextFilter) ? nextFilter : "all";
     renderRecommendationHistoryBoard();
     return;
   }
@@ -1951,18 +1951,6 @@ function filterHistoryClosedCases(closedCases) {
   });
 }
 
-function getHistoryCaseKind(item) {
-  return item?.caseKind ?? item?.historyCase?.caseKind;
-}
-
-function isEnteredHistoryCase(item) {
-  return getHistoryCaseKind(item) === "entered" || getExecutedBuyCountForHistoryItem(item) > 0;
-}
-
-function isNoEntryHistoryCase(item) {
-  return getHistoryCaseKind(item) === "no_entry" || ((item?.status === "closed" || item?.lifecycleStatus === "closed") && getExecutedBuyCountForHistoryItem(item) <= 0);
-}
-
 function getHistoryClosedOutcomeGroup(item) {
   const outcome = item?.historyOutcome ?? {};
   const category = outcome.category;
@@ -1987,28 +1975,15 @@ function getHistoryClosedOutcomeGroup(item) {
 function filterHistoryClosedCasesByOutcome(closedCases) {
   const selectedOutcome = CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)
     ? recommendationHistoryClosedOutcomeFilter
-    : "entered";
-  return closedCases.filter((item) => matchesHistoryClosedOutcomeFilter(item, selectedOutcome));
-}
-
-function matchesHistoryClosedOutcomeFilter(item, selectedOutcome) {
+    : "all";
   if (selectedOutcome === "all") {
-    return true;
+    return closedCases;
   }
-  if (selectedOutcome === "entered") {
-    return isEnteredHistoryCase(item);
-  }
-  if (selectedOutcome === "no_entry") {
-    return isNoEntryHistoryCase(item);
-  }
-  if (selectedOutcome === "profit" || selectedOutcome === "loss") {
-    return isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === selectedOutcome;
-  }
-  return isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "other";
+  return closedCases.filter((item) => getHistoryClosedOutcomeGroup(item) === selectedOutcome);
 }
 
 function shouldDisplayClosedHistoryCase(item) {
-  return item?.lifecycleStatus === "closed" || item?.status === "closed";
+  return item?.lifecycleStatus === "closed" && getExecutedBuyCountForHistoryItem(item) > 0 && item?.historyOutcome?.includeInReturnStats !== false;
 }
 
 function getClosedHistoryCasePriority(item) {
@@ -2118,7 +2093,7 @@ function renderRecommendationHistoryBoard() {
   if (recommendationHistoryLoading && !recommendationHistoryPayload) {
     recommendationHistoryCurrentCases.classList.add("history-placeholder");
     recommendationHistoryClosedCases.classList.add("history-placeholder");
-    recommendationHistoryCurrentCases.innerHTML = `<div class="history-placeholder">진행 중 추천 목록을 불러오는 중입니다.</div>`;
+    recommendationHistoryCurrentCases.innerHTML = `<div class="history-placeholder">현재 후보 목록을 불러오는 중입니다.</div>`;
     recommendationHistoryClosedCases.innerHTML = `<div class="history-placeholder">종료 케이스를 준비 중입니다.</div>`;
     renderHistoryMatrixModalBody();
     return;
@@ -2144,27 +2119,31 @@ function renderRecommendationHistoryBoard() {
   const closedMonthOptions = getHistoryClosedMonthOptions(payload, closedCases);
   ensureHistoryClosedMonthSelection(closedMonthOptions);
   const filteredClosedCases = filterHistoryClosedCases(closedCases);
-  const activeCaseCount = Number(summary.activeCases ?? currentCases.length);
-  const enteredCaseCount = Number(summary.enteredCases ?? cases.filter(isEnteredHistoryCase).length);
-  const noEntryCaseCount = Number(summary.noEntryCases ?? cases.filter(isNoEntryHistoryCase).length);
-  const profitExitCaseCount = Number(
-    summary.profitExitCases ?? cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "profit").length
+  const returnStatsCases = cases.filter(
+    (item) =>
+      getExecutedBuyCountForHistoryItem(item) > 0 &&
+      item.historyOutcome?.includeInReturnStats !== false &&
+      Number.isFinite(Number(item.unrealizedReturnPct))
   );
-  const averageReturn = Number.isFinite(Number(summary.avgReturnPct)) ? Number(summary.avgReturnPct) : undefined;
+  const secondOrMore = cases.filter((item) => item.executedBuyCount >= 2);
+  const profitExitCases = cases.filter((item) => item.historyOutcome?.type === "target_hit" || item.historyOutcome?.type === "drift_profit_exit");
+  const averageReturn =
+    returnStatsCases.length > 0
+      ? returnStatsCases.reduce((sum, item) => sum + Number(item.unrealizedReturnPct), 0) / returnStatsCases.length
+      : undefined;
 
   recommendationHistorySummary.innerHTML = [
-    renderHistorySummaryCard("추적 케이스", formatNumber(summary.totalCases ?? summary.openedCases ?? cases.length), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
-    renderHistorySummaryCard("진행 중", formatNumber(activeCaseCount), "현재 열린 추천 케이스", "neutral"),
-    renderHistorySummaryCard("거래 완료", formatNumber(enteredCaseCount), "실제 매수 발생", "positive"),
+    renderHistorySummaryCard("추적 케이스", formatNumber(summary.openedCases ?? cases.length), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
+    renderHistorySummaryCard("현재 후보", formatNumber(summary.currentExecutionCount ?? currentCandidates.length), "오늘 기준 매수 후보", "neutral"),
+    renderHistorySummaryCard("종료 케이스", formatNumber(summary.closedCaseCount ?? closedCases.length), "후보 이탈/종료 검증 대상", closedCases.length ? "negative" : ""),
     renderHistorySummaryCard(
       "평균 수익률",
       averageReturn == null ? "-" : formatPercent(averageReturn),
-      `거래 완료 기준${summary.returnStatsBaseCount != null ? ` ${formatNumber(summary.returnStatsBaseCount)}건` : ""}`,
+      "체결 평균가 대비",
       averageReturn == null ? "" : averageReturn >= 0 ? "positive" : "negative"
     ),
-    renderHistorySummaryCard("수익 종료", formatNumber(profitExitCaseCount), "수익/목표/상승 종료", "positive"),
-    renderHistorySummaryCard("미진입 제외", formatNumber(noEntryCaseCount), "매수 없이 종료", "neutral")
-  ].join("") + renderHistoryCycleSummaryStrip(summary.cycleSummary);
+    renderHistorySummaryCard("수익 종료", formatNumber(summary.profitExitCases ?? profitExitCases.length), "슈팅/완만 상승 종료", "positive")
+  ].join("");
 
   recommendationHistoryCurrentCases.classList.remove("history-placeholder");
   recommendationHistoryClosedCases.classList.remove("history-placeholder");
@@ -2188,21 +2167,6 @@ function renderHistorySummaryCard(label, value, description, tone = "") {
       <strong>${escapeHtml(value)}</strong>
       <p>${escapeHtml(description)}</p>
     </article>
-  `;
-}
-
-function renderHistoryCycleSummaryStrip(cycleSummary) {
-  if (!cycleSummary) {
-    return "";
-  }
-
-  return `
-    <div class="history-cycle-summary-strip">
-      <span>재추천 종목 ${formatNumber(cycleSummary.multiCycleSymbols ?? 0)}</span>
-      <span>Recovery ${formatNumber(cycleSummary.recoveryCycles ?? 0)}건</span>
-      <span>Recovery 성공률 ${Number.isFinite(Number(cycleSummary.recoverySuccessRate)) ? formatUnsignedPercent(Number(cycleSummary.recoverySuccessRate)) : "-"}</span>
-      <span>평균 재추천 소요 ${Number.isFinite(Number(cycleSummary.avgDaysToRecovery)) ? `${formatNumber(cycleSummary.avgDaysToRecovery)}일` : "-"}</span>
-    </div>
   `;
 }
 
@@ -2293,11 +2257,7 @@ function getHistoryChartDisplayItem(item) {
     latestClose: historyCase?.latestClose ?? outcome.latestClose,
     unrealizedReturnPct: historyCase?.unrealizedReturnPct ?? outcome.unrealizedReturnPct,
     executedBuyCount: historyCase?.executedBuyCount ?? outcome.executedBuyCount,
-    buyPlan,
-    cycleMeta: historyCase?.cycleMeta ?? item?.cycleMeta,
-    caseKind: historyCase?.caseKind ?? item?.caseKind,
-    lifecycleStatus: historyCase?.lifecycleStatus ?? item?.lifecycleStatus,
-    historyOutcome: historyCase?.historyOutcome ?? item?.historyOutcome
+    buyPlan
   };
 }
 
@@ -2323,7 +2283,7 @@ function renderHistoryChartModalShell(item, options = {}) {
         renderHistoryChartSummaryItem(displayItem.averageBuyPriceLabel, formatNumber(displayItem.displayBuyPrice), ""),
         renderHistoryChartSummaryItem("수익률", Number.isFinite(returnValue) ? formatPercent(returnValue) : "-", returnClass),
         renderHistoryChartSummaryItem("체결 단계", `${formatNumber(displayItem.executedBuyCount ?? 0)}차`, "")
-      ].join("") + renderHistoryCycleTimeline(item);
+      ].join("");
     }
   }
 
@@ -2524,14 +2484,14 @@ function renderHistoryMatrixModalBody() {
         <strong>${formatNumber(filteredClosedCases.length)}</strong>
       </article>
       <article>
-        <span>진행 중 추천</span>
+        <span>현재 후보</span>
         <strong>${formatNumber(currentCandidates.length)}</strong>
       </article>
     </div>
     ${renderHistoryMatrix(payload?.summary ?? {}, filteredClosedCases, {
       emptyText:
         closedCases.length === 0
-          ? "현재 종료 케이스가 없어 교차 검증 매트릭스는 비어 있습니다. 진행 중 추천은 별도 영역에서 조회합니다."
+          ? "현재 종료 케이스가 없어 교차 검증 매트릭스는 비어 있습니다. 진행 중 후보는 현재 추천 상태에서 별도 추적합니다."
           : "선택한 종료월 또는 검색어에 맞는 종료 케이스가 없습니다."
     })}
   `;
@@ -2600,59 +2560,6 @@ function sortCurrentHistoryRowsByRecent(rows) {
   });
 }
 
-function getHistoryBaseCase(item) {
-  return item?.historyCase ?? item;
-}
-
-function getHistoryCycleMeta(item) {
-  return getHistoryBaseCase(item)?.cycleMeta ?? item?.cycleMeta;
-}
-
-function formatRecoveryOutcomeLabel(outcomeType) {
-  const labels = {
-    stop_broken: "손절",
-    market_shock_stop: "시장충격 손절",
-    deep_zone_timeout_exit: "손실 종료",
-    stop_loss: "손절",
-    loss_exit: "손실 종료",
-    invalidated: "무효화",
-    failed: "실패",
-    danger_exit: "위험 종료",
-    closed_unknown: "손실 종료"
-  };
-  return labels[outcomeType] ?? "손실 종료";
-}
-
-function renderHistoryCycleBadge(item, suffix = "") {
-  const cycleMeta = getHistoryCycleMeta(item);
-  if (!cycleMeta?.cycleNo) {
-    return "";
-  }
-
-  const parts = [`Cycle ${cycleMeta.cycleNo}`];
-  if (cycleMeta.isRecoveryCycle && !isNoEntryHistoryCase(getHistoryBaseCase(item))) {
-    parts.push("Recovery");
-  }
-  if (suffix) {
-    parts.push(suffix);
-  }
-  return `<span class="history-cycle-badge ${cycleMeta.isRecoveryCycle ? "recovery" : ""}">${parts.map(escapeHtml).join(" · ")}</span>`;
-}
-
-function renderHistoryRecoveryNote(item) {
-  const cycleMeta = getHistoryCycleMeta(item);
-  if (!cycleMeta?.isRecoveryCycle || isNoEntryHistoryCase(getHistoryBaseCase(item))) {
-    return "";
-  }
-
-  const days = Number(cycleMeta.daysFromRecoverySourceClose);
-  if (!Number.isFinite(days)) {
-    return "";
-  }
-
-  return `<p class="history-cycle-note">이전 ${escapeHtml(formatRecoveryOutcomeLabel(cycleMeta.recoveryFromOutcome))} 후 ${formatNumber(days)}일 만에 재추천</p>`;
-}
-
 function renderHistoryCurrentCandidateCard(item) {
   const historyCase = item.historyCase;
   const hasHistoryCase = Boolean(item.hasHistoryCase && historyCase);
@@ -2689,7 +2596,6 @@ function renderHistoryCurrentCandidateCard(item) {
               <div class="history-case-title-line">
                 <strong>${escapeHtml(item.name ?? historyCase?.name ?? "-")}</strong>
                 ${renderHistoryExecutionBadge(executedBuyCount)}
-                ${renderHistoryCycleBadge(historyCase ?? item, "진행중")}
               </div>
               <span>${escapeHtml(item.symbol ?? historyCase?.symbol ?? "-")} / ${escapeHtml(item.profile ?? historyCase?.profile ?? "-")} / ${escapeHtml(bucketLabel)}</span>
             </div>
@@ -2709,55 +2615,8 @@ function renderHistoryCurrentCandidateCard(item) {
           recommendation: item
         })}
         ${thirdBuyStatusHtml}
-        ${renderHistoryRecoveryNote(historyCase ?? item)}
       </div>
     </article>
-  `;
-}
-
-function getHistoryCycleTimelineCases(item) {
-  const cycleMeta = getHistoryCycleMeta(item);
-  if (!cycleMeta?.cycleKey || !Array.isArray(recommendationHistoryPayload?.cases)) {
-    return [];
-  }
-
-  return recommendationHistoryPayload.cases
-    .filter((historyCase) => historyCase?.cycleMeta?.cycleKey === cycleMeta.cycleKey)
-    .sort((left, right) => {
-      const leftDate = left.openedDate ?? left.dataDate ?? "";
-      const rightDate = right.openedDate ?? right.dataDate ?? "";
-      if (leftDate !== rightDate) {
-        return leftDate.localeCompare(rightDate);
-      }
-      return String(left.id ?? "").localeCompare(String(right.id ?? ""));
-    });
-}
-
-function getHistoryCycleReturnLabel(historyCase) {
-  const returnPct = historyCase?.historyOutcome?.returnBasis?.returnPct ?? historyCase?.realizedReturnPct ?? historyCase?.unrealizedReturnPct;
-  return Number.isFinite(Number(returnPct)) ? formatPercent(Number(returnPct)) : "-";
-}
-
-function renderHistoryCycleTimeline(item) {
-  const timelineCases = getHistoryCycleTimelineCases(item);
-  if (timelineCases.length <= 1) {
-    return "";
-  }
-
-  return `
-    <div class="history-cycle-timeline">
-      <div class="history-cycle-timeline-title">Cycle timeline</div>
-      ${timelineCases
-        .map((historyCase) => `
-          <div class="history-cycle-timeline-row ${historyCase?.cycleMeta?.isRecoveryCycle ? "recovery" : ""}">
-            <span>Cycle ${formatNumber(historyCase?.cycleMeta?.cycleNo ?? 0)}</span>
-            <strong>${escapeHtml(historyCase.openedDate ?? historyCase.dataDate ?? "-")}</strong>
-            <em>${escapeHtml(historyCase.historyOutcome?.label ?? (historyCase.lifecycleStatus === "current" ? "진행중" : "-"))}</em>
-            <span>${escapeHtml(getHistoryCycleReturnLabel(historyCase))}</span>
-          </div>
-        `)
-        .join("")}
-    </div>
   `;
 }
 
@@ -2857,13 +2716,12 @@ function renderHistoryCurrentCandidateList(currentCandidates, currentCases) {
 function renderHistoryClosedOutcomeTabs(cases) {
   const activeFilter = CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)
     ? recommendationHistoryClosedOutcomeFilter
-    : "entered";
+    : "all";
   const tabItems = [
-    { key: "entered", label: "거래완료", description: "매수 발생", count: cases.filter(isEnteredHistoryCase).length },
-    { key: "profit", label: "수익", description: "목표/상승", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "profit").length },
-    { key: "loss", label: "손절", description: "손절/손실", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "loss").length },
-    { key: "no_entry", label: "미진입 제외", description: "매수 없음", count: cases.filter(isNoEntryHistoryCase).length },
-    { key: "other", label: "기타", description: "거래 기타", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "other").length }
+    { key: "all", label: "전체", description: "종료", count: cases.length },
+    { key: "profit", label: "수익", description: "목표/상승", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "profit").length },
+    { key: "loss", label: "손절", description: "손절/손실", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "loss").length },
+    { key: "other", label: "기타", description: "시간/제외", count: cases.filter((item) => getHistoryClosedOutcomeGroup(item) === "other").length }
   ];
 
   return `
@@ -2889,7 +2747,7 @@ function renderHistoryClosedOutcomeTabs(cases) {
 
 function renderHistoryClosedCasePanel(cases, options = {}) {
   if (!CLOSED_HISTORY_OUTCOME_FILTERS.has(recommendationHistoryClosedOutcomeFilter)) {
-    recommendationHistoryClosedOutcomeFilter = "entered";
+    recommendationHistoryClosedOutcomeFilter = "all";
   }
 
   const filteredCases = filterHistoryClosedCasesByOutcome(cases);
@@ -2908,54 +2766,6 @@ function renderHistoryClosedCasePanel(cases, options = {}) {
   `;
 }
 
-function getNoEntryClosedReason(item) {
-  const reasons = Array.isArray(item?.initialSnapshot?.reasons) ? item.initialSnapshot.reasons : [];
-  const tags = Array.isArray(item?.initialSnapshot?.tags) ? item.initialSnapshot.tags : [];
-  if (reasons.includes("entry_zone_pending")) {
-    return "1차 매수가 미도달";
-  }
-  if (tags.includes("watch_low_quality") || reasons.includes("quality_not_ready")) {
-    return "진입 조건 미충족";
-  }
-  return item?.historyOutcome?.label ?? "매수 없이 제외";
-}
-
-function renderHistoryNoEntryClosedCaseCard(item) {
-  const openedDate = item.openedDate ?? item.initialSnapshot?.anchorDate;
-  const closedDate = item.closedDate ?? item.dataDate;
-  const firstBuyPrice = item.buyPlan?.firstBuyPrice;
-  const reason = getNoEntryClosedReason(item);
-
-  return `
-    <article class="history-case-card closed no-entry">
-      <div class="history-case-main">
-        <div class="history-case-copy">
-          <div class="history-case-head">
-            <div>
-              <div class="history-case-title-line">
-                <strong>${escapeHtml(item.name ?? "-")}</strong>
-                <span class="history-execution-badge stage-0">미진입 제외</span>
-                ${renderHistoryCycleBadge(item)}
-              </div>
-              <span>${escapeHtml(item.symbol ?? "-")} / ${escapeHtml(item.profile ?? "-")}</span>
-            </div>
-            <div class="history-case-tail">
-              <span class="history-status-pill neutral">매수 없음</span>
-            </div>
-          </div>
-          <div class="history-case-metrics">
-            <span>추천일 ${escapeHtml(openedDate ?? "-")}</span>
-            <span>종료일 ${escapeHtml(closedDate ?? "-")}</span>
-            <span>1차 매수가 ${formatNumber(firstBuyPrice)}</span>
-          </div>
-          <p class="history-case-reason">제외 사유: ${escapeHtml(reason)}</p>
-          <p class="history-case-reason">실제 미체결 사유: 추천 이후 유효한 1차 매수 체결 기록이 없습니다.</p>
-        </div>
-      </div>
-    </article>
-  `;
-}
-
 function renderHistoryCaseList(cases, options = {}) {
   if (!cases.length) {
     return `<div class="history-placeholder">${escapeHtml(options.emptyText ?? "최근 케이스가 없습니다.")}</div>`;
@@ -2969,10 +2779,6 @@ function renderHistoryCaseList(cases, options = {}) {
       ${cases
         .slice(0, limit)
         .map((item) => {
-          if (mode === "closed" && isNoEntryHistoryCase(item)) {
-            return renderHistoryNoEntryClosedCaseCard(item);
-          }
-
           const outcome = item.historyOutcome ?? getActiveHistoryOutcome(item.executedBuyCount);
           const displayReturnValue =
             mode === "closed" && Number.isFinite(Number(outcome?.returnBasis?.returnPct))
@@ -3008,7 +2814,6 @@ function renderHistoryCaseList(cases, options = {}) {
                       <div class="history-case-title-line">
                         <strong>${escapeHtml(item.name ?? "-")}</strong>
                         ${renderHistoryExecutionBadge(item.executedBuyCount)}
-                        ${renderHistoryCycleBadge(item)}
                       </div>
                       <span>${escapeHtml(item.symbol ?? "-")} / ${escapeHtml(item.profile ?? "-")}</span>
                     </div>
@@ -3021,14 +2826,12 @@ function renderHistoryCaseList(cases, options = {}) {
                 </div>
                 ${renderHistoryBuyLevels(item.buyPlan, item.executedBuys, {
                   stagedBuyDiagnostics: item.stagedBuyDiagnostics,
-                  recommendation: item.currentRecommendation,
-                  compact: mode === "closed"
+                  recommendation: item.currentRecommendation
                 })}
                 ${renderThirdBuyExecutionStatus(item, item.currentRecommendation)}
                 ${mode === "closed" ? metricsHtml : ""}
                 ${mode === "closed" ? renderHistoryOutcomeBasis(outcome) : ""}
                 ${mode === "closed" ? renderHistoryClosedReason(outcome) : ""}
-                ${mode === "closed" ? renderHistoryRecoveryNote(item) : ""}
               </div>
             </article>
           `;
@@ -3050,7 +2853,7 @@ function renderHistoryExecutionBadge(executedBuyCount) {
 function getActiveHistoryOutcome(executedBuyCount) {
   return Number(executedBuyCount) > 0
     ? { label: "진행 중", category: "active", description: "현재 추천 목록에 남아 있습니다." }
-    : { label: "진행 중 추천", category: "active", description: "현재 열린 추천 케이스입니다." };
+    : { label: "현재 후보", category: "active", description: "현재 추천 목록에 남아 있습니다." };
 }
 
 function renderHistoryOutcomeChip(outcome) {
@@ -3260,7 +3063,7 @@ function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
       : "";
 
   return `
-    <div class="history-buy-levels ${options.compact ? "compact" : ""}">
+    <div class="history-buy-levels">
       ${[...buys]
         .sort((left, right) => Number(left.stage ?? 0) - Number(right.stage ?? 0))
         .map((buy) => {
@@ -3292,12 +3095,9 @@ function renderHistoryBuyLevels(buyPlan, executedBuys, options = {}) {
           const buyDate = formatHistoryBuyDate(
             executedBuy?.date ?? diagnostic?.executedDate ?? diagnostic?.confirmedDate ?? diagnostic?.touchedDate
           );
-          const stageLabel = options.compact
-            ? `${formatNumber(stage)}차${statusLabel ? ` · ${escapeHtml(statusLabel)}` : ""}`
-            : `${formatNumber(stage)}차 매수가${statusLabel ? ` · ${escapeHtml(statusLabel)}` : ""}`;
           return `
             <span class="history-buy-level ${escapeHtml(stageClass)} ${executionClass} ${escapeHtml(confirmationClass)}">
-              <em>${stageLabel}</em>
+              <em>${formatNumber(stage)}차 매수가${statusLabel ? ` · ${escapeHtml(statusLabel)}` : ""}</em>
               <strong><span>${formatNumber(buy.price)}</span>${buyDate ? `<small>${escapeHtml(buyDate)}</small>` : ""}</strong>
             </span>
           `;

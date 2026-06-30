@@ -4192,5 +4192,14 @@
     "localState": "SELECTIVE",
     "themeRotationScore": 34.67,
     "marketMode": "SELECTIVE"
+  },
+  {
+    "date": "2026-06-30",
+    "globalScore": 3,
+    "globalState": "RISK_ON",
+    "localScore": 1.5,
+    "localState": "WEAK",
+    "themeRotationScore": 30.08,
+    "marketMode": "NEUTRAL"
   }
 ]

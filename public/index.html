@@ -212,7 +212,7 @@
             <div>
               <h2>추천 히스토리</h2>
               <p class="field-help">
-                추천 발생 이후 가격 성과와 엔진 탈락 흐름을 분리해서 교차 검증하는 화면입니다.
+                현재 진행 중 추천 조회, 종료된 거래 복기, 미진입 제외 로그를 분리해서 확인합니다.
               </p>
             </div>
             <span id="recommendationHistoryStatusBadge" class="status-badge idle">구조 준비</span>
@@ -243,8 +243,8 @@
 
           <div class="history-toolbar">
             <div>
-              <h3>현재 상태 분리</h3>
-              <p class="field-help">현재 추천 후보는 종료 케이스에서 제외하고, 종료된 종목은 종료월 기준으로 조회합니다.</p>
+              <h3>종료 케이스 조회</h3>
+              <p class="field-help">종료 전체와 거래 완료, 미진입 제외를 분리해서 조회합니다.</p>
             </div>
             <div class="history-toolbar-actions">
               <label class="history-filter-field">
@@ -264,11 +264,11 @@
           <div class="history-layout">
             <section class="history-section">
               <div class="history-section-head">
-                <h3>현재 추천 상태</h3>
-                <span>current candidates</span>
+                <h3>진행 중 추천</h3>
+                <span>active cases</span>
               </div>
               <div id="recommendationHistoryCurrentCases" class="history-placeholder">
-                현재 추천 후보와 매수 가정 히스토리 연결 상태를 표시할 자리입니다.
+                현재 열린 추천 케이스만 표시합니다. 매수/관리 상세는 스윙 관리 화면에서 확인합니다.
               </div>
             </section>
 
