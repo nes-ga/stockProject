@@ -47,7 +47,7 @@ const DEFAULT_MARKET_FLOW_RANGE = "6M";
 const MARKET_FLOW_CHART_RANGES = ["3M", "6M", "1Y", "2Y"];
 const APP_VIEWS = ["news", "index", "history", "analysis", "movers"];
 const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
-const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["entered", "all", "profit", "loss", "no_entry", "other"]);
+const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["entered", "all", "profit", "loss", "other"]);
 const HANGUL_BASE = 44032;
 const HANGUL_END = 55203;
 const CHOSUNG = [
@@ -1763,12 +1763,14 @@ async function syncServerRecommendations(options = {}) {
       const smallcapSwingItems = recommendationCatalog.filter(
         (item) => (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === "smallcap"
       );
-      const executionCount = defaultSwingItems.filter((item) => item.swingBucket === "execution").length;
-      const watchCount = defaultSwingItems.filter((item) => item.swingBucket === "watch").length;
-      const smallcapExecutionCount = smallcapSwingItems.filter((item) => item.swingBucket === "execution").length;
-      const smallcapWatchCount = smallcapSwingItems.filter((item) => item.swingBucket === "watch").length;
+      const executionCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "execution").length;
+      const managedCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "managed").length;
+      const watchCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "watch").length;
+      const smallcapExecutionCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "execution").length;
+      const smallcapManagedCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "managed").length;
+      const smallcapWatchCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "watch").length;
       showSummary(
-        `서버 추천 종목을 다시 반영했습니다. 기본 스윙 진입 가능 ${executionCount}개·관찰 ${watchCount}개 / 소형 스윙 진입 가능 ${smallcapExecutionCount}개·관찰 ${smallcapWatchCount}개입니다.`
+        `서버 추천 종목을 다시 반영했습니다. 기본 스윙 진입 가능 ${executionCount}개·관리 중 ${managedCount}개·관찰 ${watchCount}개 / 소형 스윙 진입 가능 ${smallcapExecutionCount}개·관리 중 ${smallcapManagedCount}개·관찰 ${smallcapWatchCount}개입니다.`
       );
     }
   } catch (error) {
@@ -1871,6 +1873,8 @@ async function loadRecommendationHistory(options = {}) {
   } finally {
     recommendationHistoryLoading = false;
     renderRecommendationHistoryBoard();
+    renderSwingBucketTabs();
+    renderSelector();
   }
 }
 
@@ -1900,7 +1904,12 @@ function getHistoryClosedMonthOptions(payload, closedCases) {
     ? payload.closedMonths.filter((item) => typeof item?.month === "string" && /^\d{4}-\d{2}$/.test(item.month))
     : [];
   if (payloadMonths.length) {
-    return payloadMonths;
+    return payloadMonths
+      .map((item) => ({
+        ...item,
+        closedCaseCount: closedCases.filter((historyCase) => getHistoryClosedMonth(historyCase) === item.month).length
+      }))
+      .filter((item) => item.closedCaseCount > 0);
   }
 
   return [...new Set(closedCases.map(getHistoryClosedMonth).filter(Boolean))]
@@ -1998,9 +2007,6 @@ function matchesHistoryClosedOutcomeFilter(item, selectedOutcome) {
   if (selectedOutcome === "entered") {
     return isEnteredHistoryCase(item);
   }
-  if (selectedOutcome === "no_entry") {
-    return isNoEntryHistoryCase(item);
-  }
   if (selectedOutcome === "profit" || selectedOutcome === "loss") {
     return isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === selectedOutcome;
   }
@@ -2048,9 +2054,10 @@ function dedupeClosedHistoryCases(cases) {
 
 function getDisplayClosedHistoryCases(payload, cases) {
   const serverClosedCases = Array.isArray(payload?.closedCases) ? payload.closedCases : null;
-  return serverClosedCases?.length
-    ? serverClosedCases.filter(shouldDisplayClosedHistoryCase)
-    : dedupeClosedHistoryCases(cases.filter(shouldDisplayClosedHistoryCase));
+  const sourceCases = dedupeClosedHistoryCases(
+    (serverClosedCases?.length ? serverClosedCases : cases).filter(shouldDisplayClosedHistoryCase)
+  );
+  return sourceCases.filter((item) => !isNoEntryHistoryCase(item));
 }
 
 function shouldDisplayCurrentRecommendationCandidate(item) {
@@ -2146,14 +2153,14 @@ function renderRecommendationHistoryBoard() {
   const filteredClosedCases = filterHistoryClosedCases(closedCases);
   const activeCaseCount = Number(summary.activeCases ?? currentCases.length);
   const enteredCaseCount = Number(summary.enteredCases ?? cases.filter(isEnteredHistoryCase).length);
-  const noEntryCaseCount = Number(summary.noEntryCases ?? cases.filter(isNoEntryHistoryCase).length);
+  const visibleTrackedCaseCount = activeCaseCount + enteredCaseCount;
   const profitExitCaseCount = Number(
     summary.profitExitCases ?? cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "profit").length
   );
   const averageReturn = Number.isFinite(Number(summary.avgReturnPct)) ? Number(summary.avgReturnPct) : undefined;
 
   recommendationHistorySummary.innerHTML = [
-    renderHistorySummaryCard("추적 케이스", formatNumber(summary.totalCases ?? summary.openedCases ?? cases.length), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
+    renderHistorySummaryCard("추적 케이스", formatNumber(visibleTrackedCaseCount), `${escapeHtml(payload?.asOfDate ?? "-")} 기준`, ""),
     renderHistorySummaryCard("진행 중", formatNumber(activeCaseCount), "현재 열린 추천 케이스", "neutral"),
     renderHistorySummaryCard("거래 완료", formatNumber(enteredCaseCount), "실제 매수 발생", "positive"),
     renderHistorySummaryCard(
@@ -2162,8 +2169,7 @@ function renderRecommendationHistoryBoard() {
       `거래 완료 기준${summary.returnStatsBaseCount != null ? ` ${formatNumber(summary.returnStatsBaseCount)}건` : ""}`,
       averageReturn == null ? "" : averageReturn >= 0 ? "positive" : "negative"
     ),
-    renderHistorySummaryCard("수익 종료", formatNumber(profitExitCaseCount), "수익/목표/상승 종료", "positive"),
-    renderHistorySummaryCard("미진입 제외", formatNumber(noEntryCaseCount), "매수 없이 종료", "neutral")
+    renderHistorySummaryCard("수익 종료", formatNumber(profitExitCaseCount), "수익/목표/상승 종료", "positive")
   ].join("") + renderHistoryCycleSummaryStrip(summary.cycleSummary);
 
   recommendationHistoryCurrentCases.classList.remove("history-placeholder");
@@ -2723,6 +2729,7 @@ function getHistoryCycleTimelineCases(item) {
 
   return recommendationHistoryPayload.cases
     .filter((historyCase) => historyCase?.cycleMeta?.cycleKey === cycleMeta.cycleKey)
+    .filter((historyCase) => !isNoEntryHistoryCase(historyCase))
     .sort((left, right) => {
       const leftDate = left.openedDate ?? left.dataDate ?? "";
       const rightDate = right.openedDate ?? right.dataDate ?? "";
@@ -2862,7 +2869,6 @@ function renderHistoryClosedOutcomeTabs(cases) {
     { key: "entered", label: "거래완료", description: "매수 발생", count: cases.filter(isEnteredHistoryCase).length },
     { key: "profit", label: "수익", description: "목표/상승", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "profit").length },
     { key: "loss", label: "손절", description: "손절/손실", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "loss").length },
-    { key: "no_entry", label: "미진입 제외", description: "매수 없음", count: cases.filter(isNoEntryHistoryCase).length },
     { key: "other", label: "기타", description: "거래 기타", count: cases.filter((item) => isEnteredHistoryCase(item) && getHistoryClosedOutcomeGroup(item) === "other").length }
   ];
 
@@ -2908,54 +2914,6 @@ function renderHistoryClosedCasePanel(cases, options = {}) {
   `;
 }
 
-function getNoEntryClosedReason(item) {
-  const reasons = Array.isArray(item?.initialSnapshot?.reasons) ? item.initialSnapshot.reasons : [];
-  const tags = Array.isArray(item?.initialSnapshot?.tags) ? item.initialSnapshot.tags : [];
-  if (reasons.includes("entry_zone_pending")) {
-    return "1차 매수가 미도달";
-  }
-  if (tags.includes("watch_low_quality") || reasons.includes("quality_not_ready")) {
-    return "진입 조건 미충족";
-  }
-  return item?.historyOutcome?.label ?? "매수 없이 제외";
-}
-
-function renderHistoryNoEntryClosedCaseCard(item) {
-  const openedDate = item.openedDate ?? item.initialSnapshot?.anchorDate;
-  const closedDate = item.closedDate ?? item.dataDate;
-  const firstBuyPrice = item.buyPlan?.firstBuyPrice;
-  const reason = getNoEntryClosedReason(item);
-
-  return `
-    <article class="history-case-card closed no-entry">
-      <div class="history-case-main">
-        <div class="history-case-copy">
-          <div class="history-case-head">
-            <div>
-              <div class="history-case-title-line">
-                <strong>${escapeHtml(item.name ?? "-")}</strong>
-                <span class="history-execution-badge stage-0">미진입 제외</span>
-                ${renderHistoryCycleBadge(item)}
-              </div>
-              <span>${escapeHtml(item.symbol ?? "-")} / ${escapeHtml(item.profile ?? "-")}</span>
-            </div>
-            <div class="history-case-tail">
-              <span class="history-status-pill neutral">매수 없음</span>
-            </div>
-          </div>
-          <div class="history-case-metrics">
-            <span>추천일 ${escapeHtml(openedDate ?? "-")}</span>
-            <span>종료일 ${escapeHtml(closedDate ?? "-")}</span>
-            <span>1차 매수가 ${formatNumber(firstBuyPrice)}</span>
-          </div>
-          <p class="history-case-reason">제외 사유: ${escapeHtml(reason)}</p>
-          <p class="history-case-reason">실제 미체결 사유: 추천 이후 유효한 1차 매수 체결 기록이 없습니다.</p>
-        </div>
-      </div>
-    </article>
-  `;
-}
-
 function renderHistoryCaseList(cases, options = {}) {
   if (!cases.length) {
     return `<div class="history-placeholder">${escapeHtml(options.emptyText ?? "최근 케이스가 없습니다.")}</div>`;
@@ -2969,10 +2927,6 @@ function renderHistoryCaseList(cases, options = {}) {
       ${cases
         .slice(0, limit)
         .map((item) => {
-          if (mode === "closed" && isNoEntryHistoryCase(item)) {
-            return renderHistoryNoEntryClosedCaseCard(item);
-          }
-
           const outcome = item.historyOutcome ?? getActiveHistoryOutcome(item.executedBuyCount);
           const displayReturnValue =
             mode === "closed" && Number.isFinite(Number(outcome?.returnBasis?.returnPct))
@@ -6772,6 +6726,97 @@ function renderSwingExecutionGuardBadge(item) {
   `;
 }
 
+function renderManagedSwingTradeHtml(item) {
+  if (item?.category !== "swing" || resolveSwingBucket(item) !== "managed") {
+    return "";
+  }
+
+  const historyCase = getCurrentEnteredHistoryCaseForSwingItem(item);
+  if (!historyCase) {
+    return "";
+  }
+
+  const buyPlan = historyCase.buyPlan ?? item.buyPlan;
+  const executedBuys = Array.isArray(historyCase.executedBuys) ? historyCase.executedBuys : [];
+  const averageBuyPrice = Number(historyCase.averageBuyPrice);
+  const displayBuyPrice = Number.isFinite(averageBuyPrice) && averageBuyPrice > 0
+    ? averageBuyPrice
+    : Number(buyPlan?.firstBuyPrice);
+  const executedStage = getExecutedBuyCountForHistoryItem(historyCase);
+  const buyBadges = executedBuys
+    .map((buy) => {
+      const stage = Number(buy?.stage);
+      const price = Number(buy?.price);
+      return Number.isFinite(stage) && stage > 0 && Number.isFinite(price) && price > 0
+        ? `${formatNumber(stage)}차 ${formatNumber(price)}`
+        : "";
+    })
+    .filter(Boolean);
+  const stopLossPrice = Number(buyPlan?.stopLossPrice ?? historyCase.initialStopLossPrice);
+
+  return `
+    <span class="stock-card-trade-grid stock-card-trade-grid-managed">
+      <span class="stock-card-trade-item stock-card-trade-item-buy stock-card-trade-item-managed">
+        <span class="stock-card-trade-label">매수가</span>
+        <span class="stock-card-trade-value stock-card-trade-value-group">
+          <span class="stock-card-trade-summary">
+            ${Number.isFinite(displayBuyPrice) && displayBuyPrice > 0 ? `평균 ${formatNumber(displayBuyPrice)}원` : "-"}
+            ${executedStage > 0 ? ` · ${formatNumber(executedStage)}차 체결` : ""}
+          </span>
+          ${
+            buyBadges.length
+              ? `<span class="stock-card-trade-badges">${buyBadges.map((level) => `<span class="stock-card-trade-badge managed">${escapeHtml(level)}</span>`).join("")}</span>`
+              : ""
+          }
+        </span>
+      </span>
+      <span class="stock-card-trade-item">
+        <span class="stock-card-trade-label">손절가</span>
+        <span class="stock-card-trade-value">${Number.isFinite(stopLossPrice) && stopLossPrice > 0 ? `${formatNumber(stopLossPrice)}원` : "-"}</span>
+      </span>
+    </span>
+  `;
+}
+
+function renderManagedSwingStatusHtml(item) {
+  if (item?.category !== "swing" || resolveSwingBucket(item) !== "managed") {
+    return "";
+  }
+
+  const historyCase = getCurrentEnteredHistoryCaseForSwingItem(item);
+  if (!historyCase) {
+    return "";
+  }
+
+  const executedStage = getExecutedBuyCountForHistoryItem(historyCase);
+  const latestClose = Number(historyCase.latestClose ?? item.postEntryOutcome?.latestClose);
+  const averageBuyPrice = Number(historyCase.averageBuyPrice);
+  const stopLossPrice = Number(historyCase.buyPlan?.stopLossPrice ?? historyCase.initialStopLossPrice);
+  const returnPct = Number.isFinite(Number(historyCase.unrealizedReturnPct))
+    ? Number(historyCase.unrealizedReturnPct)
+    : Number.isFinite(latestClose) && Number.isFinite(averageBuyPrice) && averageBuyPrice > 0
+      ? ((latestClose - averageBuyPrice) / averageBuyPrice) * 100
+      : undefined;
+  const stopDistancePct =
+    Number.isFinite(latestClose) && latestClose > 0 && Number.isFinite(stopLossPrice) && stopLossPrice > 0
+      ? ((latestClose - stopLossPrice) / latestClose) * 100
+      : undefined;
+  const returnClass = Number.isFinite(returnPct) && returnPct > 0 ? "positive" : Number.isFinite(returnPct) && returnPct < 0 ? "negative" : "neutral";
+  const stopClass = Number.isFinite(stopDistancePct) && stopDistancePct <= 3 ? "negative" : Number.isFinite(stopDistancePct) && stopDistancePct <= 8 ? "neutral" : "positive";
+
+  return `
+    <span class="stock-card-swing-summary managed">
+      <span class="stock-pattern-pill managed">포지션 관리</span>
+      <span class="stock-card-swing-line">현재 매수 히스토리 기준 ${formatNumber(executedStage)}차 체결 관리 중</span>
+      <span class="stock-card-managed-metrics">
+        <span class="${escapeHtml(returnClass)}">수익률 ${Number.isFinite(returnPct) ? formatPercent(returnPct) : "-"}</span>
+        <span>현재가 ${Number.isFinite(latestClose) && latestClose > 0 ? `${formatNumber(latestClose)}원` : "-"}</span>
+        <span class="${escapeHtml(stopClass)}">손절여유 ${Number.isFinite(stopDistancePct) ? formatPercent(stopDistancePct).replace("+", "") : "-"}</span>
+      </span>
+    </span>
+  `;
+}
+
 function getSectorLabel(symbol) {
   const item = stockSearchUniverse.find((candidate) => candidate.code === symbol);
   if (!item || typeof item.sector !== "string" || !item.sector.trim()) {
@@ -6786,22 +6831,24 @@ function renderSelector() {
   const stockCards = pagedItems
     .map((item) => {
       const selected = item.key === selectedKey;
+      const effectiveSwingBucket = item.category === "swing" ? resolveSwingBucket(item) : undefined;
+      const renderItem = effectiveSwingBucket ? { ...item, swingBucket: effectiveSwingBucket } : item;
       const swingPattern = item.category === "swing" ? swingPatternByKey.get(item.key)?.pattern : null;
       const swingAssessment = item.category === "swing" ? getSwingAssessment(swingPattern) : null;
       const swingDecision =
         item.category === "swing"
-          ? buildSwingDecisionView(swingPattern ? { pattern: swingPattern } : null, swingAssessment, item.note, item.swingBucket)
+          ? buildSwingDecisionView(swingPattern ? { pattern: swingPattern } : null, swingAssessment, item.note, effectiveSwingBucket)
           : null;
-      const swingTradePlan = item.category === "swing" ? swingDecision?.tradePlan ?? getSwingCardTradePlan(item.note, swingPattern, item.swingBucket) : null;
+      const swingTradePlan = item.category === "swing" ? swingDecision?.tradePlan ?? getSwingCardTradePlan(item.note, swingPattern, effectiveSwingBucket) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
       const dividendInfoLine = buildDividendInfoLine(item);
       const longTermBucketLabel = item.category === "swing" ? "" : getNonSwingBucketLabel(item.category, item.longTermBucket);
-      const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(item.swingBucket) : "";
+      const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(effectiveSwingBucket) : "";
       const groupPillHtml = longTermBucketLabel
         ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>`
         : swingBucketLabel
-          ? `<span class="stock-card-group-pill ${escapeHtml(item.swingBucket === "watch" ? "watch" : "buy")}">${escapeHtml(swingBucketLabel)}</span>`
+          ? `<span class="stock-card-group-pill ${escapeHtml(effectiveSwingBucket === "watch" ? "watch" : effectiveSwingBucket === "managed" ? "managed" : "buy")}">${escapeHtml(swingBucketLabel)}</span>`
           : "";
       const longTermInsightNote = item.category === "swing" ? "" : item.longTermInsightNote ?? item.note;
       const longTermInsightKeywords = Array.isArray(item.longTermInsightKeywords) ? item.longTermInsightKeywords : null;
@@ -6819,7 +6866,7 @@ function renderSelector() {
             : formatLongTermSummary(longTermInsightNote, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
       const realtimeLine = renderStockRealtimeLine(item);
       const swingExecutionTradeHtml =
-        item.category === "swing" && swingTradePlan && item.swingBucket !== "watch"
+        item.category === "swing" && swingTradePlan && effectiveSwingBucket === "execution"
           ? `
             <span class="stock-card-trade-grid">
               <span class="stock-card-trade-item stock-card-trade-item-buy">
@@ -6845,9 +6892,12 @@ function renderSelector() {
             </span>
           `
           : "";
-      const swingGuardHtml = renderSwingExecutionGuardBadge(item);
+      const swingManagedTradeHtml = renderManagedSwingTradeHtml(renderItem);
+      const swingGuardHtml = renderSwingExecutionGuardBadge(renderItem);
+      const managedStatusHtml = renderManagedSwingStatusHtml(renderItem);
       const swingStatusHtml =
-        item.category === "swing" && (swingDecision || swingAssessment || swingGuardHtml)
+        managedStatusHtml ||
+        (item.category === "swing" && effectiveSwingBucket !== "managed" && (swingDecision || swingAssessment || swingGuardHtml)
           ? `
             <span class="stock-card-swing-summary">
               ${
@@ -6875,7 +6925,7 @@ function renderSelector() {
               ${swingGuardHtml}
             </span>
           `
-          : "";
+          : "");
       return `
         <article class="stock-card ${selected ? "selected" : ""}">
           <span class="stock-card-head">
@@ -6906,8 +6956,8 @@ function renderSelector() {
             <button class="stock-card-delete" type="button" data-delete-key="${escapeHtml(item.key)}" aria-label="${escapeHtml(item.name)} 삭제">×</button>
           </span>
           ${
-            swingExecutionTradeHtml
-              ? `<button class="stock-card-select stock-card-trade-select" type="button" data-stock-key="${escapeHtml(item.key)}">${swingExecutionTradeHtml}</button>`
+            swingExecutionTradeHtml || swingManagedTradeHtml
+              ? `<button class="stock-card-select stock-card-trade-select" type="button" data-stock-key="${escapeHtml(item.key)}">${swingManagedTradeHtml || swingExecutionTradeHtml}</button>`
               : ""
           }
         </article>
@@ -7455,8 +7505,8 @@ function renderRecommendationScopePanel() {
   if (recommendationScopeHelp) {
     recommendationScopeHelp.textContent = isSwingCategory(currentCategory)
       ? currentSwingProfile === "smallcap"
-        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 소형주형 기준으로 추린 진입 가능 종목과 관찰 종목을 같은 화면에서 넘겨보며 관리합니다."
-        : "상단에서 스윙 흐름을 고르고, 진입 가능 종목과 관찰 종목을 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
+        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 진입 가능·관리 중·관찰 종목을 같은 화면에서 넘겨보며 관리합니다."
+        : "상단에서 스윙 흐름을 고르고, 진입 가능·관리 중·관찰 종목을 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
       : isDividendCategory(currentCategory)
         ? "배당 탭은 배당 추천 종목과 별도 배당 상장지수펀드 섹션을 함께 보여 주되, 상장지수펀드는 점수 엔진이 아닌 전용 필터 목록으로 분리해 관리합니다."
         : "상단에서 중장기 흐름을 유지한 채 본격매수, 분할매수, 관찰을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
@@ -7636,6 +7686,7 @@ async function runRecommendationUniverseScan() {
             ? payload.items.map((item) => ({ ...item, swingProfile: requestedSwingProfile }))
             : [];
       const visibleExecutionCount = items.filter((item) => resolveSwingBucket(item) === "execution").length;
+      const visibleManagedCount = items.filter((item) => resolveSwingBucket(item) === "managed").length;
       const visibleWatchCount = items.filter((item) => resolveSwingBucket(item) === "watch").length;
 
       recommendationCatalog = syncServerSwingRecommendations(recommendationCatalog, items, requestedSwingProfile);
@@ -7644,10 +7695,12 @@ async function runRecommendationUniverseScan() {
 
       if (currentCategory === "swing" && currentSwingProfile === requestedSwingProfile) {
         currentPage = 1;
-        if (currentSwingBucket === "execution" && !visibleExecutionCount && visibleWatchCount) {
-          currentSwingBucket = "watch";
-        } else if (currentSwingBucket === "watch" && !visibleWatchCount && visibleExecutionCount) {
-          currentSwingBucket = "execution";
+        if (currentSwingBucket === "execution" && !visibleExecutionCount) {
+          currentSwingBucket = visibleManagedCount ? "managed" : "watch";
+        } else if (currentSwingBucket === "managed" && !visibleManagedCount) {
+          currentSwingBucket = visibleExecutionCount ? "execution" : "watch";
+        } else if (currentSwingBucket === "watch" && !visibleWatchCount) {
+          currentSwingBucket = visibleExecutionCount ? "execution" : "managed";
         }
         selectedKey = getFilteredCatalog()[0]?.key ?? null;
       }
@@ -7665,11 +7718,11 @@ async function runRecommendationUniverseScan() {
 
       const swingDiffCount = Array.isArray(payload.universeDiff?.changes) ? payload.universeDiff.changes.length : 0;
       showSummary(
-        `${requestedLabel} universe 검색이 완료되었습니다. 진입 가능 ${visibleExecutionCount}개 / 관찰 ${visibleWatchCount}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
+        `${requestedLabel} universe 검색이 완료되었습니다. 진입 가능 ${visibleExecutionCount}개 / 관리 중 ${visibleManagedCount}개 / 관찰 ${visibleWatchCount}개를 반영했습니다.${swingDiffCount ? ` 변화 ${swingDiffCount}건을 알림 기준으로 처리했습니다.` : " 변화 종목은 없었습니다."}`
       );
       showAppToast({
         title: `${requestedLabel} 추천 검색 완료`,
-        message: `진입 가능 ${visibleExecutionCount}개, 관찰 ${visibleWatchCount}개를 반영했습니다.`,
+        message: `진입 가능 ${visibleExecutionCount}개, 관리 중 ${visibleManagedCount}개, 관찰 ${visibleWatchCount}개를 반영했습니다.`,
         tone: swingDiffCount ? "positive" : "neutral"
       });
       return;
@@ -7926,8 +7979,61 @@ function isValidCategory(value) {
   return value === "swing" || value === DIVIDEND_CATEGORY || value === DEFAULT_CATEGORY;
 }
 
+function getSwingHistoryMatchKey(profile, symbol) {
+  return `${resolveSwingProfile(profile)}:${String(symbol ?? "").trim()}`;
+}
+
+function isCurrentEnteredHistoryCase(item) {
+  const outcomeType = item?.historyOutcome?.type;
+  return (
+    (item?.lifecycleStatus === "current" || item?.status === "current" || item?.status === "active") &&
+    (!outcomeType || outcomeType === "active_entered") &&
+    getExecutedBuyCountForHistoryItem(item) > 0
+  );
+}
+
+function getCurrentEnteredHistoryCaseKeys() {
+  const cases = Array.isArray(recommendationHistoryPayload?.cases) ? recommendationHistoryPayload.cases : [];
+  return new Set(
+    cases
+      .filter(isCurrentEnteredHistoryCase)
+      .map((historyCase) => getSwingHistoryMatchKey(historyCase?.profile, historyCase?.symbol))
+  );
+}
+
+function getCurrentEnteredHistoryCaseForSwingItem(item) {
+  const symbol = item?.symbol ?? item?.historyCase?.symbol;
+  if (!symbol) {
+    return null;
+  }
+
+  const cases = Array.isArray(recommendationHistoryPayload?.cases) ? recommendationHistoryPayload.cases : [];
+  const matchKey = getSwingHistoryMatchKey(item?.profile ?? item?.swingProfile ?? item?.historyCase?.profile, symbol);
+  return cases.find((historyCase) => isCurrentEnteredHistoryCase(historyCase) && getSwingHistoryMatchKey(historyCase?.profile, historyCase?.symbol) === matchKey) ?? null;
+}
+
+function isManagedSwingPick(item) {
+  const symbol = item?.symbol ?? item?.historyCase?.symbol;
+  if (!symbol) {
+    return false;
+  }
+
+  const currentEnteredKeys = getCurrentEnteredHistoryCaseKeys();
+  if (!currentEnteredKeys.size) {
+    return false;
+  }
+
+  return currentEnteredKeys.has(getSwingHistoryMatchKey(item?.profile ?? item?.swingProfile ?? item?.historyCase?.profile, symbol));
+}
+
 function resolveServerSwingBucket(item, sourceBucket = DEFAULT_SWING_BUCKET) {
   const rawBucket = item?.swingBucket ?? item?.bucket;
+  if (isManagedSwingPick(item)) {
+    return "managed";
+  }
+  if (rawBucket === "managed") {
+    return "watch";
+  }
   // execution_probe means "check later", not "buy now"; keep it out of the execution tab.
   if (rawBucket === "watch" || rawBucket === "execution_probe") {
     return "watch";
@@ -7939,7 +8045,11 @@ function resolveServerSwingBucket(item, sourceBucket = DEFAULT_SWING_BUCKET) {
 }
 
 function resolveSwingBucket(item) {
-  if (item?.swingBucket === "watch" || item?.bucket === "watch") {
+  if (isManagedSwingPick(item)) {
+    return "managed";
+  }
+
+  if (item?.swingBucket === "watch" || item?.bucket === "watch" || item?.swingBucket === "managed" || item?.bucket === "managed") {
     return "watch";
   }
 
@@ -7956,10 +8066,13 @@ function resolveSwingBucket(item) {
 }
 
 function isValidSwingBucket(value) {
-  return value === "execution" || value === "watch";
+  return value === "execution" || value === "managed" || value === "watch";
 }
 
 function getSwingBucketLabel(bucket) {
+  if (bucket === "managed") {
+    return "관리 중";
+  }
   return bucket === "watch" ? "관찰" : "진입 가능";
 }
 
@@ -8394,7 +8507,7 @@ function getFilteredCatalog() {
     if (isSwingCategory(currentCategory)) {
       return (
         resolveSwingProfile(item.swingProfile) === currentSwingProfile &&
-        (item.swingBucket ?? DEFAULT_SWING_BUCKET) === currentSwingBucket
+        resolveSwingBucket(item) === currentSwingBucket
       );
     }
 
@@ -8520,7 +8633,7 @@ function buildStockFromForm() {
   const category = resolveRecommendationCategory(stockCategorySelect?.value);
   const swingProfile = category === "swing" ? currentSwingProfile : undefined;
   const longTermBucket = category === "swing" ? undefined : isValidLongTermBucket(longTermBucketSelect?.value) ? longTermBucketSelect.value : DEFAULT_LONG_TERM_BUCKET;
-  const swingBucket = category === "swing" ? currentSwingBucket : undefined;
+  const swingBucket = category === "swing" ? (currentSwingBucket === "managed" ? "watch" : currentSwingBucket) : undefined;
   const recommendedPrice = Number(stockPriceInput.value);
   const extraNote = stockNoteInput.value.trim();
   const latestDividendDate = isDividendCategory(category) ? latestDividendDateInput?.value || undefined : undefined;
@@ -8646,16 +8759,19 @@ function getSwingBucketCounts() {
     )
     .reduce(
       (counts, item) => {
-        const bucket = item.swingBucket === "watch" ? "watch" : "execution";
+        const bucket = resolveSwingBucket(item);
         counts[bucket] += 1;
         return counts;
       },
-      { execution: 0, watch: 0 }
+      { execution: 0, managed: 0, watch: 0 }
     );
 }
 
 function getCurrentFilterEmptyMessage() {
   if (isSwingCategory(currentCategory)) {
+    if (currentSwingBucket === "managed") {
+      return `${getSwingProfileLabel(currentSwingProfile)} 관리 중 탭에는 아직 종목이 없습니다. 매수 후보였다가 관찰로 내려간 체결 케이스가 생기면 여기에 표시됩니다.`;
+    }
     return currentSwingBucket === "watch"
       ? `${getSwingProfileLabel(currentSwingProfile)} 관찰 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`
       : `${getSwingProfileLabel(currentSwingProfile)} 진입 가능 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`;
@@ -10947,7 +11063,7 @@ function getSwingTradeOverlay(note, pattern) {
 function getSwingCardTradePlan(note, pattern, swingBucket = DEFAULT_SWING_BUCKET) {
   const overlay = getSwingTradeOverlay(note, pattern);
   const buyPlan = pattern?.buyPlan;
-  const isExecutionBucket = swingBucket !== "watch";
+  const isExecutionBucket = swingBucket === "execution";
   const buyLevelsFromPlan = buyPlan
     ? [buyPlan.firstBuyPrice, buyPlan.secondBuyPrice, buyPlan.thirdBuyPrice]
       .filter((price) => Number.isFinite(price) && price > 0)

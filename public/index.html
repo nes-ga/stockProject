@@ -212,7 +212,7 @@
             <div>
               <h2>추천 히스토리</h2>
               <p class="field-help">
-                현재 진행 중 추천 조회, 종료된 거래 복기, 미진입 제외 로그를 분리해서 확인합니다.
+                현재 진행 중 추천 조회와 종료된 거래 복기를 분리해서 확인합니다.
               </p>
             </div>
             <span id="recommendationHistoryStatusBadge" class="status-badge idle">구조 준비</span>
@@ -244,7 +244,7 @@
           <div class="history-toolbar">
             <div>
               <h3>종료 케이스 조회</h3>
-              <p class="field-help">종료 전체와 거래 완료, 미진입 제외를 분리해서 조회합니다.</p>
+              <p class="field-help">실제 매수가 발생한 종료 거래를 수익, 손절, 기타 기준으로 조회합니다.</p>
             </div>
             <div class="history-toolbar-actions">
               <label class="history-filter-field">
@@ -330,6 +330,7 @@
 
               <div class="category-tabs long-term-bucket-tabs hidden" id="swingBucketTabs">
                 <button class="category-tab active" type="button" data-swing-bucket="execution">실행후보</button>
+                <button class="category-tab" type="button" data-swing-bucket="managed">관리중</button>
                 <button class="category-tab" type="button" data-swing-bucket="watch">관심후보</button>
               </div>
             </section>

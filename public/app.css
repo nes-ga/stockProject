@@ -1233,7 +1233,7 @@ body {
 
 .history-summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 14px;
 }
@@ -1481,7 +1481,7 @@ body {
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 10px;
   padding-bottom: 2px;
@@ -4549,6 +4549,12 @@ body {
   box-shadow: inset 0 0 0 1px rgba(15, 109, 122, 0.12);
 }
 
+.stock-card-group-pill.managed {
+  background: rgba(184, 113, 34, 0.14);
+  color: #9a5a12;
+  box-shadow: inset 0 0 0 1px rgba(184, 113, 34, 0.12);
+}
+
 .stock-card-group-pill.watch {
   background: rgba(96, 118, 128, 0.12);
   color: var(--neutral);
@@ -4929,6 +4935,10 @@ body {
   margin-top: 8px;
 }
 
+.stock-card-swing-summary.managed {
+  gap: 7px;
+}
+
 .stock-card-swing-line {
   color: var(--text);
   font-size: 13px;
@@ -4953,6 +4963,36 @@ body {
   overflow-wrap: anywhere;
 }
 
+.stock-card-managed-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.stock-card-managed-metrics span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(96, 118, 128, 0.09);
+  color: var(--neutral);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.stock-card-managed-metrics span.positive {
+  background: rgba(23, 114, 69, 0.1);
+  color: var(--positive);
+}
+
+.stock-card-managed-metrics span.negative {
+  background: rgba(177, 56, 40, 0.1);
+  color: var(--negative);
+}
+
 .stock-card-trade-grid {
   display: flex;
   flex-direction: column;
@@ -4975,6 +5015,10 @@ body {
   grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
+}
+
+.stock-card-trade-item-managed {
+  background: rgba(15, 118, 110, 0.08);
 }
 
 .stock-card-trade-label {
@@ -5022,6 +5066,11 @@ body {
   white-space: nowrap;
 }
 
+.stock-card-trade-badge.managed {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
 .stock-card-trade-summary {
   display: block;
   line-height: 1.45;
@@ -5049,6 +5098,11 @@ body {
 .stock-pattern-pill.watch {
   background: rgba(47, 143, 217, 0.12);
   color: var(--accent-strong);
+}
+
+.stock-pattern-pill.managed {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
 }
 
 .stock-pattern-pill.ready {

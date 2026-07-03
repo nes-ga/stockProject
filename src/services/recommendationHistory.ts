@@ -1272,8 +1272,9 @@ function mergeExecutedBuysByStage(
   }
 
   for (const buy of existingBuys ?? []) {
-    if (isFiniteNumber(buy.stage) && isFiniteNumber(buy.price) && Number(buy.stage) < 3) {
-      byStage.set(Number(buy.stage), {
+    const stage = Number(buy.stage);
+    if (isFiniteNumber(buy.stage) && isFiniteNumber(buy.price) && stage < 3 && !byStage.has(stage)) {
+      byStage.set(stage, {
         stage: Number(buy.stage),
         price: buy.price,
         date: buy.date
@@ -2177,6 +2178,9 @@ function hasInitialWatchNoEntryGate(
 
   const reasons = new Set(snapshot?.reasons ?? []);
   const tags = new Set(snapshot?.tags ?? []);
+  if (reasons.has("entry_zone_hit") || reasons.has("execution_gate_overridden_by_envelope")) {
+    return false;
+  }
   return reasons.has("entry_zone_pending") || tags.has("watch_low_quality");
 }
 
@@ -2195,6 +2199,22 @@ function hasFirstBuyAfterRecommendationStart(historyCase: SwingHistoryCase | und
   return filterValidExecutedBuysAfterRecommendationStart(historyCase.executedBuys, recommendationStartDate).some(
     (buy) => Number(buy.stage) === 1
   );
+}
+
+function isActionableWatchHistoryCase(historyCase: SwingHistoryCase | undefined) {
+  if (!historyCase || historyCase.entryBucket !== "watch" || !historyCase.buyPlan) {
+    return false;
+  }
+
+  const reasons = new Set([
+    ...(historyCase.initialSnapshot?.reasons ?? []),
+    ...(historyCase.decisionSnapshot?.reasons ?? [])
+  ]);
+  return reasons.has("entry_zone_hit") || reasons.has("execution_gate_overridden_by_envelope");
+}
+
+function shouldReplayHistoryExecutedBuys(historyCase: SwingHistoryCase) {
+  return historyCase.entryBucket !== "watch" || hasFirstBuyAfterRecommendationStart(historyCase) || isActionableWatchHistoryCase(historyCase);
 }
 
 function isActionableSwingCandidate(candidate: SwingCandidate) {
@@ -2283,10 +2303,13 @@ function buildCurrentHistoryCase(
       reasons: Array.isArray(candidate.reasons) ? candidate.reasons : []
     }
   );
+  const rawSourceExecutedBuys = getExecutedBuyStage(existingCase) > 0
+    ? existingCase?.executedBuys ?? []
+    : candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [];
   const sourceExecutedBuys = initialWatchNoEntry
     ? []
     : filterValidExecutedBuysAfterRecommendationStart(
-        candidate.postEntryOutcome?.executedBuys ?? existingCase?.executedBuys ?? [],
+        rawSourceExecutedBuys,
         recommendationStartDate
       ).filter((buy) => Number(buy.stage) < 3 || existingCase?.thirdBuyMonitor?.status === "confirmed");
   const latestClose = candidate.postEntryOutcome?.latestClose ?? existingCase?.latestClose;
@@ -2892,9 +2915,10 @@ function getEffectiveLifecycleStatus(
 function shouldRefreshMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
   const entered = getExecutedBuyStage(historyCase) > 0;
   const closedEntered = historyCase.status === "closed" && entered;
+  const closedReplayable = historyCase.status === "closed" && shouldReplayHistoryExecutedBuys(historyCase);
   const activeEntered = historyCase.status === "active" && entered;
   const activeWithBuyPlan = historyCase.status === "active" && Boolean(historyCase.buyPlan);
-  return Boolean(historyCase.symbol && (closedEntered || activeEntered || activeWithBuyPlan));
+  return Boolean(historyCase.symbol && (closedEntered || closedReplayable || activeEntered || activeWithBuyPlan));
 }
 
 async function refreshCaseMarketPrice(historyCase: SwingHistoryCase, asOfDate: string) {
@@ -2920,7 +2944,7 @@ async function refreshCaseMarketPrice(historyCase: SwingHistoryCase, asOfDate: s
     // Price refresh is also an execution refresh. A live case may be demoted to
     // watch and lose postEntryOutcome from the current pick payload, so replay
     // the market path against the frozen buy plan before deriving outcome.
-    const shouldRefreshExecutedBuys = historyCase.entryBucket !== "watch" || hasFirstBuyAfterRecommendationStart(historyCase);
+    const shouldRefreshExecutedBuys = shouldReplayHistoryExecutedBuys(historyCase);
     const thirdBuyMonitor = shouldRefreshExecutedBuys
       ? buildThirdBuyMonitor(historyCase.buyPlan, scopedPoints)
       : historyCase.thirdBuyMonitor;
@@ -3317,7 +3341,7 @@ export async function readSwingRecommendationHistory() {
   const pendingEntryCandidates = enrichedCurrentCandidates.filter((candidate) => !candidate.hasEntryAssumption);
 
   const currentCaseCount = cycleEnrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "current").length;
-  const closedCases = cycleEnrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "closed");
+  const closedCases = dedupeClosedHistoryCases(cycleEnrichedCases.filter((historyCase) => historyCase.lifecycleStatus === "closed"));
   const closedCaseCount = closedCases.length;
   const normalizedSummary = buildSwingHistorySummary(cycleEnrichedCases, currentHistoryCandidates);
 
