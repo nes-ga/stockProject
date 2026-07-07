@@ -8,6 +8,7 @@ import { alertRoutes } from "./routes/alertRoutes.js";
 import { analysisRoutes } from "./routes/analysisRoutes.js";
 import { config } from "./config.js";
 import { marketFlowRoutes } from "./routes/marketFlowRoutes.js";
+import { portfolioRoutes } from "./routes/portfolioRoutes.js";
 
 export const app = express();
 app.set("etag", false);
@@ -40,7 +41,7 @@ function setUtf8StaticHeaders(response: express.Response, filePath: string) {
   }
 }
 
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
 app.use((request, response, next) => {
   const startedAt = Date.now();
   const requestId = request.header("x-request-id") || randomUUID().slice(0, 8);
@@ -90,7 +91,7 @@ app.get("/", (_request, response) => {
   response.sendFile(path.join(publicDir, "index.html"));
 });
 
-app.use(["/analysis", "/api", "/alerts"], (_request, response, next) => {
+app.use(["/analysis", "/api", "/alerts", "/portfolio"], (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store, max-age=0");
   response.setHeader("Pragma", "no-cache");
   response.setHeader("Expires", "0");
@@ -101,6 +102,7 @@ app.use("/analysis", analysisRoutes);
 app.use("/analysis", marketFlowRoutes);
 app.use("/api", marketFlowRoutes);
 app.use("/alerts", alertRoutes);
+app.use("/portfolio", portfolioRoutes);
 
 app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unknown error";

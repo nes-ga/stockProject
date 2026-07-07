@@ -7,6 +7,7 @@ export type ServerLongTermPick = {
   symbol: string;
   anchorDate: string;
   latestMentionDate?: string;
+  bucketEnteredDate?: string;
   note?: string;
   category: "longTerm";
   longTermBucket?: "buy" | "accumulate" | "watch";

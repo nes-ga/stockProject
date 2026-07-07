@@ -1,7 +1,7 @@
 import { scanDividendUniverse } from "./dividendEngine.js";
 import { scanLongTermUniverse } from "./longTermEngine.js";
 import { writeServerDividendPicks } from "./serverDividendPicks.js";
-import { writeServerLongTermPicks } from "./serverLongTermPicks.js";
+import { readServerLongTermPicks, writeServerLongTermPicks } from "./serverLongTermPicks.js";
 import { readServerSwingPickPayload, writeServerSwingPicks, type ServerSwingPick } from "./serverSwingPicks.js";
 import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
@@ -1078,18 +1078,30 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
   const result = await scanLongTermUniverse({
     forceRefreshUniverse: true
   });
+  const previousPicksBySymbol = new Map((await readServerLongTermPicks()).map((item) => [item.symbol, item]));
 
   const items = await writeServerLongTermPicks(
-    result.candidates.map((candidate) => ({
-      key: `${candidate.name}-${candidate.symbol}`,
-      name: candidate.name,
-      symbol: candidate.symbol,
-      anchorDate: result.asOfDate,
-      note: buildLongTermNote(candidate),
-      category: "longTerm" as const,
-      longTermBucket: resolveLongTermBucket(candidate),
-      source: "server-universe" as const
-    }))
+    result.candidates.map((candidate) => {
+      const longTermBucket = resolveLongTermBucket(candidate);
+      const previousPick = previousPicksBySymbol.get(candidate.symbol);
+      const bucketEnteredDate =
+        previousPick?.longTermBucket === longTermBucket
+          ? previousPick.bucketEnteredDate ?? previousPick.anchorDate
+          : result.asOfDate;
+
+      return {
+        key: `${candidate.name}-${candidate.symbol}`,
+        name: candidate.name,
+        symbol: candidate.symbol,
+        anchorDate: previousPick?.anchorDate ?? result.asOfDate,
+        latestMentionDate: result.asOfDate,
+        bucketEnteredDate,
+        note: buildLongTermNote(candidate),
+        category: "longTerm" as const,
+        longTermBucket,
+        source: "server-universe" as const
+      };
+    })
   );
 
   return {

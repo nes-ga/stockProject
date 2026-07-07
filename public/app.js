@@ -45,7 +45,7 @@ const MARKET_FLOW_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ONLINE_PRESENCE_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 const DEFAULT_MARKET_FLOW_RANGE = "6M";
 const MARKET_FLOW_CHART_RANGES = ["3M", "6M", "1Y", "2Y"];
-const APP_VIEWS = ["news", "index", "history", "analysis", "movers"];
+const APP_VIEWS = ["news", "index", "history", "portfolio", "analysis", "movers"];
 const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
 const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["entered", "all", "profit", "loss", "other"]);
 const HANGUL_BASE = 44032;
@@ -106,9 +106,11 @@ const defaultRecommendationCatalog = [
     name: "CJ대한통운",
     symbol: "000120",
     anchorDate: "2026-03-05",
-    note: "112800원 이하 1차매수",
-    longTermInsightNote: "대표주 조정 관찰 | 총점 80점 | 낙폭 31% | 실적 개선 | 바닥 형성 중",
-    longTermInsightKeywords: ["대표주 조정", "총점 80점", "낙폭 31%", "실적 개선", "바닥 형성 중"]
+    latestMentionDate: "2026-05-27",
+    note: "관찰 | 2026-05-27 본격매수 제외 이후 재편입 대기",
+    longTermBucket: "watch",
+    longTermInsightNote: "관찰 | 본격매수 제외 이력 | 재편입 대기 | 바닥 재확인 필요",
+    longTermInsightKeywords: ["관찰", "본격매수 제외", "재편입 대기", "바닥 재확인"]
   },
   {
     key: "제우스",
@@ -527,6 +529,12 @@ let recommendationHistoryClosedMonth = "";
 let recommendationHistoryClosedSearch = "";
 let recommendationHistoryClosedOutcomeFilter = "entered";
 let recommendationHistoryCurrentStageFilter = "all";
+let portfolioPayload = null;
+let portfolioLoaded = false;
+let portfolioLoading = false;
+let portfolioError = "";
+let portfolioScreenshotParsing = false;
+let portfolioDraftRows = [];
 let activeHistoryChartItem = null;
 let historyChartState = null;
 let historyChartLoading = false;
@@ -569,6 +577,7 @@ const appTabs = document.querySelector("#appTabs");
 const newsView = document.querySelector("#newsView");
 const indexView = document.querySelector("#indexView");
 const historyView = document.querySelector("#historyView");
+const portfolioView = document.querySelector("#portfolioView");
 const analysisView = document.querySelector("#analysisView");
 const moversView = document.querySelector("#moversView");
 const stockSelector = document.querySelector("#stockSelector");
@@ -637,6 +646,17 @@ const recommendationHistoryCurrentCases = document.querySelector("#recommendatio
 const recommendationHistoryClosedCases = document.querySelector("#recommendationHistoryClosedCases");
 const historyClosedMonthSelect = document.querySelector("#historyClosedMonthSelect");
 const historyClosedSearchInput = document.querySelector("#historyClosedSearchInput");
+const portfolioStatusBadge = document.querySelector("#portfolioStatusBadge");
+const portfolioSummary = document.querySelector("#portfolioSummary");
+const portfolioErrorBox = document.querySelector("#portfolioErrorBox");
+const portfolioAdviceList = document.querySelector("#portfolioAdviceList");
+const refreshPortfolioBtn = document.querySelector("#refreshPortfolioBtn");
+const portfolioScreenshotInput = document.querySelector("#portfolioScreenshotInput");
+const parsePortfolioScreenshotBtn = document.querySelector("#parsePortfolioScreenshotBtn");
+const parsePortfolioScreenshotAiBtn = document.querySelector("#parsePortfolioScreenshotAiBtn");
+const savePortfolioDraftsBtn = document.querySelector("#savePortfolioDraftsBtn");
+const portfolioScreenshotStatus = document.querySelector("#portfolioScreenshotStatus");
+const portfolioDraftPreview = document.querySelector("#portfolioDraftPreview");
 const marketEventCalendarBoard = document.querySelector("#marketEventCalendarBoard");
 const marketFlowBoard = document.querySelector("#marketFlowBoard");
 const marketFlowBoardBody = document.querySelector("#marketFlowBoardBody");
@@ -1036,6 +1056,54 @@ indexChartModal?.addEventListener("click", (event) => {
 
 refreshMarketFlowBtn?.addEventListener("click", () => {
   void loadMarketFlow({ forceRefresh: true, toast: true });
+});
+
+refreshPortfolioBtn?.addEventListener("click", () => {
+  void loadPortfolioAdvice({ force: true });
+});
+
+parsePortfolioScreenshotBtn?.addEventListener("click", () => {
+  void parseSelectedPortfolioScreenshot("local");
+});
+
+parsePortfolioScreenshotAiBtn?.addEventListener("click", () => {
+  void parseSelectedPortfolioScreenshot("ai");
+});
+
+savePortfolioDraftsBtn?.addEventListener("click", () => {
+  void savePortfolioDraftRows();
+});
+
+portfolioDraftPreview?.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-portfolio-draft-field]");
+  if (!input) {
+    return;
+  }
+  const index = Number(input.dataset.portfolioDraftIndex);
+  const field = input.dataset.portfolioDraftField;
+  if (!Number.isInteger(index) || !portfolioDraftRows[index] || !field) {
+    return;
+  }
+  const numericFields = new Set(["avgPrice", "currentPrice", "quantity", "investedAmount", "evaluationAmount", "profitRate"]);
+  portfolioDraftRows[index][field] = numericFields.has(field) ? Number(input.value) : input.value;
+});
+
+portfolioDraftPreview?.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-portfolio-draft-field]");
+  if (!input) {
+    return;
+  }
+  const index = Number(input.dataset.portfolioDraftIndex);
+  const field = input.dataset.portfolioDraftField;
+  if (!Number.isInteger(index) || !portfolioDraftRows[index] || !field) {
+    return;
+  }
+  if (field === "selected") {
+    portfolioDraftRows[index].selected = Boolean(input.checked);
+    renderPortfolioDraftPreview();
+    return;
+  }
+  portfolioDraftRows[index][field] = input.value;
 });
 
 marketFlowBoardBody?.addEventListener("click", (event) => {
@@ -1843,8 +1911,468 @@ function renderAppTabs() {
   newsView?.classList.toggle("hidden", activeView !== "news");
   indexView?.classList.toggle("hidden", activeView !== "index");
   historyView?.classList.toggle("hidden", activeView !== "history");
+  portfolioView?.classList.toggle("hidden", activeView !== "portfolio");
   analysisView?.classList.toggle("hidden", activeView !== "analysis");
   moversView?.classList.toggle("hidden", activeView !== "movers");
+}
+
+function setPortfolioStatus(kind, text) {
+  if (!portfolioStatusBadge) {
+    return;
+  }
+  portfolioStatusBadge.className = `status-badge ${kind}`;
+  portfolioStatusBadge.textContent = text;
+}
+
+function getPortfolioIntentLabel(value) {
+  const labels = {
+    SWING: "스윙",
+    LONG_TERM: "중장기",
+    RECOVERY: "보유복구",
+    EXIT_MANAGEMENT: "축소관리",
+    NO_EDGE: "대응보류",
+    UNKNOWN: "미확인"
+  };
+  return labels[value] ?? value ?? "-";
+}
+
+function getPortfolioModeLabel(value) {
+  const labels = {
+    SWING_VALID: "스윙 유효",
+    SWING_DAMAGED: "스윙 약화",
+    SWING_BROKEN: "스윙 훼손",
+    LONG_TERM_VALID: "중장기 유효",
+    LONG_TERM_WEAKENED: "중장기 약화",
+    HOLDING_RECOVERY_CANDIDATE: "보유복구 후보",
+    DEAD_MONEY: "Dead Money",
+    UNKNOWN: "미확인"
+  };
+  return labels[value] ?? value ?? "-";
+}
+
+function getPortfolioActionLabel(value) {
+  const labels = {
+    HOLD: "보유",
+    WATCH: "관찰",
+    ADD_WAIT: "추가대기",
+    ADD_ALLOWED: "추가허용",
+    ROTATION_BUY: "회전매수",
+    REDUCE_ON_REBOUND: "반등축소",
+    CUT_LOSS: "손실정리",
+    NO_ACTION: "대응없음"
+  };
+  return labels[value] ?? value ?? "-";
+}
+
+function renderPortfolioSummary() {
+  if (!portfolioSummary) {
+    return;
+  }
+  const summary = portfolioPayload?.summary;
+  if (!summary) {
+    portfolioSummary.innerHTML = "";
+    return;
+  }
+  const cards = [
+    ["총 보유", summary.total, "advice 대상"],
+    ["우선 대응", summary.highPriority, "priority HIGH"],
+    ["추가 가능", (summary.addAllowed ?? 0) + (summary.rotationBuy ?? 0), "ADD / ROTATION"],
+    ["추가 대기", summary.addWait, "조건 확인"],
+    ["반등 축소", summary.reduceOnRebound, "노출 축소"],
+    ["Dead Money", summary.deadMoney, "우선순위 낮음"]
+  ];
+  portfolioSummary.innerHTML = cards
+    .map(
+      ([label, value, help]) => `
+        <article class="portfolio-summary-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value ?? 0))}</strong>
+          <p>${escapeHtml(help)}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function formatPortfolioPriceZone(zone) {
+  if (!zone || (!Number.isFinite(zone.from) && !Number.isFinite(zone.to))) {
+    return "-";
+  }
+  const from = Number.isFinite(zone.from) ? `${formatNumber(zone.from)}원` : "";
+  const to = Number.isFinite(zone.to) ? `${formatNumber(zone.to)}원` : "";
+  return from && to ? `${from} ~ ${to}` : from || to;
+}
+
+function isPortfolioBuyAction(action) {
+  return action === "ADD_ALLOWED" || action === "ROTATION_BUY";
+}
+
+function setPortfolioScreenshotStatus(text, tone = "neutral") {
+  if (!portfolioScreenshotStatus) {
+    return;
+  }
+  portfolioScreenshotStatus.className = `field-help portfolio-screenshot-status ${escapeHtml(tone)}`;
+  portfolioScreenshotStatus.textContent = text;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result ?? "")));
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("파일을 읽지 못했습니다.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", () => reject(new Error("브라우저가 이미지를 읽지 못했습니다. PNG/JPG/WEBP로 다시 저장해 주세요.")));
+    image.src = dataUrl;
+  });
+}
+
+async function normalizeScreenshotDataUrl(file) {
+  const sourceDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImageFromDataUrl(sourceDataUrl);
+  const maxSide = 2200;
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return sourceDataUrl;
+  }
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
+function toDraftNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : "";
+}
+
+function renderPortfolioDraftPreview() {
+  if (!portfolioDraftPreview || !savePortfolioDraftsBtn) {
+    return;
+  }
+
+  if (!portfolioDraftRows.length) {
+    portfolioDraftPreview.classList.add("hidden");
+    portfolioDraftPreview.innerHTML = "";
+    savePortfolioDraftsBtn.disabled = true;
+    return;
+  }
+
+  portfolioDraftPreview.classList.remove("hidden");
+  savePortfolioDraftsBtn.disabled = !portfolioDraftRows.some((row) => row.selected);
+  portfolioDraftPreview.innerHTML = `
+    <div class="portfolio-draft-table-wrap">
+      <table class="portfolio-draft-table">
+        <thead>
+          <tr>
+            <th>저장</th>
+            <th>종목명</th>
+            <th>코드</th>
+            <th>평균단가</th>
+            <th>현재가</th>
+            <th>수량</th>
+            <th>손익률</th>
+            <th>매입금액</th>
+            <th>평가금액</th>
+            <th>원래 목적</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${portfolioDraftRows
+            .map(
+              (row, index) => `
+                <tr>
+                  <td><input type="checkbox" ${row.selected ? "checked" : ""} data-portfolio-draft-index="${index}" data-portfolio-draft-field="selected" /></td>
+                  <td><input value="${escapeHtml(row.name ?? "")}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="name" /></td>
+                  <td><input value="${escapeHtml(row.symbol ?? "")}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="symbol" /></td>
+                  <td><input type="number" value="${escapeHtml(String(toDraftNumber(row.avgPrice)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="avgPrice" /></td>
+                  <td><input type="number" value="${escapeHtml(String(toDraftNumber(row.currentPrice)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="currentPrice" /></td>
+                  <td><input type="number" value="${escapeHtml(String(toDraftNumber(row.quantity)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="quantity" /></td>
+                  <td><input type="number" step="0.01" value="${escapeHtml(String(toDraftNumber(row.profitRate)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="profitRate" /></td>
+                  <td><input type="number" value="${escapeHtml(String(toDraftNumber(row.investedAmount)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="investedAmount" /></td>
+                  <td><input type="number" value="${escapeHtml(String(toDraftNumber(row.evaluationAmount)))}" data-portfolio-draft-index="${index}" data-portfolio-draft-field="evaluationAmount" /></td>
+                  <td>
+                    <select data-portfolio-draft-index="${index}" data-portfolio-draft-field="originalIntent">
+                      <option value="UNKNOWN" ${row.originalIntent === "UNKNOWN" ? "selected" : ""}>미확인</option>
+                      <option value="SWING" ${row.originalIntent === "SWING" ? "selected" : ""}>스윙</option>
+                      <option value="LONG_TERM" ${row.originalIntent === "LONG_TERM" ? "selected" : ""}>중장기</option>
+                    </select>
+                  </td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function getPortfolioScreenshotParserConfig(mode) {
+  if (mode === "ai") {
+    return {
+      endpoint: "/portfolio/screenshot/parse",
+      label: "GPT 보조 판독",
+      loadingText: "GPT 보조 판독으로 스크린샷을 읽고 있습니다. API 사용량이 발생할 수 있습니다."
+    };
+  }
+
+  return {
+    endpoint: "/portfolio/screenshot/ocr-local",
+    label: "로컬 OCR",
+    loadingText: "로컬 OCR로 스크린샷을 읽고 있습니다. 첫 실행은 한국어 OCR 데이터를 준비하느라 오래 걸릴 수 있습니다."
+  };
+}
+
+async function parseSelectedPortfolioScreenshot(mode = "local") {
+  if (portfolioScreenshotParsing) {
+    return;
+  }
+
+  const file = portfolioScreenshotInput?.files?.[0];
+  if (!file) {
+    setPortfolioScreenshotStatus("판독할 스크린샷 파일을 선택해 주세요.", "negative");
+    return;
+  }
+
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+    setPortfolioScreenshotStatus("PNG, JPG, WEBP 이미지만 지원합니다.", "negative");
+    return;
+  }
+
+  portfolioScreenshotParsing = true;
+  parsePortfolioScreenshotBtn.disabled = true;
+  if (parsePortfolioScreenshotAiBtn) {
+    parsePortfolioScreenshotAiBtn.disabled = true;
+  }
+  const parserConfig = getPortfolioScreenshotParserConfig(mode);
+  setPortfolioScreenshotStatus(parserConfig.loadingText, "loading");
+
+  try {
+    const imageDataUrl = await normalizeScreenshotDataUrl(file);
+    const response = await fetch(parserConfig.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        fileName: file.name,
+        imageDataUrl
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "스크린샷 판독에 실패했습니다.");
+    }
+
+    portfolioDraftRows = (Array.isArray(payload.draftHoldings) ? payload.draftHoldings : []).map((row, index) => ({
+      selected: true,
+      originalIntent: "UNKNOWN",
+      ...row,
+      symbol: row.symbol || "",
+      name: row.name || `미확인 ${index + 1}`
+    }));
+    renderPortfolioDraftPreview();
+    const cashText = Number.isFinite(payload.cashBalance) ? ` 예수금 ${formatNumber(payload.cashBalance)}원.` : "";
+    const warningText = Array.isArray(payload.warnings) && payload.warnings.length ? ` 경고 ${payload.warnings.length}건.` : "";
+    setPortfolioScreenshotStatus(`${parserConfig.label} 완료: ${portfolioDraftRows.length}개 후보.${cashText}${warningText} 저장 전 값을 확인해 주세요.`, "positive");
+  } catch (error) {
+    portfolioDraftRows = [];
+    renderPortfolioDraftPreview();
+    setPortfolioScreenshotStatus(error instanceof Error ? error.message : "스크린샷 판독에 실패했습니다.", "negative");
+  } finally {
+    portfolioScreenshotParsing = false;
+    parsePortfolioScreenshotBtn.disabled = false;
+    if (parsePortfolioScreenshotAiBtn) {
+      parsePortfolioScreenshotAiBtn.disabled = false;
+    }
+  }
+}
+
+function buildHoldingFromDraft(row) {
+  const name = String(row.name ?? "").trim();
+  const symbol = String(row.symbol || name).trim();
+  const avgPrice = Number(row.avgPrice);
+  const currentPrice = Number(row.currentPrice);
+  const quantity = Number(row.quantity);
+  if (!name || !symbol || !Number.isFinite(avgPrice) || avgPrice <= 0 || !Number.isFinite(currentPrice) || currentPrice <= 0 || !Number.isFinite(quantity) || quantity <= 0) {
+    return null;
+  }
+
+  return {
+    id: `${symbol}:screenshot`,
+    symbol,
+    name,
+    avgPrice,
+    currentPrice,
+    quantity,
+    investedAmount: Number.isFinite(Number(row.investedAmount)) ? Number(row.investedAmount) : avgPrice * quantity,
+    evaluationAmount: Number.isFinite(Number(row.evaluationAmount)) ? Number(row.evaluationAmount) : currentPrice * quantity,
+    profitRate: Number.isFinite(Number(row.profitRate)) ? Number(row.profitRate) : ((currentPrice - avgPrice) / avgPrice) * 100,
+    originalIntent: row.originalIntent === "SWING" || row.originalIntent === "LONG_TERM" ? row.originalIntent : "UNKNOWN",
+    memo: row.memo || "screenshot-import"
+  };
+}
+
+async function savePortfolioDraftRows() {
+  const selected = portfolioDraftRows.filter((row) => row.selected);
+  const holdings = selected.map(buildHoldingFromDraft).filter(Boolean);
+  if (!holdings.length) {
+    setPortfolioScreenshotStatus("저장 가능한 종목이 없습니다. 종목명, 평균단가, 현재가, 수량을 확인해 주세요.", "negative");
+    return;
+  }
+
+  try {
+    const existingResponse = await fetch("/portfolio/holdings");
+    const existingPayload = await existingResponse.json();
+    const existingItems = Array.isArray(existingPayload.items) ? existingPayload.items : [];
+    const bySymbol = new Map(existingItems.map((item) => [item.symbol, item]));
+    for (const holding of holdings) {
+      bySymbol.set(holding.symbol, holding);
+    }
+    const response = await fetch("/portfolio/holdings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        items: [...bySymbol.values()]
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "보유 종목 저장에 실패했습니다.");
+    }
+    setPortfolioScreenshotStatus(`${holdings.length}개 보유 종목을 저장했습니다.`, "positive");
+    portfolioPayload = null;
+    portfolioLoaded = false;
+    await loadPortfolioAdvice({ force: true });
+  } catch (error) {
+    setPortfolioScreenshotStatus(error instanceof Error ? error.message : "보유 종목 저장에 실패했습니다.", "negative");
+  }
+}
+
+function renderPortfolioAdviceCard(item) {
+  const holding = item.holding ?? {};
+  const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
+  const executionPlan = item.executionPlan ?? {};
+  const reasons = Array.isArray(item.reasons) ? item.reasons.slice(0, 5) : [];
+  const conditions = Array.isArray(executionPlan.conditions) ? executionPlan.conditions.slice(0, 4) : [];
+  const buyAction = isPortfolioBuyAction(item.aiAction);
+  const actionZoneLabel = buyAction ? "추가 구간" : "관찰 구간";
+  const actionZone = buyAction ? executionPlan.addPriceZone : executionPlan.watchPriceZone;
+
+  return `
+    <article class="portfolio-advice-card ${escapeHtml((item.priorityLabel ?? "LOW").toLowerCase())}">
+      <div class="portfolio-card-head">
+        <div>
+          <h3>${escapeHtml(item.name ?? item.symbol)}</h3>
+          <div class="portfolio-card-meta">
+            ${escapeHtml(item.symbol)} · 평균가 ${formatNumber(holding.avgPrice)}원 · 현재가 ${formatNumber(holding.currentPrice)}원
+          </div>
+        </div>
+        <div class="portfolio-profit ${escapeHtml(returnClass)}">${formatPercent(holding.profitRate ?? 0)}</div>
+      </div>
+      <div class="portfolio-pill-row">
+        <span class="portfolio-pill">원래 목적 ${escapeHtml(getPortfolioIntentLabel(item.originalIntent))}</span>
+        <span class="portfolio-pill mode">${escapeHtml(getPortfolioModeLabel(item.currentMode))}</span>
+        <span class="portfolio-pill action">${escapeHtml(getPortfolioActionLabel(item.aiAction))}</span>
+        <span class="portfolio-pill priority">우선순위 ${escapeHtml(item.priorityLabel ?? "LOW")} · ${formatNumber(item.priority ?? 0)}</span>
+        <span class="portfolio-pill confidence">신뢰도 ${formatNumber(item.confidence ?? 0)}</span>
+      </div>
+      ${item.warning ? `<div class="portfolio-warning">${escapeHtml(item.warning)}</div>` : ""}
+      <p class="portfolio-summary-text">${escapeHtml(item.summary ?? "")}</p>
+      <div class="portfolio-detail-grid">
+        <section>
+          <h4>근거</h4>
+          <ul>
+            ${reasons.length ? reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("") : "<li>근거 데이터가 부족합니다.</li>"}
+          </ul>
+        </section>
+        <section>
+          <h4>실행 조건</h4>
+          <dl>
+            <div><dt>관찰가</dt><dd>${Number.isFinite(executionPlan.watchPrice) ? `${formatNumber(executionPlan.watchPrice)}원` : "-"}</dd></div>
+            <div><dt>${escapeHtml(actionZoneLabel)}</dt><dd>${escapeHtml(formatPortfolioPriceZone(actionZone))}</dd></div>
+            <div><dt>축소 구간</dt><dd>${escapeHtml(formatPortfolioPriceZone(executionPlan.reboundReduceZone))}</dd></div>
+            <div><dt>무효가</dt><dd>${Number.isFinite(executionPlan.invalidPrice) ? `${formatNumber(executionPlan.invalidPrice)}원` : "-"}</dd></div>
+          </dl>
+          ${conditions.length ? `<ul>${conditions.map((condition) => `<li>${escapeHtml(condition)}</li>`).join("")}</ul>` : ""}
+        </section>
+      </div>
+      ${
+        item.linkedHistory?.source && item.linkedHistory.source !== "none"
+          ? `<div class="portfolio-linked-history">연결 이력: ${escapeHtml(item.linkedHistory.source)}${item.linkedHistory.cycleNo ? ` · Cycle ${escapeHtml(String(item.linkedHistory.cycleNo))}` : ""}${item.linkedHistory.outcome ? ` · ${escapeHtml(item.linkedHistory.outcome)}` : ""}</div>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderPortfolioAdvice() {
+  if (!portfolioAdviceList || !portfolioErrorBox) {
+    return;
+  }
+
+  renderPortfolioSummary();
+  portfolioErrorBox.classList.toggle("hidden", !portfolioError);
+  portfolioErrorBox.textContent = portfolioError;
+
+  if (portfolioLoading && !portfolioLoaded) {
+    portfolioAdviceList.innerHTML = `<div class="empty-state"><p>Portfolio advice를 계산 중입니다.</p></div>`;
+    return;
+  }
+
+  const items = Array.isArray(portfolioPayload?.items) ? portfolioPayload.items : [];
+  if (!items.length) {
+    portfolioAdviceList.innerHTML = `
+      <div class="empty-state">
+        <p>등록된 보유 종목이 없습니다.</p>
+        <p><code>data/portfolio-holdings.json</code>에 보유 종목을 추가하면 이 화면에서 행동 제안을 계산합니다.</p>
+      </div>
+    `;
+    return;
+  }
+
+  portfolioAdviceList.innerHTML = items.map(renderPortfolioAdviceCard).join("");
+}
+
+async function loadPortfolioAdvice(options = {}) {
+  if (portfolioLoading && !options.force) {
+    return;
+  }
+
+  portfolioLoading = true;
+  portfolioError = "";
+  setPortfolioStatus("loading", "계산 중");
+  renderPortfolioAdvice();
+
+  try {
+    const response = await fetch("/portfolio/advice");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Portfolio advice를 불러오지 못했습니다.");
+    }
+    portfolioPayload = payload;
+    portfolioLoaded = true;
+    setPortfolioStatus("positive", `${payload.summary?.total ?? 0}개`);
+  } catch (error) {
+    portfolioError = error instanceof Error ? error.message : "Portfolio advice를 불러오지 못했습니다.";
+    setPortfolioStatus("negative", "오류");
+  } finally {
+    portfolioLoading = false;
+    renderPortfolioAdvice();
+  }
 }
 
 async function loadRecommendationHistory(options = {}) {
@@ -5440,6 +5968,14 @@ function switchAppView(view) {
     }
   }
 
+  if (activeView === "portfolio") {
+    if (!portfolioLoaded && !portfolioLoading) {
+      void loadPortfolioAdvice();
+    } else {
+      renderPortfolioAdvice();
+    }
+  }
+
   if (activeView === "movers" && !hasLoadedMovers) {
     void loadMovers();
   }
@@ -6826,6 +7362,31 @@ function getSectorLabel(symbol) {
   return item.sector.trim();
 }
 
+function isDateText(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function resolveLongTermBucketEnteredDate(item) {
+  if ((item?.category ?? DEFAULT_CATEGORY) !== DEFAULT_CATEGORY) {
+    return "";
+  }
+
+  if ((item?.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET) !== "buy") {
+    return "";
+  }
+
+  if (isDateText(item.bucketEnteredDate)) {
+    return item.bucketEnteredDate;
+  }
+
+  return isDateText(item.anchorDate) ? item.anchorDate : "";
+}
+
+function buildLongTermBuyEnteredLabel(item) {
+  const enteredDate = resolveLongTermBucketEnteredDate(item);
+  return enteredDate ? `본격매수 편입 ${enteredDate}` : "";
+}
+
 function renderSelector() {
   const pagedItems = getPagedItems();
   const stockCards = pagedItems
@@ -6842,6 +7403,7 @@ function renderSelector() {
       const swingTradePlan = item.category === "swing" ? swingDecision?.tradePlan ?? getSwingCardTradePlan(item.note, swingPattern, effectiveSwingBucket) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
+      const longTermBuyEnteredLabel = buildLongTermBuyEnteredLabel(item);
       const dividendInfoLine = buildDividendInfoLine(item);
       const longTermBucketLabel = item.category === "swing" ? "" : getNonSwingBucketLabel(item.category, item.longTermBucket);
       const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(effectiveSwingBucket) : "";
@@ -6932,6 +7494,7 @@ function renderSelector() {
             <button class="stock-card-select" type="button" data-stock-key="${escapeHtml(item.key)}">
               <span class="stock-card-name">${escapeHtml(titleText)}</span>
               ${metaText ? `<span class="stock-card-meta">${escapeHtml(metaText)}</span>` : ""}
+              ${longTermBuyEnteredLabel ? `<span class="stock-card-meta stock-card-meta-buy-entry">${escapeHtml(longTermBuyEnteredLabel)}</span>` : ""}
               ${dividendInfoLine ? `<span class="stock-card-meta">${escapeHtml(dividendInfoLine)}</span>` : ""}
               ${realtimeLine}
               ${swingStatusHtml}
@@ -7855,6 +8418,7 @@ function loadCatalog() {
 }
 
 function saveCatalog() {
+  recommendationCatalog = recommendationCatalog.map((item) => repairRecommendationText(item));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(recommendationCatalog));
 }
 
@@ -7884,6 +8448,7 @@ function normalizeRecommendation(item) {
     longTermBucket: category === "swing" ? undefined : resolveLongTermBucket(item),
     swingBucket: category === "swing" ? resolveSwingBucket(item) : undefined,
     swingProfile,
+    bucketEnteredDate: typeof item?.bucketEnteredDate === "string" ? item.bucketEnteredDate : undefined,
     source: typeof item?.source === "string" ? item.source : undefined
   };
 }
@@ -8489,6 +9054,19 @@ function repairRecommendationText(item, fallbackName) {
     source.longTermInsightKeywords.length
   ) {
     next.longTermInsightKeywords = [...source.longTermInsightKeywords];
+  }
+
+  if (
+    next.symbol === "000120" &&
+    (next.category ?? DEFAULT_CATEGORY) === DEFAULT_CATEGORY &&
+    !isServerUniverseRecommendation(next)
+  ) {
+    next.longTermBucket = "watch";
+    next.bucketEnteredDate = undefined;
+    next.latestMentionDate = "2026-05-27";
+    next.note = "관찰 | 2026-05-27 본격매수 제외 이후 재편입 대기";
+    next.longTermInsightNote = "관찰 | 본격매수 제외 이력 | 재편입 대기 | 바닥 재확인 필요";
+    next.longTermInsightKeywords = ["관찰", "본격매수 제외", "재편입 대기", "바닥 재확인"];
   }
 
   return next;
@@ -10575,6 +11153,7 @@ function renderCard(item) {
   const returnClass =
     item.returnSinceAnchor > 0 ? "positive" : item.returnSinceAnchor < 0 ? "negative" : "neutral";
   const dividendInfoLine = buildDividendInfoLine(item);
+  const longTermBuyEnteredLabel = buildLongTermBuyEnteredLabel(item);
 
   return `
     <article class="result-card">
@@ -10584,6 +11163,7 @@ function renderCard(item) {
           <div class="meta-line">
             ${escapeHtml(item.symbol)} / 기준일 ${escapeHtml(item.anchorDate)} / 실제 거래일 ${escapeHtml(item.tradingAnchorDate)}
           </div>
+          ${longTermBuyEnteredLabel ? `<div class="meta-line">${escapeHtml(longTermBuyEnteredLabel)}</div>` : ""}
           <div class="meta-line" data-live-sync-line>실시간 시세 동기화 대기</div>
           ${dividendInfoLine ? `<div class="meta-line">${escapeHtml(dividendInfoLine)}</div>` : ""}
           ${

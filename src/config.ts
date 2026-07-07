@@ -17,5 +17,7 @@ export const config = {
   ecosApiKey: process.env.ECOS_API_KEY,
   ecosKoreaM2StatCode: process.env.ECOS_KOREA_M2_STAT_CODE,
   ecosKoreaM2ItemCode: process.env.ECOS_KOREA_M2_ITEM_CODE,
-  ecosKoreaM2Cycle: process.env.ECOS_KOREA_M2_CYCLE ?? "M"
+  ecosKoreaM2Cycle: process.env.ECOS_KOREA_M2_CYCLE ?? "M",
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  openaiVisionModel: process.env.OPENAI_VISION_MODEL ?? "gpt-5.2"
 };
