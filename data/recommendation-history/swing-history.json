@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-07T04:38:46.045Z",
-  "asOfDate": "2026-07-07",
+  "generatedAt": "2026-07-08T01:03:17.537Z",
+  "asOfDate": "2026-07-08",
   "scope": {
     "strategy": "swing",
     "profiles": [
@@ -21,7 +21,7 @@
     "totalCases": 160,
     "activeCases": 2,
     "closedCases": 158,
-    "avgReturnPct": -7.18,
+    "avgReturnPct": -7.1,
     "returnStatsBaseCount": 68,
     "scannedExecutionCandidates": 0,
     "openedCases": 160,
@@ -2420,7 +2420,7 @@
       "sourceKey": "삼성에스디에스-018260",
       "openedAt": "2026-06-18T04:47:16.337Z",
       "openedDate": "2026-06-18",
-      "dataDate": "2026-07-07",
+      "dataDate": "2026-07-08",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -2442,7 +2442,7 @@
           "date": "2026-06-19"
         }
       ],
-      "latestClose": 198500,
+      "latestClose": 202500,
       "buyPlan": {
         "firstBuyPrice": 242000,
         "secondBuyPrice": 210500,
@@ -2501,13 +2501,13 @@
         }
       },
       "averageBuyPrice": 221000,
-      "unrealizedReturnPct": -10.18,
+      "unrealizedReturnPct": -8.37,
       "latestLow": 182000,
       "maxFavorableReturnPct": 3.85,
       "maxAdverseReturnPct": -17.65,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-07-07",
+        "capturedAt": "2026-07-08",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 58,
@@ -2515,13 +2515,13 @@
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 209020,
-          "upper": 229922,
-          "lower": 188118,
+          "basis": 208175,
+          "upper": 228992.5,
+          "lower": 187357.5,
           "position": "lower_band",
-          "distanceFromBasisPercent": -5.08,
-          "distanceFromLowerPercent": 5.47,
-          "distanceFromUpperPercent": -13.71,
+          "distanceFromBasisPercent": -3.21,
+          "distanceFromLowerPercent": 7.55,
+          "distanceFromUpperPercent": -12.01,
           "lowerBreakSessions": 0,
           "lowerReclaimed": false,
           "inBand": true
@@ -2547,13 +2547,13 @@
           "unstable_support",
           "envelope_lower_hold",
           "risk_reward_ok",
-          "base_reclaim_watch",
           "deep_pullback_probe",
           "above_stop",
           "long_pullback_until_stop_probe",
           "wide_pullback_candidate",
           "execution_gate_overridden_by_envelope",
           "sma20_slope_ok",
+          "base_reclaim_watch",
           "carry_forward_until_stop",
           "envelope_lower_break",
           "history_loss_cluster:stage:second_buy_reached:32.7%",
@@ -2577,13 +2577,7 @@
             "code": "negative_sma20_slope",
             "label": "Negative SMA20 slope",
             "impact": 14,
-            "reason": "SMA20 slope is -7.18% over the recent lookback."
-          },
-          {
-            "code": "base_reclaim_pending",
-            "label": "Base reclaim pending",
-            "impact": 12,
-            "reason": "Current close is 1.5% below the pre-lead base at 201500."
+            "reason": "SMA20 slope is -5.39% over the recent lookback."
           }
         ],
         "source": "server-universe",
@@ -2643,11 +2637,11 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 198500,
+        "latestDate": "2026-07-08",
+        "latestClose": 202500,
         "executedBuyCount": 2,
         "averageBuyPrice": 221000,
-        "unrealizedReturnPct": -10.18,
+        "unrealizedReturnPct": -8.37,
         "maxFavorablePrice": 229500,
         "maxFavorableDate": "2026-06-18",
         "maxFavorableReturnPct": 3.85,
@@ -2658,8 +2652,8 @@
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 198500,
+        "latestDate": "2026-07-08",
+        "latestClose": 202500,
         "status": "not_reached",
         "reason": "3차 매수가를 아직 터치하지 않았습니다."
       },
@@ -2950,7 +2944,7 @@
       "sourceKey": "삼지전자-037460",
       "openedAt": "2026-06-08T01:53:40.152Z",
       "openedDate": "2026-06-08",
-      "dataDate": "2026-07-07",
+      "dataDate": "2026-07-08",
       "entryBucket": "watch",
       "status": "active",
       "assumption": {
@@ -2972,9 +2966,9 @@
         }
       ],
       "averageBuyPrice": 39283.33,
-      "latestClose": 33700,
+      "latestClose": 34700,
       "latestLow": 31250,
-      "unrealizedReturnPct": -14.21,
+      "unrealizedReturnPct": -11.67,
       "buyPlan": {
         "firstBuyPrice": 43450,
         "secondBuyPrice": 37200,
@@ -3040,7 +3034,7 @@
       "outcomeStatus": "active",
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-07-07",
+        "capturedAt": "2026-07-08",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 27,
@@ -3175,11 +3169,11 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 33700,
+        "latestDate": "2026-07-08",
+        "latestClose": 34700,
         "executedBuyCount": 2,
         "averageBuyPrice": 39283.33,
-        "unrealizedReturnPct": -14.21,
+        "unrealizedReturnPct": -11.67,
         "maxFavorablePrice": 37550,
         "maxFavorableDate": "2026-06-24",
         "maxFavorableReturnPct": -4.41,
@@ -3190,8 +3184,8 @@
       },
       "thirdBuyMonitor": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 33700,
+        "latestDate": "2026-07-08",
+        "latestClose": 34700,
         "status": "not_reached",
         "reason": "3차 매수가를 아직 터치하지 않았습니다."
       },
@@ -10114,7 +10108,7 @@
       "sourceKey": "미코-059090",
       "openedAt": "2026-05-18T05:24:37.400Z",
       "openedDate": "2026-05-18",
-      "dataDate": "2026-07-07",
+      "dataDate": "2026-07-08",
       "entryBucket": "watch",
       "status": "closed",
       "assumption": {
@@ -10178,7 +10172,7 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 25,250원 기준 최대 수익률 +44.59%입니다. 종료 기준가 15,500원, 평균 매수가 17,463.43원 기준 수익률 -11.24%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 25,250원 기준 최대 수익률 +44.59%입니다. 종료 기준가 16,180원, 평균 매수가 17,463.43원 기준 수익률 -7.35%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
@@ -10203,19 +10197,19 @@
           "matchKey": "default:059090"
         }
       },
-      "latestClose": 15500,
+      "latestClose": 16180,
       "outcomeStatus": "active",
-      "latestLow": 15450,
+      "latestLow": 14800,
       "maxFavorablePrice": 25250,
       "maxFavorableDate": "2026-05-27",
       "maxFavorableReturnPct": 44.59,
-      "maxAdversePrice": 15450,
-      "maxAdverseDate": "2026-07-07",
-      "maxAdverseReturnPct": -11.53,
+      "maxAdversePrice": 14800,
+      "maxAdverseDate": "2026-07-08",
+      "maxAdverseReturnPct": -15.25,
       "initialStopLossPrice": 12550,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-07-07",
+        "capturedAt": "2026-07-08",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 66,
@@ -10223,14 +10217,14 @@
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 19214.5,
-          "upper": 21135.95,
-          "lower": 17293.05,
+          "basis": 19032,
+          "upper": 20935.2,
+          "lower": 17128.8,
           "position": "below_lower",
-          "distanceFromBasisPercent": -19.23,
-          "distanceFromLowerPercent": -10.25,
-          "distanceFromUpperPercent": -26.57,
-          "lowerBreakSessions": 4,
+          "distanceFromBasisPercent": -14.2,
+          "distanceFromLowerPercent": -4.66,
+          "distanceFromUpperPercent": -22,
+          "lowerBreakSessions": 5,
           "lowerReclaimed": false,
           "inBand": false
         },
@@ -10256,40 +10250,40 @@
           "envelope_lower_break",
           "risk_reward_ok",
           "pullback_pending",
+          "broad_review_watch",
+          "above_stop",
           "probe_demoted_low_score_unstable_support",
           "quality_not_ready",
           "setup_watch_only",
           "sma20_slope_ok",
           "envelope_lower_hold",
           "long_pullback_until_stop_probe",
-          "above_stop",
           "entry_zone_hit",
           "wide_pullback_candidate",
-          "execution_gate_overridden_by_envelope",
-          "broad_review_watch"
+          "execution_gate_overridden_by_envelope"
         ],
         "penaltyFactors": [
           {
             "code": "unstable_support",
             "label": "Unstable support",
             "impact": 16,
-            "reason": "Support stability score dropped to 34."
+            "reason": "Support stability score dropped to 54."
           },
           {
             "code": "negative_sma20_slope",
             "label": "Negative SMA20 slope",
             "impact": 14,
-            "reason": "SMA20 slope is -4.53% over the recent lookback."
+            "reason": "SMA20 slope is -4.55% over the recent lookback."
           },
           {
             "code": "envelope_lower_break",
             "label": "SMA20 envelope lower break",
             "impact": 12,
-            "reason": "Reference close is 10.3% below the SMA20 -10% envelope."
+            "reason": "Reference close is 4.7% below the SMA20 -10% envelope."
           }
         ],
         "source": "server-universe",
-        "note": "관찰 | 눌림 확인 대기 | 구간 18060~17610 | 손절 15450"
+        "note": "관찰 | 눌림 확인 대기 | 구간 17890~17440 | 손절 14800"
       },
       "stagedBuyDiagnostics": {
         "version": 1,
@@ -10348,25 +10342,25 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 15500,
+        "latestDate": "2026-07-08",
+        "latestClose": 16180,
         "executedBuyCount": 3,
         "averageBuyPrice": 17463.43,
-        "unrealizedReturnPct": -11.24,
+        "unrealizedReturnPct": -7.35,
         "maxFavorablePrice": 25250,
         "maxFavorableDate": "2026-05-27",
         "maxFavorableReturnPct": 44.59,
-        "maxAdversePrice": 15450,
-        "maxAdverseDate": "2026-07-07",
-        "maxAdverseReturnPct": -11.53,
+        "maxAdversePrice": 14800,
+        "maxAdverseDate": "2026-07-08",
+        "maxAdverseReturnPct": -15.25,
         "currentOutcome": "target_hit"
       },
       "thirdBuyMonitor": {
         "version": 1,
         "touchedDate": "2026-07-03",
         "confirmedDate": "2026-07-03",
-        "latestDate": "2026-07-07",
-        "latestClose": 15500,
+        "latestDate": "2026-07-08",
+        "latestClose": 16180,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -10376,7 +10370,7 @@
       "closedDate": "2026-05-27",
       "closedMonth": "2026-05",
       "averageBuyPrice": 17463.43,
-      "unrealizedReturnPct": -11.24
+      "unrealizedReturnPct": -7.35
     },
     {
       "id": "swing:default:417500:2026-05-18",
@@ -25711,7 +25705,7 @@
       "sourceKey": "한국정보통신-025770",
       "openedAt": "2026-05-12T06:34:32.843Z",
       "openedDate": "2026-05-12",
-      "dataDate": "2026-07-07",
+      "dataDate": "2026-07-08",
       "entryBucket": "watch",
       "status": "closed",
       "executedBuyCount": 3,
@@ -25763,7 +25757,7 @@
         ],
         "source": "server-universe"
       },
-      "latestClose": 7620,
+      "latestClose": 7790,
       "assumption": {
         "executionModel": "weighted_staged_buy",
         "trigger": "stage_1_2_low_touch_stage_3_reclaim_confirmation",
@@ -25790,7 +25784,7 @@
         "label": "슈팅 수익",
         "category": "profit",
         "includeInReturnStats": true,
-        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 10,760원 기준 최대 수익률 +22.43%입니다. 종료 기준가 7,620원, 평균 매수가 8,788.57원 기준 수익률 -13.30%입니다.",
+        "description": "평균 매수가 대비 목표 수익률 8% 이상을 충족했습니다. 기간 중 최고가 10,760원 기준 최대 수익률 +22.43%입니다. 종료 기준가 7,790원, 평균 매수가 8,788.57원 기준 수익률 -11.36%입니다.",
         "returnBasis": {
           "result": "profit",
           "basisPriceLabel": "평균 매수가",
@@ -25826,7 +25820,7 @@
       "initialStopLossPrice": 7500,
       "decisionSnapshot": {
         "version": 1,
-        "capturedAt": "2026-07-07",
+        "capturedAt": "2026-07-08",
         "sourceBucket": "watch",
         "entryBucket": "watch",
         "score": 57,
@@ -25834,13 +25828,13 @@
         "envelope": {
           "basisPeriod": 20,
           "bandPercent": 10,
-          "basis": 7532.5,
-          "upper": 8285.75,
-          "lower": 6779.25,
-          "position": "basis_zone",
-          "distanceFromBasisPercent": 1.16,
-          "distanceFromLowerPercent": 12.4,
-          "distanceFromUpperPercent": -8.03,
+          "basis": 7551.5,
+          "upper": 8306.65,
+          "lower": 6796.35,
+          "position": "upper_band",
+          "distanceFromBasisPercent": 3.29,
+          "distanceFromLowerPercent": 14.77,
+          "distanceFromUpperPercent": -6.1,
           "lowerBreakSessions": 0,
           "lowerReclaimed": false,
           "inBand": true
@@ -25883,13 +25877,13 @@
             "code": "unstable_support",
             "label": "Unstable support",
             "impact": 16,
-            "reason": "Support stability score dropped to 34."
+            "reason": "Support stability score dropped to 44."
           },
           {
             "code": "negative_sma20_slope",
             "label": "Negative SMA20 slope",
             "impact": 14,
-            "reason": "SMA20 slope is -0.82% over the recent lookback."
+            "reason": "SMA20 slope is -0.15% over the recent lookback."
           },
           {
             "code": "small_body",
@@ -25967,11 +25961,11 @@
       },
       "outcomeDiagnostics": {
         "version": 1,
-        "latestDate": "2026-07-07",
-        "latestClose": 7620,
+        "latestDate": "2026-07-08",
+        "latestClose": 7790,
         "executedBuyCount": 3,
         "averageBuyPrice": 8788.57,
-        "unrealizedReturnPct": -13.3,
+        "unrealizedReturnPct": -11.36,
         "maxFavorablePrice": 10760,
         "maxFavorableDate": "2026-05-13",
         "maxFavorableReturnPct": 22.43,
@@ -25984,8 +25978,8 @@
         "version": 1,
         "touchedDate": "2026-06-01",
         "confirmedDate": "2026-06-02",
-        "latestDate": "2026-07-07",
-        "latestClose": 7620,
+        "latestDate": "2026-07-08",
+        "latestClose": 7790,
         "status": "confirmed",
         "reason": "3차 매수가 터치 후 종가가 3차 가격을 회복하고 반등 확인 조건을 충족했습니다."
       },
@@ -25993,7 +25987,7 @@
       "displayGroup": "거래 완료",
       "returnStatsEligible": true,
       "averageBuyPrice": 8788.57,
-      "unrealizedReturnPct": -13.3
+      "unrealizedReturnPct": -11.36
     },
     {
       "id": "swing:smallcap:042520:2026-05-12",
@@ -34607,7 +34601,7 @@
       "stopBrokenCaseCount": 2,
       "marketShockStopCaseCount": 0,
       "returnStatsBaseCount": 30,
-      "averageReturnPct": -4.88
+      "averageReturnPct": -4.68
     }
   ]
 }

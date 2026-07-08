@@ -1,6 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import Tesseract from "tesseract.js";
+import type { StockUniverseItem } from "../../types.js";
+import { getStockUniverse } from "../stockUniverse.js";
 import { readPortfolioHoldings } from "./holdingsStorage.js";
 import type { OriginalIntent, PortfolioHolding, PortfolioScreenshotDraftHolding, PortfolioScreenshotParseResult } from "./types.js";
 
@@ -87,6 +89,84 @@ const fieldLabels = {
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, "").trim();
+}
+
+function normalizeMatchText(value: string | undefined): string {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toUpperCase()
+    .replace(/[^0-9A-Z\uAC00-\uD7A3]/gu, "");
+}
+
+function longestCommonSubstringLength(left: string, right: string): number {
+  if (!left || !right) {
+    return 0;
+  }
+
+  const previous = new Array(right.length + 1).fill(0);
+  let best = 0;
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    for (let rightIndex = right.length; rightIndex >= 1; rightIndex -= 1) {
+      if (left[leftIndex - 1] === right[rightIndex - 1]) {
+        previous[rightIndex] = previous[rightIndex - 1] + 1;
+        best = Math.max(best, previous[rightIndex]);
+      } else {
+        previous[rightIndex] = 0;
+      }
+    }
+  }
+  return best;
+}
+
+function getNameMatchScore(inputName: string | undefined, candidateNames: string[]): number {
+  const input = normalizeMatchText(inputName);
+  if (input.length < 2) {
+    return 0;
+  }
+
+  let best = 0;
+  for (const candidateName of candidateNames) {
+    const candidate = normalizeMatchText(candidateName);
+    if (candidate.length < 2) {
+      continue;
+    }
+    if (input === candidate) {
+      best = Math.max(best, 1);
+      continue;
+    }
+    if (input.includes(candidate) || candidate.includes(input)) {
+      best = Math.max(best, Math.min(input.length, candidate.length) / Math.max(input.length, candidate.length));
+      continue;
+    }
+    const common = longestCommonSubstringLength(input, candidate);
+    best = Math.max(best, common / Math.max(input.length, candidate.length));
+  }
+  return best;
+}
+
+function resolveUniverseItem(
+  draft: PortfolioScreenshotDraftHolding,
+  universeItems: StockUniverseItem[]
+): StockUniverseItem | undefined {
+  const symbol = typeof draft.symbol === "string" ? draft.symbol.replace(/\D/g, "") : "";
+  if (symbol.length === 6) {
+    const direct = universeItems.find((item) => item.code === symbol);
+    if (direct) {
+      return direct;
+    }
+  }
+
+  let best: { item: StockUniverseItem; score: number } | undefined;
+  for (const item of universeItems) {
+    const score = getNameMatchScore(draft.name, [item.name, ...(item.aliases ?? [])]);
+    if (score < 0.56) {
+      continue;
+    }
+    if (!best || score > best.score) {
+      best = { item, score };
+    }
+  }
+  return best?.item;
 }
 
 function normalizeLine(value: string): string {
@@ -259,12 +339,23 @@ function cleanName(value: string): string {
     .trim();
 }
 
+function hasReadableNameText(value: string): boolean {
+  return /[가-힣A-Za-z]/u.test(value);
+}
+
+function isKnownKoreanHeaderLine(line: string): boolean {
+  const compact = compactText(line);
+  return ["종목", "비중", "평가손익", "손익률", "평균단가", "현재가", "보유수량", "매도가능", "매도가"].some((label) =>
+    compact.includes(label)
+  );
+}
+
 function isLikelySummaryLine(line: string): boolean {
   return includesAnyCompact(line, summaryLabels) && numberTokens(line).length <= 4;
 }
 
 function isLikelyHeaderLine(line: string): boolean {
-  return includesAnyCompact(line, headerLabels) && numberTokens(line).length <= 2;
+  return (includesAnyCompact(line, headerLabels) || isKnownKoreanHeaderLine(line)) && numberTokens(line).length <= 2;
 }
 
 function isUiNoiseLine(line: string): boolean {
@@ -289,7 +380,7 @@ function isPotentialNameLine(line: string): boolean {
   if (cleaned.length < 2 || cleaned.length > 28) {
     return false;
   }
-  if (!/[가-힣A-Za-z]/.test(cleaned)) {
+  if (!hasReadableNameText(cleaned)) {
     return false;
   }
   if (isUiNoiseLine(line) || isLikelySummaryLine(line) || isLikelyHeaderLine(line)) {
@@ -362,6 +453,53 @@ function normalizeTableName(lines: string[]): string {
     .trim();
 }
 
+function isPortfolioTableNameLine(line: string): boolean {
+  const compact = compactText(line);
+  if (!compact || parseSingleNumericLine(line)) {
+    return false;
+  }
+  if (isUiNoiseLine(line) || isLikelySummaryLine(line) || isLikelyHeaderLine(line)) {
+    return false;
+  }
+  return hasReadableNameText(line);
+}
+
+function findPortfolioBalanceTableStart(lines: string[]): number {
+  for (let index = 0; index < lines.length; index += 1) {
+    const compact = compactText(lines[index]);
+    if (!compact.includes("종목")) {
+      continue;
+    }
+
+    const lookahead = lines.slice(index, index + 16).map(compactText).join(" ");
+    const headerHits = ["평가손익", "평균단가", "현재가", "보유수량", "매도가능", "비중", "손익률"].filter((label) =>
+      lookahead.includes(label)
+    ).length;
+    if (headerHits >= 2) {
+      return index;
+    }
+  }
+
+  return lines.findIndex((line) => {
+    const compact = compactText(line);
+    return compact.includes("매도가능") || compact.includes("현재가매도가") || compact === "종목";
+  });
+}
+
+function collectPortfolioRowNumbers(lines: string[], startIndex: number): Array<{ value: number; isPercent: boolean; raw: string }> {
+  const numbers: Array<{ value: number; isPercent: boolean; raw: string }> = [];
+  let index = startIndex;
+  while (index < lines.length && numbers.length < 8) {
+    const numeric = parseSingleNumericLine(lines[index]);
+    if (!numeric) {
+      break;
+    }
+    numbers.push(numeric);
+    index += 1;
+  }
+  return numbers;
+}
+
 function closeEnough(left: number | undefined, right: number | undefined, tolerance = 0.015): boolean {
   if (typeof left !== "number" || typeof right !== "number" || !Number.isFinite(left) || !Number.isFinite(right) || right === 0) {
     return false;
@@ -373,16 +511,16 @@ function resolveKnownHolding(draft: PortfolioScreenshotDraftHolding, knownHoldin
   let best: { holding: PortfolioHolding; score: number } | undefined;
   for (const holding of knownHoldings) {
     let score = 0;
+    const nameScore = getNameMatchScore(draft.name, [holding.name]);
+    if (nameScore >= 0.88) {
+      return holding;
+    }
     if (draft.quantity === holding.quantity) score += 3;
     if (closeEnough(draft.avgPrice, holding.avgPrice)) score += 3;
     if (closeEnough(draft.currentPrice, holding.currentPrice)) score += 3;
     if (closeEnough(draft.profitRate, holding.profitRate, 0.08)) score += 1;
 
-    const draftName = compactText(draft.name).toUpperCase();
-    const knownName = compactText(holding.name).toUpperCase();
-    if (draftName && knownName && (knownName.includes(draftName) || draftName.includes(knownName.slice(0, 2)))) {
-      score += 1;
-    }
+    score += nameScore >= 0.55 ? 1 : 0;
 
     if (!best || score > best.score) {
       best = { holding, score };
@@ -406,7 +544,36 @@ function applyKnownHoldingMetadata(draft: PortfolioScreenshotDraftHolding, known
   };
 }
 
-function buildTableDraft(nameLines: string[], numbers: Array<{ value: number; isPercent: boolean; raw: string }>, knownHoldings: PortfolioHolding[]): PortfolioScreenshotDraftHolding | null {
+function applyUniverseMetadata(draft: PortfolioScreenshotDraftHolding, universeItems: StockUniverseItem[]): PortfolioScreenshotDraftHolding {
+  const matched = resolveUniverseItem(draft, universeItems);
+  if (!matched) {
+    return draft;
+  }
+
+  const hasSymbol = typeof draft.symbol === "string" && draft.symbol.replace(/\D/g, "").length === 6;
+  return {
+    ...draft,
+    symbol: matched.code,
+    name: matched.name,
+    memo: draft.memo,
+    confidence: Math.min(0.95, (draft.confidence ?? 0.72) + (hasSymbol ? 0.12 : 0.08))
+  };
+}
+
+function enrichDraftMetadata(
+  draft: PortfolioScreenshotDraftHolding,
+  knownHoldings: PortfolioHolding[],
+  universeItems: StockUniverseItem[]
+): PortfolioScreenshotDraftHolding {
+  return applyUniverseMetadata(applyKnownHoldingMetadata(draft, knownHoldings), universeItems);
+}
+
+function buildTableDraft(
+  nameLines: string[],
+  numbers: Array<{ value: number; isPercent: boolean; raw: string }>,
+  knownHoldings: PortfolioHolding[],
+  universeItems: StockUniverseItem[]
+): PortfolioScreenshotDraftHolding | null {
   if (numbers.length < 7) {
     return null;
   }
@@ -439,11 +606,15 @@ function buildTableDraft(nameLines: string[], numbers: Array<{ value: number; is
     sourceRowText: `${nameLines.join(" ")} ${numbers.map((item) => item.raw).join(" ")}`
   };
 
-  return applyKnownHoldingMetadata(draft, knownHoldings);
+  return enrichDraftMetadata(draft, knownHoldings, universeItems);
 }
 
-function parseBrokerBalanceTable(lines: string[], knownHoldings: PortfolioHolding[]): PortfolioScreenshotDraftHolding[] {
-  const startIndex = lines.findIndex(isTableStartLine);
+function parseBrokerBalanceTable(
+  lines: string[],
+  knownHoldings: PortfolioHolding[],
+  universeItems: StockUniverseItem[]
+): PortfolioScreenshotDraftHolding[] {
+  const startIndex = findPortfolioBalanceTableStart(lines);
   if (startIndex < 0) {
     return [];
   }
@@ -451,37 +622,25 @@ function parseBrokerBalanceTable(lines: string[], knownHoldings: PortfolioHoldin
   const drafts: PortfolioScreenshotDraftHolding[] = [];
   let index = startIndex + 1;
   while (index < lines.length) {
-    while (index < lines.length && !isTableNameCandidate(lines[index])) {
+    if (!isPortfolioTableNameLine(lines[index])) {
       index += 1;
-    }
-    if (index >= lines.length) {
-      break;
+      continue;
     }
 
-    const nameLines: string[] = [];
-    while (index < lines.length && isTableNameCandidate(lines[index]) && nameLines.length < 4) {
-      nameLines.push(lines[index]);
+    const numbers = collectPortfolioRowNumbers(lines, index + 1);
+    if (numbers.length < 7) {
       index += 1;
-      if (parseSingleNumericLine(lines[index] ?? "")) {
-        break;
-      }
+      continue;
     }
 
-    const numbers: Array<{ value: number; isPercent: boolean; raw: string }> = [];
-    while (index < lines.length && numbers.length < 8) {
-      const numeric = parseSingleNumericLine(lines[index]);
-      if (numeric) {
-        numbers.push(numeric);
-        index += 1;
-        continue;
-      }
-      break;
-    }
-
-    const draft = buildTableDraft(nameLines, numbers, knownHoldings);
+    const draft = buildTableDraft([lines[index]], numbers, knownHoldings, universeItems);
     if (draft) {
       drafts.push(draft);
+      index += numbers.length + 1;
+      continue;
     }
+
+    index += 1;
   }
 
   return drafts;
@@ -624,13 +783,25 @@ function dedupeDrafts(drafts: PortfolioScreenshotDraftHolding[]): PortfolioScree
   return [...byKey.values()].slice(0, 50);
 }
 
-function parseHoldingsFromText(rawText: string, knownHoldings: PortfolioHolding[] = []): PortfolioScreenshotParseResult {
+function extractKoreanAccountFields(lines: string[]): Partial<PortfolioScreenshotParseResult> {
+  return {
+    cashBalance: extractLabeledNumberNear(lines, ["D+2예수금", "0+2예수금", "2+2예수금", "예수금", "출금가능"], { lookahead: 3 }),
+    totalEvaluationAmount: extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }),
+    totalProfitRate: extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
+  };
+}
+
+function parseHoldingsFromText(
+  rawText: string,
+  knownHoldings: PortfolioHolding[] = [],
+  universeItems: StockUniverseItem[] = []
+): PortfolioScreenshotParseResult {
   const lines = rawText
     .split(/\r?\n/)
     .map(normalizeLine)
     .filter(Boolean);
 
-  const tableDrafts = parseBrokerBalanceTable(lines, knownHoldings);
+  const tableDrafts = parseBrokerBalanceTable(lines, knownHoldings, universeItems);
   const drafts: PortfolioScreenshotDraftHolding[] = [];
   if (tableDrafts.length >= 2) {
     drafts.push(...tableDrafts);
@@ -639,14 +810,14 @@ function parseHoldingsFromText(rawText: string, knownHoldings: PortfolioHolding[
       const line = lines[index];
       const rowDraft = parseTableRow(line);
       if (rowDraft) {
-        drafts.push(applyKnownHoldingMetadata(rowDraft, knownHoldings));
+        drafts.push(enrichDraftMetadata(rowDraft, knownHoldings, universeItems));
         continue;
       }
 
       if (isPotentialNameLine(line)) {
         const blockDraft = parseLabeledBlock(lines, index);
         if (blockDraft) {
-          drafts.push(applyKnownHoldingMetadata(blockDraft, knownHoldings));
+          drafts.push(enrichDraftMetadata(blockDraft, knownHoldings, universeItems));
         }
       }
     }
@@ -671,7 +842,8 @@ function parseHoldingsFromText(rawText: string, knownHoldings: PortfolioHolding[
     totalProfitRate: extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 }),
     draftHoldings: resultDrafts,
     warnings,
-    rawText
+    rawText,
+    ...extractKoreanAccountFields(lines)
   };
 }
 
@@ -681,7 +853,10 @@ export async function parsePortfolioScreenshotWithLocalOcr(imageDataUrl: string)
     const worker = await getWorker();
     const result = await worker.recognize(image);
     const knownHoldings = await readPortfolioHoldings().catch(() => []);
-    return parseHoldingsFromText(result.data.text, knownHoldings);
+    const universeItems = await getStockUniverse()
+      .then((payload) => payload.items)
+      .catch(() => []);
+    return parseHoldingsFromText(result.data.text, knownHoldings, universeItems);
   } catch (error) {
     workerPromise = null;
     const message = error instanceof Error ? error.message : String(error);

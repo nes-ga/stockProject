@@ -4174,5 +4174,14 @@
     "localState": "WEAK",
     "themeRotationScore": 49.5,
     "marketMode": "NEUTRAL"
+  },
+  {
+    "date": "2026-07-08",
+    "globalScore": 3,
+    "globalState": "RISK_ON",
+    "localScore": 0,
+    "localState": "DEFENSIVE",
+    "themeRotationScore": 46.92,
+    "marketMode": "DEFENSIVE"
   }
 ]

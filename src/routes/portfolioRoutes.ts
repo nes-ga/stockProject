@@ -5,6 +5,8 @@ import {
   deletePortfolioHolding,
   getPortfolioAdvice,
   getPortfolioHoldings,
+  getPortfolioQuotes,
+  savePortfolioAccount,
   savePortfolioHoldings,
   upsertPortfolioHolding
 } from "../services/portfolio/portfolioManager.js";
@@ -21,7 +23,7 @@ const portfolioHoldingSchema = z.object({
   symbol: z.string().min(1),
   name: z.string().min(1),
   avgPrice: z.coerce.number().positive(),
-  currentPrice: z.coerce.number().positive(),
+  currentPrice: z.coerce.number().positive().optional(),
   quantity: z.coerce.number().positive(),
   investedAmount: z.coerce.number().min(0).optional(),
   evaluationAmount: z.coerce.number().min(0).optional(),
@@ -33,7 +35,19 @@ const portfolioHoldingSchema = z.object({
 });
 
 const portfolioHoldingBatchSchema = z.object({
-  items: z.array(portfolioHoldingSchema)
+  items: z.array(portfolioHoldingSchema),
+  account: z
+    .object({
+      brokerName: z.string().max(100).optional(),
+      accountLabel: z.string().max(100).optional(),
+      cashBalance: z.coerce.number().min(0).optional(),
+      buyingPower: z.coerce.number().min(0).optional(),
+      totalInvestedAmount: z.coerce.number().min(0).optional(),
+      totalEvaluationAmount: z.coerce.number().min(0).optional(),
+      totalProfitAmount: z.coerce.number().optional(),
+      totalProfitRate: z.coerce.number().optional()
+    })
+    .optional()
 });
 
 const portfolioScreenshotParseSchema = z.object({
@@ -44,6 +58,7 @@ const portfolioScreenshotParseSchema = z.object({
 function normalizeHoldingInput(input: z.infer<typeof portfolioHoldingSchema>) {
   return {
     ...input,
+    currentPrice: input.currentPrice ?? input.avgPrice,
     id: input.id ?? `${input.symbol}:${input.openedDate ?? "manual"}`
   };
 }
@@ -65,10 +80,18 @@ portfolioRoutes.post("/holdings", async (request, response, next) => {
   try {
     const input = portfolioHoldingBatchSchema.parse(request.body);
     const items = await savePortfolioHoldings(input.items.map(normalizeHoldingInput));
+    const account = input.account
+      ? await savePortfolioAccount({
+          ...input.account,
+          source: "screenshot",
+          capturedAt: new Date().toISOString()
+        })
+      : undefined;
     response.json({
       ok: true,
       count: items.length,
-      items
+      items,
+      account
     });
   } catch (error) {
     logger.error("holdings:save:failed", toErrorContext(error));
@@ -112,6 +135,15 @@ portfolioRoutes.get("/advice", async (_request, response, next) => {
     response.json(await getPortfolioAdvice());
   } catch (error) {
     logger.error("advice:get:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+portfolioRoutes.get("/quotes", async (_request, response, next) => {
+  try {
+    response.json(await getPortfolioQuotes());
+  } catch (error) {
+    logger.error("quotes:get:failed", toErrorContext(error));
     next(error);
   }
 });

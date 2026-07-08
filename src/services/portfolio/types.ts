@@ -38,6 +38,54 @@ export type PortfolioHolding = {
   memo?: string;
 };
 
+export type PortfolioAccountSnapshot = {
+  brokerName?: string;
+  accountLabel?: string;
+  cashBalance?: number;
+  buyingPower?: number;
+  totalInvestedAmount?: number;
+  totalEvaluationAmount?: number;
+  totalProfitAmount?: number;
+  totalProfitRate?: number;
+  capturedAt: string;
+  source: "screenshot" | "manual";
+};
+
+export type PortfolioQuoteItem = {
+  id: string;
+  symbol: string;
+  name: string;
+  avgPrice: number;
+  currentPrice: number;
+  previousClose?: number;
+  changeAmount?: number;
+  changePercent?: number;
+  quantity: number;
+  investedAmount: number;
+  evaluationAmount: number;
+  profitAmount: number;
+  profitRate: number;
+  stockWeightPercent: number;
+  assetWeightPercent?: number;
+  latestDate?: string;
+  error?: string;
+};
+
+export type PortfolioAccountSummary = {
+  total: number;
+  totalQuantity: number;
+  totalInvestedAmount: number;
+  totalEvaluationAmount: number;
+  totalProfitAmount: number;
+  totalProfitRate: number;
+  cashBalance?: number;
+  buyingPower?: number;
+  estimatedTotalAsset?: number;
+  stockWeightPercent?: number;
+  cashWeightPercent?: number;
+  account?: PortfolioAccountSnapshot;
+};
+
 export type PortfolioLinkedHistory = {
   source: "swing_history" | "long_term_pick" | "manual" | "none";
   caseId?: string;
@@ -95,8 +143,15 @@ export type PortfolioAdviceResponse = {
     rotationBuy: number;
     reduceOnRebound: number;
     deadMoney: number;
+    account: PortfolioAccountSummary;
   };
   items: PortfolioAdvice[];
+};
+
+export type PortfolioQuotesResponse = {
+  fetchedAt: string;
+  summary: PortfolioAccountSummary;
+  items: PortfolioQuoteItem[];
 };
 
 export type PortfolioScreenshotDraftHolding = {
