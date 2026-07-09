@@ -1,5 +1,5 @@
 {
-  "date": "2026-07-08",
+  "date": "2026-07-09",
   "global": {
     "score": 3,
     "state": "RISK_ON"
@@ -8,17 +8,17 @@
     "score": 0,
     "state": "DEFENSIVE"
   },
-  "themeRotationScore": 46.92,
+  "themeRotationScore": 45.25,
   "marketMode": "DEFENSIVE",
   "topThemes": [
     "금융",
     "헬스케어 / 바이오",
-    "소비 / 화장품"
+    "필수소비재"
   ],
   "bottomThemes": [
     "철강 / 화학",
-    "2차전지",
+    "자동차 / 산업재",
     "건설 / 인프라"
   ],
-  "updatedAt": "2026-07-08T17:07:50.505+09:00"
+  "updatedAt": "2026-07-09T16:37:51.781+09:00"
 }

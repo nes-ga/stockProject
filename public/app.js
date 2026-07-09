@@ -544,6 +544,8 @@ let historyChartLoading = false;
 let stockModalPointerDownOnBackdrop = false;
 let marketEventModalPointerDownOnBackdrop = false;
 let themeDetailModalPointerDownOnBackdrop = false;
+let portfolioDetailModalPointerDownOnBackdrop = false;
+let activePortfolioDetailSymbol = "";
 let serverDividendPicksLoaded = false;
 let serverLongTermPicksLoaded = false;
 let dividendEtfRecommendations = [];
@@ -616,6 +618,11 @@ const swingScoreModal = document.querySelector("#swingScoreModal");
 const closeSwingScoreModalBtn = document.querySelector("#closeSwingScoreModalBtn");
 const swingScoreModalMeta = document.querySelector("#swingScoreModalMeta");
 const swingScoreModalBody = document.querySelector("#swingScoreModalBody");
+const portfolioDetailModal = document.querySelector("#portfolioDetailModal");
+const closePortfolioDetailModalBtn = document.querySelector("#closePortfolioDetailModalBtn");
+const portfolioDetailModalTitle = document.querySelector("#portfolioDetailModalTitle");
+const portfolioDetailModalMeta = document.querySelector("#portfolioDetailModalMeta");
+const portfolioDetailModalBody = document.querySelector("#portfolioDetailModalBody");
 const marketEventModal = document.querySelector("#marketEventModal");
 const closeMarketEventModalBtn = document.querySelector("#closeMarketEventModalBtn");
 const marketEventModalMeta = document.querySelector("#marketEventModalMeta");
@@ -1026,6 +1033,7 @@ closeStockModalBtn.addEventListener("click", closeStockModal);
 cancelStockModalBtn.addEventListener("click", closeStockModal);
 closeIndexChartModalBtn?.addEventListener("click", closeIndexChartModal);
 closeSwingScoreModalBtn?.addEventListener("click", closeSwingScoreModal);
+closePortfolioDetailModalBtn?.addEventListener("click", closePortfolioDetailModal);
 openHistoryMatrixModalBtn?.addEventListener("click", openHistoryMatrixModal);
 closeHistoryMatrixModalBtn?.addEventListener("click", closeHistoryMatrixModal);
 closeHistoryChartModalBtn?.addEventListener("click", closeHistoryChartModal);
@@ -1080,6 +1088,26 @@ savePortfolioDraftsBtn?.addEventListener("click", () => {
 
 replacePortfolioDraftsBtn?.addEventListener("click", () => {
   void savePortfolioDraftRows({ replaceAll: true });
+});
+
+portfolioAdviceList?.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-portfolio-detail-symbol]");
+  if (!detailButton) {
+    return;
+  }
+  openPortfolioDetailModal(detailButton.dataset.portfolioDetailSymbol);
+});
+
+portfolioAdviceList?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  const detailButton = event.target.closest("[data-portfolio-detail-symbol]");
+  if (!detailButton) {
+    return;
+  }
+  event.preventDefault();
+  openPortfolioDetailModal(detailButton.dataset.portfolioDetailSymbol);
 });
 
 portfolioDraftPreview?.addEventListener("input", (event) => {
@@ -1157,6 +1185,18 @@ swingScoreModal?.addEventListener("click", (event) => {
   if (event.target === swingScoreModal) {
     closeSwingScoreModal();
   }
+});
+
+portfolioDetailModal?.addEventListener("pointerdown", (event) => {
+  portfolioDetailModalPointerDownOnBackdrop = event.target === portfolioDetailModal;
+});
+
+portfolioDetailModal?.addEventListener("click", (event) => {
+  if (event.target === portfolioDetailModal && portfolioDetailModalPointerDownOnBackdrop) {
+    closePortfolioDetailModal();
+  }
+
+  portfolioDetailModalPointerDownOnBackdrop = false;
 });
 
 historyMatrixModal?.addEventListener("click", (event) => {
@@ -1317,6 +1357,11 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && swingScoreModal && !swingScoreModal.classList.contains("hidden")) {
     closeSwingScoreModal();
+    return;
+  }
+
+  if (event.key === "Escape" && portfolioDetailModal && !portfolioDetailModal.classList.contains("hidden")) {
+    closePortfolioDetailModal();
     return;
   }
 
@@ -2733,20 +2778,104 @@ function renderPortfolioTimeline(item, conditions) {
   `;
 }
 
-function renderPortfolioAdviceCard(item) {
+function findPortfolioAdviceItem(symbol) {
+  const items = Array.isArray(portfolioPayload?.items) ? portfolioPayload.items : [];
+  return items.find((item) => String(item.symbol) === String(symbol));
+}
+
+function getPortfolioDetailContext(item) {
   const holding = item.holding ?? {};
-  const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
   const evaluationAmount = Number.isFinite(holding.evaluationAmount) ? holding.evaluationAmount : Number(holding.currentPrice) * Number(holding.quantity);
   const investedAmount = Number.isFinite(holding.investedAmount) ? holding.investedAmount : Number(holding.avgPrice) * Number(holding.quantity);
   const profitAmount = Number.isFinite(evaluationAmount) && Number.isFinite(investedAmount) ? evaluationAmount - investedAmount : undefined;
   const executionPlan = item.executionPlan ?? {};
   const conditions = Array.isArray(executionPlan.conditions) ? executionPlan.conditions.slice(0, 4) : [];
-  const actionTone = getPortfolioActionTone(item.aiAction);
-  const actionZone = getPortfolioActionZone(item);
   const linkedHistory =
     item.linkedHistory?.source && item.linkedHistory.source !== "none"
       ? `${item.linkedHistory.source}${item.linkedHistory.cycleNo ? ` · Cycle ${item.linkedHistory.cycleNo}` : ""}${item.linkedHistory.outcome ? ` · ${item.linkedHistory.outcome}` : ""}`
       : "없음";
+
+  return {
+    holding,
+    evaluationAmount,
+    investedAmount,
+    profitAmount,
+    executionPlan,
+    conditions,
+    linkedHistory,
+    actionTone: getPortfolioActionTone(item.aiAction),
+    actionZone: getPortfolioActionZone(item)
+  };
+}
+
+function renderPortfolioDetailContent(item) {
+  const { holding, evaluationAmount, investedAmount, profitAmount, executionPlan, conditions, linkedHistory, actionTone, actionZone } =
+    getPortfolioDetailContext(item);
+  const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
+
+  return `
+    <section class="portfolio-detail-modal-summary">
+      <div class="portfolio-action-badge ${escapeHtml(actionTone)}">
+        <strong>${escapeHtml(getPortfolioActionTitle(item.aiAction))}</strong>
+        <span>${escapeHtml(getPortfolioStatusLabel(item))}</span>
+      </div>
+      <p class="portfolio-summary-text">${escapeHtml(item.summary ?? "")}</p>
+      <div class="portfolio-key-price-grid">
+        <span><em>관찰가</em><strong>${Number.isFinite(executionPlan.watchPrice) ? `${formatNumber(executionPlan.watchPrice)}원` : "-"}</strong></span>
+        <span><em>${escapeHtml(actionZone.label)}</em><strong>${escapeHtml(formatPortfolioPriceZone(actionZone.zone))}</strong></span>
+        <span><em>무효가</em><strong>${Number.isFinite(executionPlan.invalidPrice) ? `${formatNumber(executionPlan.invalidPrice)}원` : "-"}</strong></span>
+        <span><em>현재 손익</em><strong class="portfolio-profit ${escapeHtml(returnClass)}">${formatSignedWon(profitAmount)}</strong></span>
+      </div>
+    </section>
+    <div class="portfolio-detail-grid">
+      <section>
+        <h4>상세 근거</h4>
+        ${renderPortfolioTimeline(item, conditions)}
+      </section>
+      <section>
+        <h4>엔진 로그</h4>
+        <dl>
+          <div><dt>현재 모드</dt><dd>${escapeHtml(getPortfolioModeLabel(item.currentMode))}</dd></div>
+          <div><dt>제안 목적</dt><dd>${escapeHtml(getPortfolioIntentLabel(item.suggestedIntent))}</dd></div>
+          <div><dt>신뢰도</dt><dd>${formatNumber(item.confidence ?? 0)}</dd></div>
+          <div><dt>연결 이력</dt><dd>${escapeHtml(linkedHistory)}</dd></div>
+          <div><dt>매수금액</dt><dd>${formatNumber(investedAmount)}원</dd></div>
+          <div><dt>평가금액</dt><dd>${formatNumber(evaluationAmount)}원</dd></div>
+          <div><dt>보유수량</dt><dd>${formatNumber(holding.quantity)}주</dd></div>
+          <div><dt>비중</dt><dd>${formatOptionalPercent(holding.stockWeightPercent)}</dd></div>
+        </dl>
+      </section>
+    </div>
+  `;
+}
+
+function openPortfolioDetailModal(symbol) {
+  const item = findPortfolioAdviceItem(symbol);
+  if (!item || !portfolioDetailModal || !portfolioDetailModalTitle || !portfolioDetailModalMeta || !portfolioDetailModalBody) {
+    return;
+  }
+
+  activePortfolioDetailSymbol = String(item.symbol ?? "");
+  const holding = item.holding ?? {};
+  portfolioDetailModalTitle.textContent = `${item.name ?? item.symbol} 상세`;
+  portfolioDetailModalMeta.textContent = `${item.symbol ?? ""} · 평단 ${formatNumber(holding.avgPrice)}원 · 현재 ${formatNumber(holding.currentPrice)}원 · ${formatPercent(holding.profitRate ?? 0)}`;
+  portfolioDetailModalBody.innerHTML = renderPortfolioDetailContent(item);
+  portfolioDetailModal.classList.remove("hidden");
+}
+
+function closePortfolioDetailModal() {
+  if (!portfolioDetailModal) {
+    return;
+  }
+  portfolioDetailModal.classList.add("hidden");
+  portfolioDetailModalPointerDownOnBackdrop = false;
+  activePortfolioDetailSymbol = "";
+}
+
+function renderPortfolioAdviceCard(item) {
+  const holding = item.holding ?? {};
+  const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
+  const { profitAmount, executionPlan, actionTone, actionZone } = getPortfolioDetailContext(item);
 
   return `
     <article id="${escapeHtml(getPortfolioCardAnchor(item.symbol))}" class="portfolio-advice-card ${escapeHtml((item.priorityLabel ?? "LOW").toLowerCase())} action-${escapeHtml(actionTone)}" data-portfolio-card-symbol="${escapeHtml(item.symbol)}">
@@ -2786,27 +2915,7 @@ function renderPortfolioAdviceCard(item) {
         <span class="portfolio-pill action">행동 ${escapeHtml(getPortfolioActionTitle(item.aiAction))}</span>
       </div>
 
-      <details class="portfolio-card-details">
-        <summary>상세 보기</summary>
-        <div class="portfolio-detail-grid">
-          <section>
-            <h4>상세 근거</h4>
-            ${renderPortfolioTimeline(item, conditions)}
-          </section>
-          <section>
-            <h4>엔진 로그</h4>
-            <dl>
-              <div><dt>현재 모드</dt><dd>${escapeHtml(getPortfolioModeLabel(item.currentMode))}</dd></div>
-              <div><dt>제안 목적</dt><dd>${escapeHtml(getPortfolioIntentLabel(item.suggestedIntent))}</dd></div>
-              <div><dt>신뢰도</dt><dd>${formatNumber(item.confidence ?? 0)}</dd></div>
-              <div><dt>연결 이력</dt><dd>${escapeHtml(linkedHistory)}</dd></div>
-              <div><dt>매수금액</dt><dd data-portfolio-invested-amount>${formatNumber(investedAmount)}원</dd></div>
-              <div><dt>평가금액</dt><dd data-portfolio-evaluation-amount>${formatNumber(evaluationAmount)}원</dd></div>
-              <div><dt>비중</dt><dd data-portfolio-stock-weight>${formatOptionalPercent(holding.stockWeightPercent)}</dd></div>
-            </dl>
-          </section>
-        </div>
-      </details>
+      <button class="ghost-button portfolio-detail-button" type="button" data-portfolio-detail-symbol="${escapeHtml(item.symbol)}">상세 보기</button>
     </article>
   `;
 }
@@ -2952,6 +3061,10 @@ function applyPortfolioQuotes(payload) {
       assetWeightPercent: quote.assetWeightPercent
     };
     updatePortfolioCardQuote(quote);
+  }
+
+  if (activePortfolioDetailSymbol && portfolioDetailModal && !portfolioDetailModal.classList.contains("hidden")) {
+    openPortfolioDetailModal(activePortfolioDetailSymbol);
   }
 
   setPortfolioStatus("positive", `${payload.summary?.total ?? portfolioPayload.summary?.total ?? 0}개 · 시세 갱신`);

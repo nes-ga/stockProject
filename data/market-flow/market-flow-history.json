@@ -1,14 +1,5 @@
 [
   {
-    "date": "2024-07-08",
-    "globalScore": 4,
-    "globalState": "RISK_ON",
-    "localScore": 3,
-    "localState": "SELECTIVE",
-    "themeRotationScore": 46,
-    "marketMode": "SELECTIVE"
-  },
-  {
     "date": "2024-07-09",
     "globalScore": 2,
     "globalState": "NEUTRAL",
@@ -4182,6 +4173,15 @@
     "localScore": 0,
     "localState": "DEFENSIVE",
     "themeRotationScore": 46.92,
+    "marketMode": "DEFENSIVE"
+  },
+  {
+    "date": "2026-07-09",
+    "globalScore": 3,
+    "globalState": "RISK_ON",
+    "localScore": 0,
+    "localState": "DEFENSIVE",
+    "themeRotationScore": 45.25,
     "marketMode": "DEFENSIVE"
   }
 ]

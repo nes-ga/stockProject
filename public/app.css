@@ -5578,6 +5578,15 @@ body {
   color: var(--negative);
 }
 
+.portfolio-detail-button {
+  justify-self: flex-start;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .portfolio-warning {
   padding: 8px 10px;
   border-radius: 8px;
@@ -5592,6 +5601,20 @@ body {
   color: var(--text);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.portfolio-detail-modal-panel {
+  width: min(100%, 860px);
+}
+
+.portfolio-detail-modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.portfolio-detail-modal-summary {
+  display: grid;
+  gap: 10px;
 }
 
 .portfolio-card-details {
@@ -8346,7 +8369,8 @@ body {
   .index-chart-modal-panel,
   .history-matrix-modal-panel,
   .history-chart-modal-panel,
-  .swing-score-modal-panel {
+  .swing-score-modal-panel,
+  .portfolio-detail-modal-panel {
     width: 100%;
     max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     padding: 16px;
@@ -8607,7 +8631,8 @@ body {
   .index-chart-modal-panel,
   .history-matrix-modal-panel,
   .history-chart-modal-panel,
-  .swing-score-modal-panel {
+  .swing-score-modal-panel,
+  .portfolio-detail-modal-panel {
     padding: 14px;
     border-radius: 18px;
   }
