@@ -2,6 +2,22 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-07-13 - UI Shell 1차 개편
+
+- 대형 hero를 compact sticky header로 줄이고 분석 화면을 데스크톱 2열, 모바일 단일 열 작업 구조로 정리했습니다.
+- 사용자 피드백에 따라 배경 mascot parade, 브랜드 캐릭터, 상단 6개 탭별 캐릭터를 복원했습니다.
+- 전역/추천 탭의 키보드 이동과 ARIA 상태, 모달 focus trap·복귀·배경 inert·스크롤 잠금을 적용했습니다.
+- Portfolio의 행동 우선 배치를 강화하고 `AI`처럼 실제 구현보다 강한 표현을 규칙 기반 한국어 용어로 바로잡았습니다.
+- 뉴스 화면은 최초 진입 시에만 불러오며 production/minified build를 적용했습니다. 번들은 1,103,322 bytes에서 205,571 bytes로 줄었습니다.
+- 뉴스 초기 오류와 재시도, 기존 데이터를 유지하는 갱신 지연 상태, 분석·Portfolio·급등락의 로딩/오류/빈 상태를 분리했습니다.
+- `node --check public/app.js`, `npm.cmd run check`, `npm.cmd run build`를 통과했고 Chrome 1440x1000 및 390x844에서 주요 화면의 overflow와 콘솔 오류를 확인했습니다.
+- 모바일 분석 master-detail, Portfolio 수동 CRUD, 뉴스 외 화면 lazy loading, 대형 `app.js`/`app.css` 분리는 후속 작업입니다.
+
+관련 문서:
+
+- [2026-07-13 UI Shell 작업 요약](./work-summary-2026-07-13-ui-refresh.md)
+- [2026-07-13 프로젝트 개선 제안서](./project-improvement-proposal-2026-07-13.md)
+
 ## 2026-06-29
 
 스윙 `execution_probe` 오분류를 보정했습니다.

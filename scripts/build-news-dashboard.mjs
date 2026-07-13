@@ -13,6 +13,11 @@ await build({
   target: ["es2020"],
   jsx: "automatic",
   sourcemap: false,
-  minify: false,
+  minify: true,
+  treeShaking: true,
+  legalComments: "none",
+  define: {
+    "process.env.NODE_ENV": '"production"'
+  },
   outfile: path.join(projectRoot, "public", "news-signal-dashboard.js")
 });

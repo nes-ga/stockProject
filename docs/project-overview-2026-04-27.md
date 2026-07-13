@@ -2,6 +2,10 @@
 
 최종 정리일: 2026-05-08
 
+> 문서 상태: 이 문서는 2026-05-08 코드 구조를 기록한 역사 스냅샷입니다. 현재 구현 범위는 [현재 구현 기능](./current-implemented-features.md), 최신 개선 방향은 [2026-07-13 프로젝트 개선 제안서](./project-improvement-proposal-2026-07-13.md)를 기준으로 확인합니다.
+
+2026-07-13 UI 후속 메모: compact sticky shell, 캐릭터 복원, 탭/모달 접근성, Portfolio 표현 정리, 뉴스 lazy production bundle을 1차 적용했습니다. 구현과 검증, 남은 작업은 [2026-07-13 UI Shell 작업 요약](./work-summary-2026-07-13-ui-refresh.md)에 계속 기록합니다.
+
 ## 목적
 
 StockMon Dashboard는 국내 주식 후보를 스윙, 중장기, 배당 관점으로 나누어 분석하고, 시장 흐름/뉴스/이벤트/알림을 함께 제공하는 로컬 대시보드입니다.

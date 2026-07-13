@@ -94,8 +94,8 @@
               <span class="hero-brand-tag">ride the wave</span>
             </div>
           </div>
-          <div class="app-tabs" id="appTabs">
-            <button class="app-tab app-tab-analysis active" type="button" data-view="analysis">
+          <div class="app-tabs" id="appTabs" role="tablist" aria-label="주요 화면">
+            <button id="appTabAnalysis" class="app-tab app-tab-analysis active" type="button" role="tab" aria-selected="true" aria-controls="analysisView" tabindex="0" data-view="analysis">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">추천 종목 및 분석</span>
                 <span class="app-tab-copy">중장기·스윙 종목과 차트 분석을 확인</span>
@@ -104,34 +104,16 @@
                 <img src="/assets/stockmon-books.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
-            <button class="app-tab app-tab-history" type="button" data-view="history">
-              <span class="app-tab-copywrap">
-                <span class="app-tab-title">추천 히스토리</span>
-                <span class="app-tab-copy">추천 이후 수익·손절·엔진 탈락 흐름을 누적 검증</span>
-              </span>
-              <span class="app-tab-mascot" aria-hidden="true">
-                <img src="/assets/stockmon-camera.webp" alt="" loading="lazy" decoding="async" />
-              </span>
-            </button>
-            <button class="app-tab app-tab-portfolio" type="button" data-view="portfolio">
+            <button id="appTabPortfolio" class="app-tab app-tab-portfolio" type="button" role="tab" aria-selected="false" aria-controls="portfolioView" tabindex="-1" data-view="portfolio">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">보유종목 관리</span>
-              <span class="app-tab-copy">보유 이후 대응과 복구 후보 점검</span>
+                <span class="app-tab-copy">보유 이후 대응과 복구 후보 점검</span>
               </span>
               <span class="app-tab-mascot" aria-hidden="true">
                 <img src="/assets/stockmon-laptop.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
-            <button class="app-tab app-tab-news" type="button" data-view="news">
-              <span class="app-tab-copywrap">
-                <span class="app-tab-title">뉴스 기사</span>
-                <span class="app-tab-copy">시장 뉴스와 관심 종목 관련 기사를 모아보는 공간</span>
-              </span>
-              <span class="app-tab-mascot" aria-hidden="true">
-                <img src="/assets/stockmon-read.webp" alt="" loading="lazy" decoding="async" />
-              </span>
-            </button>
-            <button class="app-tab app-tab-index" type="button" data-view="index">
+            <button id="appTabIndex" class="app-tab app-tab-index" type="button" role="tab" aria-selected="false" aria-controls="indexView" tabindex="-1" data-view="index">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">지수 및 관심 자산</span>
                 <span class="app-tab-copy">지수, 환율, 원자재, 가상자산 흐름을 함께 확인</span>
@@ -140,7 +122,7 @@
                 <img src="/assets/stockmon-laptop.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
-            <button class="app-tab app-tab-movers" type="button" data-view="movers">
+            <button id="appTabMovers" class="app-tab app-tab-movers" type="button" role="tab" aria-selected="false" aria-controls="moversView" tabindex="-1" data-view="movers">
               <span class="app-tab-copywrap">
                 <span class="app-tab-title">급등 및 급락 순위</span>
                 <span class="app-tab-copy">시장 강약과 거래 신호를 빠르게 확인</span>
@@ -149,11 +131,29 @@
                 <img src="/assets/stockmon-pointer.webp" alt="" loading="lazy" decoding="async" />
               </span>
             </button>
+            <button id="appTabNews" class="app-tab app-tab-news" type="button" role="tab" aria-selected="false" aria-controls="newsView" tabindex="-1" data-view="news">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">뉴스 기사</span>
+                <span class="app-tab-copy">시장 뉴스와 관심 종목 관련 기사를 모아보는 공간</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-read.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
+            <button id="appTabHistory" class="app-tab app-tab-history" type="button" role="tab" aria-selected="false" aria-controls="historyView" tabindex="-1" data-view="history">
+              <span class="app-tab-copywrap">
+                <span class="app-tab-title">추천 히스토리</span>
+                <span class="app-tab-copy">추천 이후 수익·손절·엔진 탈락 흐름을 누적 검증</span>
+              </span>
+              <span class="app-tab-mascot" aria-hidden="true">
+                <img src="/assets/stockmon-camera.webp" alt="" loading="lazy" decoding="async" />
+              </span>
+            </button>
           </div>
         </div>
       </header>
 
-      <section id="newsView" class="app-view hidden">
+      <section id="newsView" class="app-view hidden" role="tabpanel" aria-labelledby="appTabNews" aria-hidden="true" tabindex="0">
         <div id="newsSignalRoot" class="news-signal-root">
           <section class="panel news-dashboard-panel">
             <div class="panel-head">
@@ -171,7 +171,7 @@
         </div>
       </section>
 
-      <section id="indexView" class="app-view hidden">
+      <section id="indexView" class="app-view hidden" role="tabpanel" aria-labelledby="appTabIndex" aria-hidden="true" tabindex="0">
         <div class="index-dashboard-grid">
           <section class="panel index-panel">
             <div class="panel-head">
@@ -215,7 +215,7 @@
         </section>
       </section>
 
-      <section id="historyView" class="app-view hidden">
+      <section id="historyView" class="app-view hidden" role="tabpanel" aria-labelledby="appTabHistory" aria-hidden="true" tabindex="0">
         <section class="panel history-panel">
           <div class="panel-head">
             <div>
@@ -294,7 +294,7 @@
         </section>
       </section>
 
-      <section id="portfolioView" class="app-view hidden">
+      <section id="portfolioView" class="app-view hidden" role="tabpanel" aria-labelledby="appTabPortfolio" aria-hidden="true" tabindex="0">
         <section class="panel portfolio-panel">
           <div class="panel-head">
             <div>
@@ -302,7 +302,7 @@
             </div>
             <div class="panel-actions">
               <button id="refreshPortfolioBtn" class="ghost-button small-button" type="button">새로고침</button>
-              <span id="portfolioStatusBadge" class="status-badge idle">대기 중</span>
+              <span id="portfolioStatusBadge" class="status-badge idle" role="status" aria-live="polite">대기 중</span>
             </div>
           </div>
           <details class="portfolio-upload-panel">
@@ -315,12 +315,12 @@
               <button id="savePortfolioDraftsBtn" class="ghost-button" type="button" disabled>병합 저장</button>
               <button id="replacePortfolioDraftsBtn" class="danger-button" type="button" disabled>교체 저장</button>
             </div>
-            <div id="portfolioScreenshotStatus" class="field-help"></div>
+            <div id="portfolioScreenshotStatus" class="field-help" role="status" aria-live="polite"></div>
             <div id="portfolioDraftPreview" class="portfolio-draft-preview hidden"></div>
           </details>
           <div id="portfolioSummary" class="portfolio-summary-grid"></div>
-          <div id="portfolioErrorBox" class="error-box hidden"></div>
-          <div id="portfolioAdviceList" class="portfolio-advice-list">
+          <div id="portfolioErrorBox" class="error-box hidden" role="alert"></div>
+          <div id="portfolioAdviceList" class="portfolio-advice-list" aria-busy="false">
             <div class="empty-state">
               <p>보유 종목 데이터를 준비 중입니다.</p>
             </div>
@@ -328,7 +328,7 @@
         </section>
       </section>
 
-      <section id="analysisView" class="app-view">
+      <section id="analysisView" class="app-view" role="tabpanel" aria-labelledby="appTabAnalysis" aria-hidden="false" tabindex="0">
         <main class="layout">
           <section class="panel input-panel">
             <div class="panel-head">
@@ -341,14 +341,14 @@
             </div>
 
             <section class="recommendation-hub">
-              <div class="category-tabs recommendation-primary-tabs" id="stockCategoryTabs">
-                <button class="category-tab active" type="button" data-category="longTerm">중장기</button>
-                <button class="category-tab" type="button" data-category="swing">스윙</button>
+              <div class="category-tabs recommendation-primary-tabs" id="stockCategoryTabs" role="tablist" aria-label="추천 유형">
+                <button id="categoryLongTermTab" class="category-tab active" type="button" role="tab" aria-selected="true" aria-controls="stockSelector" tabindex="0" data-category="longTerm">중장기</button>
+                <button id="categorySwingTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-category="swing">스윙</button>
               </div>
 
-              <div class="category-tabs long-term-bucket-tabs hidden" id="swingProfileTabs">
-                <button class="category-tab active" type="button" data-swing-profile="default">기본 스윙</button>
-                <button class="category-tab" type="button" data-swing-profile="smallcap">소형 스윙</button>
+              <div class="category-tabs long-term-bucket-tabs hidden" id="swingProfileTabs" role="tablist" aria-label="스윙 프로필" aria-hidden="true">
+                <button id="swingProfileDefaultTab" class="category-tab active" type="button" role="tab" aria-selected="true" aria-controls="stockSelector" tabindex="0" data-swing-profile="default">기본 스윙</button>
+                <button id="swingProfileSmallcapTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-swing-profile="smallcap">소형 스윙</button>
               </div>
 
               <div class="recommendation-scope-panel">
@@ -365,16 +365,16 @@
                 </div>
               </div>
 
-              <div class="category-tabs long-term-bucket-tabs" id="longTermBucketTabs">
-                <button class="category-tab active" type="button" data-long-term-bucket="buy">본격매수</button>
-                <button class="category-tab" type="button" data-long-term-bucket="accumulate">분할매수</button>
-                <button class="category-tab" type="button" data-long-term-bucket="watch">관찰군</button>
+              <div class="category-tabs long-term-bucket-tabs" id="longTermBucketTabs" role="tablist" aria-label="중장기 추천 단계" aria-hidden="false">
+                <button id="longTermBuyTab" class="category-tab active" type="button" role="tab" aria-selected="true" aria-controls="stockSelector" tabindex="0" data-long-term-bucket="buy">본격매수</button>
+                <button id="longTermAccumulateTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-long-term-bucket="accumulate">분할매수</button>
+                <button id="longTermWatchTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-long-term-bucket="watch">관찰군</button>
               </div>
 
-              <div class="category-tabs long-term-bucket-tabs hidden" id="swingBucketTabs">
-                <button class="category-tab active" type="button" data-swing-bucket="execution">실행후보</button>
-                <button class="category-tab" type="button" data-swing-bucket="managed">관리중</button>
-                <button class="category-tab" type="button" data-swing-bucket="watch">관심후보</button>
+              <div class="category-tabs long-term-bucket-tabs hidden" id="swingBucketTabs" role="tablist" aria-label="스윙 추천 단계" aria-hidden="true">
+                <button id="swingExecutionTab" class="category-tab active" type="button" role="tab" aria-selected="true" aria-controls="stockSelector" tabindex="0" data-swing-bucket="execution">실행후보</button>
+                <button id="swingManagedTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-swing-bucket="managed">관리중</button>
+                <button id="swingWatchTab" class="category-tab" type="button" role="tab" aria-selected="false" aria-controls="stockSelector" tabindex="-1" data-swing-bucket="watch">관심후보</button>
               </div>
             </section>
 
@@ -389,7 +389,7 @@
               </select>
             </div>
 
-            <div id="stockSelector" class="stock-selector"></div>
+            <div id="stockSelector" class="stock-selector" role="tabpanel" aria-labelledby="categoryLongTermTab longTermBuyTab" tabindex="0"></div>
 
             <div class="pagination-bar">
               <button id="prevPageBtn" class="ghost-button small-button" type="button">이전</button>
@@ -401,12 +401,12 @@
           <section class="panel output-panel">
             <div class="panel-head">
               <h2>분석 결과</h2>
-              <span id="statusBadge" class="status-badge idle">대기 중</span>
+              <span id="statusBadge" class="status-badge idle" role="status" aria-live="polite">대기 중</span>
             </div>
 
-            <div id="summaryBar" class="summary-bar hidden"></div>
-            <div id="errorBox" class="error-box hidden"></div>
-            <div id="results" class="results empty">
+            <div id="summaryBar" class="summary-bar hidden" role="status" aria-live="polite"></div>
+            <div id="errorBox" class="error-box hidden" role="alert"></div>
+            <div id="results" class="results empty" aria-busy="false">
               <div class="empty-state">
                 <p>왼쪽에서 종목을 선택하면 결과가 여기에 표시됩니다.</p>
               </div>
@@ -415,7 +415,7 @@
         </main>
       </section>
 
-      <section id="moversView" class="app-view hidden">
+      <section id="moversView" class="app-view hidden" role="tabpanel" aria-labelledby="appTabMovers" aria-hidden="true" tabindex="0">
         <section class="panel movers-hero-panel">
           <div class="panel-head">
             <div>
@@ -466,8 +466,8 @@
             <button id="refreshMoversBtn" class="primary-button" type="button">순위 새로고침</button>
           </div>
 
-          <div id="moversSummaryBar" class="summary-bar hidden"></div>
-          <div id="moversErrorBox" class="error-box hidden"></div>
+          <div id="moversSummaryBar" class="summary-bar hidden" role="status" aria-live="polite"></div>
+          <div id="moversErrorBox" class="error-box hidden" role="alert"></div>
         </section>
 
         <section class="movers-grid">
@@ -479,7 +479,7 @@
               </div>
               <span id="riseCountLabel" class="section-meta">0개</span>
             </div>
-            <div id="riseMoversList" class="movers-list">
+            <div id="riseMoversList" class="movers-list" aria-busy="false">
               <div class="empty-state">
                 <p>새로고침을 누르면 급등주 순위를 불러옵니다.</p>
               </div>
@@ -494,7 +494,7 @@
               </div>
               <span id="fallCountLabel" class="section-meta">0개</span>
             </div>
-            <div id="fallMoversList" class="movers-list">
+            <div id="fallMoversList" class="movers-list" aria-busy="false">
               <div class="empty-state">
                 <p>새로고침을 누르면 급락주 순위를 불러옵니다.</p>
               </div>
@@ -534,8 +534,8 @@
       </section>
     </div>
 
-    <div id="stockModal" class="modal-backdrop hidden">
-      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="stockModalTitle">
+    <div id="stockModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="stockModalTitle" tabindex="-1">
         <div class="modal-head">
           <h3 id="stockModalTitle">종목 추가</h3>
           <button id="closeStockModalBtn" class="icon-button" type="button" aria-label="닫기">×</button>
@@ -589,8 +589,8 @@
       </div>
     </div>
 
-    <div id="indexChartModal" class="modal-backdrop hidden">
-      <div class="modal-panel index-chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="indexChartModalTitle">
+    <div id="indexChartModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel index-chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="indexChartModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="indexChartModalTitle">지수 차트</h3>
@@ -620,8 +620,8 @@
       </div>
     </div>
 
-    <div id="swingScoreModal" class="modal-backdrop hidden">
-      <div class="modal-panel swing-score-modal-panel" role="dialog" aria-modal="true" aria-labelledby="swingScoreModalTitle">
+    <div id="swingScoreModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel swing-score-modal-panel" role="dialog" aria-modal="true" aria-labelledby="swingScoreModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="swingScoreModalTitle">스윙 상태 설명</h3>
@@ -633,8 +633,8 @@
       </div>
     </div>
 
-    <div id="portfolioDetailModal" class="modal-backdrop hidden">
-      <div class="modal-panel portfolio-detail-modal-panel" role="dialog" aria-modal="true" aria-labelledby="portfolioDetailModalTitle">
+    <div id="portfolioDetailModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel portfolio-detail-modal-panel" role="dialog" aria-modal="true" aria-labelledby="portfolioDetailModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="portfolioDetailModalTitle">보유 종목 상세</h3>
@@ -646,8 +646,8 @@
       </div>
     </div>
 
-    <div id="historyMatrixModal" class="modal-backdrop hidden">
-      <div class="modal-panel history-matrix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyMatrixModalTitle">
+    <div id="historyMatrixModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel history-matrix-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyMatrixModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="historyMatrixModalTitle">교차 검증 매트릭스</h3>
@@ -661,8 +661,8 @@
       </div>
     </div>
 
-    <div id="historyChartModal" class="modal-backdrop hidden">
-      <div class="modal-panel history-chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyChartModalTitle">
+    <div id="historyChartModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel history-chart-modal-panel" role="dialog" aria-modal="true" aria-labelledby="historyChartModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="historyChartModalTitle">추천 차트</h3>
@@ -684,8 +684,8 @@
       </div>
     </div>
 
-    <div id="marketEventModal" class="modal-backdrop hidden">
-      <div class="modal-panel market-event-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marketEventModalTitle">
+    <div id="marketEventModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel market-event-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marketEventModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="marketEventModalTitle">Market Event Calendar</h3>
@@ -697,8 +697,8 @@
       </div>
     </div>
 
-    <div id="themeDetailModal" class="modal-backdrop hidden">
-      <div class="modal-panel theme-detail-modal-panel" role="dialog" aria-modal="true" aria-labelledby="themeDetailModalTitle">
+    <div id="themeDetailModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-panel theme-detail-modal-panel" role="dialog" aria-modal="true" aria-labelledby="themeDetailModalTitle" tabindex="-1">
         <div class="modal-head">
           <div>
             <h3 id="themeDetailModalTitle">테마 구성 종목</h3>
@@ -713,6 +713,5 @@
     <div id="toastViewport" class="toast-viewport" aria-live="polite" aria-atomic="false"></div>
 
     <script type="module" src="/app.js"></script>
-    <script type="module" src="/news-signal-dashboard.js"></script>
   </body>
 </html>

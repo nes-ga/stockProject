@@ -2,6 +2,16 @@
 
 기준일: 2026-07-08
 
+- Status: Active - Partially implemented
+- Last updated: 2026-07-13
+
+진행 메모:
+
+- 2026-07-13 완료 범위는 Portfolio 화면의 presentation, 사용자 노출 용어, 행동 우선 배치 정리에 한정한다.
+- `PortfolioRecoveryPlan` DTO와 손익분기/추가매수/회수 목표 계산은 아직 구현하지 않았으며 이 문서의 계획 상태다.
+- 서버의 기존 보유종목 API와 별개로, 사용자가 화면에서 수행하는 수동 보유종목 추가/수정/삭제 UI는 아직 계획 상태다.
+- 따라서 현재 표시되는 `PortfolioExecutionPlan`, `watchPriceZone`, `reboundReduceZone`을 아래 Recovery Plan 계산이 완료된 것으로 해석하지 않는다.
+
 ## 2026-07-07까지 정리된 상태
 
 - Portfolio Manager는 추천 엔진이 아니라 보유 이후 의사결정 엔진으로 추가했다.
@@ -15,11 +25,13 @@
 - `ADD_ALLOWED`, `ROTATION_BUY`일 때만 `addPriceZone`을 실제 추가매수 검토 구간으로 사용한다.
 - 제넥신처럼 `REDUCE_ON_REBOUND`인 종목은 추가매수 구간을 표시하지 않고 반등 시 비중 축소 우선으로 해석한다.
 
-## 2026-07-08 핵심 작업
+## 2026-07-08 핵심 작업 계획
+
+> 진행 상태: 아래 1~3의 Recovery DTO/계산/타입 확장은 미구현이다. 4의 UI 작업 중 presentation, 용어, 행동 우선 배치만 2026-07-13에 부분 완료했다. 5의 OCR/보유 데이터 보강과 수동 CRUD UI는 후속 계획이다.
 
 ### 1. Recovery Plan을 진짜 회복 전략으로 재설계
 
-현재 Recovery는 "훼손 종목 분류/경고"에 가깝다. 7월 8일에는 사용자가 말한 의미의 회복, 즉 손실을 줄이고 최종적으로 이득으로 마무리하기 위한 계산 구조를 추가한다.
+현재 Recovery는 "훼손 종목 분류/경고"에 가깝다. 손실을 줄이고 최종적으로 이득으로 마무리하기 위한 계산 구조를 추가할 계획이며, 2026-07-13 기준 아직 구현되지 않았다.
 
 추가할 DTO 초안:
 
@@ -56,7 +68,7 @@ type PortfolioRecoveryPlan = {
 
 ### 2. Recovery 계산 로직 추가
 
-규칙 기반으로 먼저 구현한다.
+규칙 기반으로 먼저 구현할 계획이다.
 
 - 현재 손실금액: `evaluationAmount - investedAmount`
 - 손익분기 가격: `investedAmount / quantity`
@@ -74,7 +86,7 @@ type PortfolioRecoveryPlan = {
 
 ### 3. PortfolioAdvice 타입 확장
 
-`PortfolioAdvice`에 `recoveryPlan?: PortfolioRecoveryPlan`을 추가한다.
+`PortfolioAdvice`에 `recoveryPlan?: PortfolioRecoveryPlan`을 추가할 계획이다.
 
 적용 파일 후보:
 
@@ -86,7 +98,7 @@ type PortfolioRecoveryPlan = {
 
 ### 4. UI 표현 정리
 
-Recovery Plan이 있으면 카드에 별도 섹션으로 보여준다.
+Recovery Plan이 구현되면 카드에 별도 섹션으로 보여줄 계획이다. 2026-07-13에는 기존 화면의 presentation, 용어, 행동 우선 배치만 정리했으며 아래 계산값 표시는 아직 구현하지 않았다.
 
 표시 항목:
 

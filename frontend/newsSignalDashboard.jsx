@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect, useRef, useState } from "react";
+import React, { StrictMode, useEffect, useId, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const eventLabels = {
@@ -23,6 +23,7 @@ function NewsSignalDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const hasHydratedSignalsRef = useRef(false);
+  const loadSignalsRef = useRef(null);
   const seenSignalKeysRef = useRef(new Set());
 
   useEffect(() => {
@@ -30,7 +31,7 @@ function NewsSignalDashboard() {
 
     async function loadSignals({ keepPrevious = false } = {}) {
       try {
-        if (!keepPrevious) {
+        if (!keepPrevious || !hasHydratedSignalsRef.current) {
           setIsLoading(true);
         }
         setError("");
@@ -65,6 +66,7 @@ function NewsSignalDashboard() {
       }
     }
 
+    loadSignalsRef.current = loadSignals;
     void loadSignals();
 
     const intervalId = window.setInterval(() => {
@@ -73,9 +75,19 @@ function NewsSignalDashboard() {
 
     return () => {
       cancelled = true;
+      if (loadSignalsRef.current === loadSignals) {
+        loadSignalsRef.current = null;
+      }
       window.clearInterval(intervalId);
     };
   }, []);
+
+  function retryLoad() {
+    const loadSignals = loadSignalsRef.current;
+    if (loadSignals) {
+      void loadSignals({ keepPrevious: payload !== null });
+    }
+  }
 
   const signals = Array.isArray(payload?.signals) ? payload.signals : [];
   const sectors = Array.isArray(payload?.sectors) ? payload.sectors : [];
@@ -88,6 +100,10 @@ function NewsSignalDashboard() {
   const riskSignals = mergeSignalsByTicker(signals
     .filter((signal) => signal.sentiment === "negative")
     .sort((left, right) => left.score - right.score || Date.parse(right.timestamp) - Date.parse(left.timestamp)));
+  const hasPayload = payload !== null;
+  const isInitialLoading = isLoading && !hasPayload;
+  const isInitialError = Boolean(error) && !hasPayload;
+  const isStale = Boolean(error) && hasPayload;
 
   return (
     <div className="news-dashboard">
@@ -101,47 +117,67 @@ function NewsSignalDashboard() {
               바로 쓰도록 정리했습니다.
             </p>
           </div>
-          <div className="news-dashboard-stamp">
+          <div className="news-dashboard-stamp" aria-live="polite">
             <span className="selected-stock-label">마지막 업데이트</span>
             <strong>{payload?.lastUpdatedAt ? formatDateTime(payload.lastUpdatedAt) : "-"}</strong>
             <span className="news-dashboard-stamp-copy">
-              {payload?.refreshIntervalMinutes ? `${payload.refreshIntervalMinutes}분 주기 업데이트` : "주기 정보 없음"}
+              {isStale
+                ? "갱신 지연 · 기존 데이터 표시 중"
+                : payload?.refreshIntervalMinutes
+                  ? `${payload.refreshIntervalMinutes}분 주기 업데이트`
+                  : "주기 정보 없음"}
             </span>
           </div>
         </div>
 
         <div className="news-dashboard-stats">
-          <StatCard label="원본 기사" value={`${payload?.articleCount ?? 0}건`} tone="neutral" />
-          <StatCard label="시그널 카드" value={`${payload?.signalCount ?? 0}건`} tone="positive" />
-          <StatCard label="High Signal" value={`${highSignals.length}건`} tone="positive" />
-          <StatCard label="Risk Alerts" value={`${riskSignals.length}건`} tone="negative" />
+          <StatCard label="원본 기사" value={hasPayload ? `${payload.articleCount ?? 0}건` : "-"} tone="neutral" />
+          <StatCard label="시그널 카드" value={hasPayload ? `${payload.signalCount ?? 0}건` : "-"} tone="positive" />
+          <StatCard label="주요 시그널" value={hasPayload ? `${highSignals.length}건` : "-"} tone="positive" />
+          <StatCard label="위험 알림" value={hasPayload ? `${riskSignals.length}건` : "-"} tone="negative" />
         </div>
       </section>
 
-      {error ? (
+      {isInitialError ? (
         <section className="panel news-dashboard-panel">
-          <div className="error-box news-dashboard-error-box">{error}</div>
+          <div className="error-box news-dashboard-error-box" role="alert">
+            <strong>뉴스 시그널을 불러오지 못했습니다.</strong>
+            <p>{error}</p>
+            <button className="ghost-button small-button" type="button" onClick={retryLoad}>
+              다시 시도
+            </button>
+          </div>
         </section>
-      ) : null}
-
-      {isLoading ? (
+      ) : isInitialLoading ? (
         <section className="panel news-dashboard-panel">
-          <div className="empty-state news-empty-state">
+          <div className="empty-state news-empty-state" role="status" aria-live="polite">
             <p>이벤트 추출, 종목 매핑, 시그널 그룹핑을 수행하는 중입니다.</p>
             <p>동일 이벤트는 한 장의 카드로 묶여서 표시됩니다.</p>
           </div>
         </section>
       ) : (
         <>
+          {isStale ? (
+            <section className="panel news-dashboard-panel">
+              <div className="error-box news-dashboard-error-box" role="status" aria-live="polite">
+                <strong>최신 뉴스 갱신이 지연되고 있습니다.</strong>
+                <p>기존 데이터를 표시하고 있습니다. {error}</p>
+                <button className="ghost-button small-button" type="button" onClick={retryLoad}>
+                  다시 시도
+                </button>
+              </div>
+            </section>
+          ) : null}
+
           <div className="news-dashboard-grid">
             <SignalSection
-              title="High Signal"
+              title="주요 시그널"
               caption="점수 7 이상인 상단 시그널을 우선 배치합니다."
               items={highSignals}
               emptyMessage="현재 점수 7 이상인 강한 이벤트 시그널이 없습니다."
             />
             <SignalSection
-              title="Risk Alerts"
+              title="위험 알림"
               caption="희석, 재무, 공시 리스크는 별도 경고 보드로 분리합니다."
               items={riskSignals}
               emptyMessage="현재 포착된 리스크 이벤트가 없습니다."
@@ -150,7 +186,7 @@ function NewsSignalDashboard() {
 
           <div className="news-dashboard-grid news-dashboard-grid-secondary">
             <SignalSection
-              title="Opportunity Radar"
+              title="관심 시그널"
               caption="정책, 투자, 주주환원 등 후속 확인이 필요한 보조 시그널입니다."
               items={radarSignals}
               emptyMessage="현재 보조 관찰이 필요한 긍정 이벤트가 없습니다."
@@ -159,7 +195,7 @@ function NewsSignalDashboard() {
             <section className="panel news-dashboard-panel">
               <div className="panel-head">
                 <div>
-                  <h2>Sector / Market</h2>
+                  <h2>업종 / 시장</h2>
                   <p className="field-help">시그널이 모인 업종을 묶어서 현재 시장의 재료 밀집도를 빠르게 봅니다.</p>
                 </div>
               </div>
@@ -294,6 +330,7 @@ function getSignalEventLabels(signal) {
 
 function SignalCard({ signal }) {
   const [expanded, setExpanded] = useState(false);
+  const newsListId = useId();
 
   return (
     <article className={`news-signal-card ${signal.sentiment}`}>
@@ -324,13 +361,19 @@ function SignalCard({ signal }) {
           <span>기사 {signal.articleCount}건</span>
           <span>매체 {signal.sources.length}곳</span>
         </div>
-        <button className="ghost-button small-button" type="button" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? "Hide News" : "View News"}
+        <button
+          className="ghost-button small-button"
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={newsListId}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "뉴스 접기" : "뉴스 보기"}
         </button>
       </div>
 
       {expanded ? (
-        <div className={`news-signal-expand ${signal.newsList.length > 3 ? "is-scrollable" : ""}`}>
+        <div id={newsListId} className={`news-signal-expand ${signal.newsList.length > 3 ? "is-scrollable" : ""}`}>
           {signal.newsList.map((news) => {
             const hasLiveUrl = isLiveNewsUrl(news.url);
             const TagName = hasLiveUrl ? "a" : "div";

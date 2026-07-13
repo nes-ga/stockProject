@@ -1,19 +1,22 @@
 # 문서 인덱스
 
-이 디렉터리는 StockMon Dashboard의 현재 구조, 엔진 설계, 유지보수 기준, 작업 연혁을 정리합니다. 기존 문서 중 깨진 한글 문서는 2026-05-08 기준 코드 상태에 맞춰 UTF-8 문서로 다시 정리했습니다.
+이 디렉터리는 StockMon Dashboard의 현재 구조, 엔진 설계, 유지보수 기준, 작업 연혁을 정리합니다. 현재 구현 기준일은 2026-07-13이며, 과거 날짜가 붙은 작업 문서는 당시 상태를 보존합니다.
 
 ## 먼저 볼 문서
 
 1. [현재 구현 기능](./current-implemented-features.md)
-2. [프로젝트 개요](./project-overview-2026-04-27.md)
-3. [프로젝트 연혁](./project-history.md)
-4. [스마트머니 유지보수 가이드](./smart-money-maintenance.md)
-5. [중장기 엔진 설계](./long-term-engine-design.md)
+2. [프로젝트 개선 제안서](./project-improvement-proposal-2026-07-13.md)
+3. [프로젝트 개요](./project-overview-2026-04-27.md)
+4. [프로젝트 연혁](./project-history.md)
+5. [스마트머니 유지보수 가이드](./smart-money-maintenance.md)
+6. [중장기 엔진 설계](./long-term-engine-design.md)
 
 ## 주제별 문서
 
 - [현재 구현 기능](./current-implemented-features.md): API, UI, 엔진, 데이터 저장소, 검증 명령 요약
+- [프로젝트 개선 제안서](./project-improvement-proposal-2026-07-13.md): 구현 완료, 부분 완료, 후속 개선 범위와 우선순위
 - [프로젝트 개요](./project-overview-2026-04-27.md): 전체 아키텍처와 주요 파일 지도
+- [Portfolio Manager 작업 계획](./work-plan-2026-07-08-portfolio-manager.md): Portfolio 규칙, OCR, RecoveryPlan 계획과 진행 상태
 - [스마트머니 유지보수 가이드](./smart-money-maintenance.md): 스윙 엔진, bucket, actionable 기준, 매물대 반영 원칙
 - [스윙 눌림 후보 정책](./swing-pullback-policy-2026-05-11.md): long pullback visibility와 execution 승격 금지 기준
 - [중장기 엔진 설계](./long-term-engine-design.md): 장기 후보 선정 철학과 점수 구조
@@ -24,6 +27,7 @@
 
 ## 작업 기록
 
+- [2026-07-13 UI 작업 요약](./work-summary-2026-07-13-ui-refresh.md)
 - [2026-04-10 작업 요약](./work-summary-2026-04-10.md)
 - [2026-04-13 작업 요약](./work-summary-2026-04-13.md)
 - [2026-04-14 작업 요약](./work-summary-2026-04-14.md)
@@ -40,6 +44,7 @@
  
 ## Recent Work
 
+- [2026-07-13 UI shell, 캐릭터, 접근성, Portfolio, 뉴스 번들 개선](./work-summary-2026-07-13-ui-refresh.md)
 - [2026-06-30 스윙 추천 히스토리 Cycle/Recovery 구조 정리](./work-summary-2026-06-30-swing-history-cycle.md)
 - [2026-06-29 스윙 `execution_probe` 오분류 보정](./smart-money-maintenance.md#진입-가능-오분류-방지-규칙)
 - [2026-06-01 시장충격 손절 유예/삼륭물산 히스토리 보정](./work-summary-2026-06-01.md)

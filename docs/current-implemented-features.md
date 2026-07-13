@@ -1,6 +1,6 @@
 # 현재 구현 기능
 
-기준일: 2026-05-08
+기준일: 2026-07-13
 
 이 문서는 현재 코드에 실제로 구현된 기능만 정리합니다.
 
@@ -14,6 +14,8 @@
 - 뉴스 시그널 React 번들:
   - 원본: `frontend/newsSignalDashboard.jsx`
   - 빌드 결과: `public/news-signal-dashboard.js`
+  - production define과 minify를 적용해 `1,103,322` bytes에서 `205,571` bytes로 축소(약 `81.4%`)
+  - 초기 HTML에서 직접 로드하지 않고 뉴스 탭 최초 진입 시 동적으로 로드
 - 공통 서버 동작:
   - `GET /health`
   - 요청별 `x-request-id`
@@ -26,9 +28,19 @@
 - 뉴스 시그널 대시보드
 - 시장 감시/시장 흐름/이벤트 캘린더
 - 추천 종목 분석 화면
+- Portfolio 보유종목 관리 화면
 - 스윙/중장기/배당 후보 관리
 - 국내 급등/급락 종목 화면
 - 실시간 종목 상세 차트
+
+현재 UI shell:
+
+- compact sticky navigation을 사용하고 상단 탭별 캐릭터와 배경 parade를 유지
+- 데스크톱 분석 화면은 좌측 종목 선택과 우측 분석 결과의 2열 작업공간
+- Portfolio는 `오늘 우선 대응`과 `규칙 기반 코멘트`를 KPI보다 먼저 배치
+- app/category tabs에 키보드 방향키 이동과 ARIA tab 상태를 제공
+- dialog에 focus trap, 초기 focus, 닫은 후 focus 복귀, 배경 inert, scroll lock을 적용
+- `prefers-reduced-motion`에서 캐릭터와 배경 애니메이션을 중지
 
 차트는 공휴일/비거래일을 임의 whitespace candle로 채우지 않고, 실제 거래 데이터 중심으로 렌더링합니다.
 
@@ -59,12 +71,34 @@
 
 스윙 후보는 일반 스윙과 소형주 프로필을 분리할 수 있고, 저장 payload는 `executionItems`, `watchItems`, `items`를 함께 제공합니다.
 
-## 5. 시장 감시와 시장 흐름
+## 5. Portfolio
+
+API:
+
+- `GET /portfolio/holdings`
+- `POST /portfolio/holdings`
+- `PUT /portfolio/holdings/:id`
+- `DELETE /portfolio/holdings/:id`
+- `GET /portfolio/advice`
+- `GET /portfolio/quotes`
+- `POST /portfolio/screenshot/parse`
+- `POST /portfolio/screenshot/ocr-local`
+
+현재 UI:
+
+- 보유종목 요약, 행동 우선순위, 실행 계획과 종목별 상세 제공
+- 규칙 기반 판단을 AI 생성 결과처럼 보이지 않도록 `오늘 우선 대응`, `규칙 기반 코멘트`로 표시
+- 로컬 OCR과 AI 판독 결과를 저장 전 초안으로 검토하고 병합 또는 교체 저장
+- 현재 `복구 단계`는 조건 충족 상태를 보여주는 보조 표시이며 손익분기/회수 금액을 계산하는 `PortfolioRecoveryPlan`은 아님
+
+Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을 추가, 수정, 삭제하는 UI는 아직 없습니다. 계산형 `PortfolioRecoveryPlan`도 후속 범위입니다.
+
+## 6. 시장 감시와 시장 흐름
 
 시장 감시:
 
 - `GET /analysis/market-watch`
-- 감시 대상: `KOSPI`, `KOSDAQ`, `USD/KRW`, `GOLD`, `WTI`, `BTC`
+- 감시 대상: `KOSPI`, `KOSDAQ`, `NASDAQ100`, `SOX`, `VIX`, `USDKRW`, `GOLD`, `WTI`, `BTC`
 - 일봉/주봉/연봉 chart window 제공
 
 시장 흐름:
@@ -76,7 +110,7 @@
 - `POST /analysis/market-flow/refresh`
 - 글로벌 위험 선호, 국내 수급 상태, 시장 모드, 테마 로테이션 제공
 
-## 6. 이벤트 캘린더와 뉴스 시그널
+## 7. 이벤트 캘린더와 뉴스 시그널
 
 이벤트 캘린더:
 
@@ -92,8 +126,12 @@
 - 이벤트 유형 분류: `CONTRACT`, `EARNINGS`, `M&A`, `POLICY`, `CAPEX`, `SHAREHOLDER`, `RISK`
 - sentiment와 섹터 요약 제공
 - 실패 시 최근 메모리 캐시 fallback 사용
+- 최초 로딩 실패 시 오류와 빈 결과를 분리하고 `다시 시도` 제공
+- 백그라운드 갱신 실패 시 기존 데이터를 유지하고 stale 상태와 재시도 동작 표시
+- 최초 로딩 중 통계는 `0건` 대신 `-`로 표시
+- 뉴스 펼침 토글에 `aria-expanded`, `aria-controls`를 제공하고 화면 문구를 한국어로 통일
 
-## 7. 스윙 스마트머니 엔진
+## 8. 스윙 스마트머니 엔진
 
 핵심 파일:
 
@@ -120,7 +158,7 @@
   - `event`: 패널티 후 허용
   - `technical`: watch-only
 
-## 8. 매물대 분석 엔진
+## 9. 매물대 분석 엔진
 
 핵심 파일:
 
@@ -156,7 +194,7 @@
 - `longTermVolumeProfile.threeYear`: 720일
 - 장기 바닥권 누적, 장기 박스권 돌파, 장기 위 매물 부담, 고점권 정체, 보유 품질 중심
 
-## 9. 중장기 엔진
+## 10. 중장기 엔진
 
 핵심 파일:
 
@@ -183,7 +221,7 @@
 - `base-forming candidate`
 - `needs more stabilization`
 
-## 10. 배당 엔진
+## 11. 배당 엔진
 
 핵심 파일:
 
@@ -201,15 +239,15 @@
 - 배당 함정 위험
 - 배당 ETF 추천
 
-## 11. 알림
+## 12. 알림
 
-- `POST /alerts/price-spike`: 실시간 급등 이벤트 평가와 Discord 전송
+- `POST /alerts/price-spike`: 요청으로 전달된 급등 이벤트 평가와 Discord 전송
 - `GET /alerts/smart-money-watchlist`
 - `POST /alerts/smart-money-watchlist`
 - `DELETE /alerts/smart-money-watchlist/:symbol`
 - `POST /alerts/smart-money-watchlist/scan`
 
-## 12. 데이터 저장
+## 13. 데이터 저장
 
 현재는 DB가 아니라 JSON 파일 중심입니다.
 
@@ -223,8 +261,10 @@
 - `data/market-flow/market-flow-latest.json`
 - `data/market-flow/market-flow-history.json`
 - `data/market-flow/theme-rotation-history.json`
+- `data/portfolio-holdings.json`
+- `data/portfolio-account.json`
 
-## 13. 검증
+## 14. 검증
 
 일반 검증:
 
@@ -241,7 +281,14 @@ npx tsx src/scripts/verifyVolumeProfile.ts
 npx tsx src/scripts/checkVolumeProfileImpact.ts
 ```
 
-## 14. 현재 주의사항
+2026-07-13 UI 검증:
+
+- Chrome `1440x1000`, `390x844`에서 분석, Portfolio, 시장, 뉴스, 급등락 화면 확인
+- 두 viewport에서 문서 가로 넘침과 콘솔 오류가 없음을 확인
+- 뉴스 탭 진입 전 `public/news-signal-dashboard.js`가 요청되지 않고, 진입 후 로드되는 것을 확인
+- 뉴스 번들 `1,103,322 -> 205,571` bytes, 약 `81.4%` 축소 확인
+
+## 15. 현재 주의사항
 
 - 매물대 점수는 단독 매수 신호가 아닙니다.
 - 체결된 스윙 히스토리 케이스는 손절가 이탈 전까지 새 스캔 누락만으로 종료하지 않습니다.
@@ -249,3 +296,5 @@ npx tsx src/scripts/checkVolumeProfileImpact.ts
 - 중장기 매물대는 진입 타이밍보다 구조와 보유 품질을 확인합니다.
 - 외부 데이터는 Naver, KRX, Yahoo 응답 품질과 rate limit의 영향을 받습니다.
 - JSON 저장소는 동시 쓰기/배포 persistence 측면에서 DB보다 약합니다.
+- Portfolio `RecoveryPlan` 계산과 수동 CRUD 화면은 아직 구현되지 않았습니다.
+- 뉴스 외 view의 데이터와 UI 모듈은 아직 view 단위 lazy loading이 아닙니다.

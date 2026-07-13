@@ -46,6 +46,14 @@ const ONLINE_PRESENCE_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 const DEFAULT_MARKET_FLOW_RANGE = "6M";
 const MARKET_FLOW_CHART_RANGES = ["3M", "6M", "1Y", "2Y"];
 const APP_VIEWS = ["news", "index", "history", "portfolio", "analysis", "movers"];
+const FOCUSABLE_ELEMENT_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
 const PAGE_SIZE_OPTIONS = new Set([5, 10, PAGE_SIZE_ALL]);
 const CLOSED_HISTORY_OUTCOME_FILTERS = new Set(["entered", "all", "profit", "loss", "other"]);
 const HANGUL_BASE = 44032;
@@ -577,6 +585,10 @@ let latestRiseMovers = [];
 let latestFallMovers = [];
 let toastSequence = 0;
 const toastDismissTimers = new Map();
+let activeModalState = null;
+let bodyOverflowBeforeModal = "";
+const modalBackgroundInertState = new Map();
+let newsDashboardModulePromise = null;
 
 const appTabs = document.querySelector("#appTabs");
 const newsView = document.querySelector("#newsView");
@@ -710,6 +722,211 @@ const scoreGuideIcons = document.querySelectorAll("[data-score-guide]");
 const toastViewport = document.querySelector("#toastViewport");
 
 window.showAppToast = showAppToast;
+
+function setTabSelection(tab, isSelected) {
+  tab.setAttribute("aria-selected", String(isSelected));
+  tab.tabIndex = isSelected ? 0 : -1;
+}
+
+function getAvailableTabs(tablist) {
+  return [...tablist.querySelectorAll('[role="tab"]')].filter(
+    (tab) =>
+      !tab.disabled &&
+      !tab.classList.contains("hidden") &&
+      tab.getAttribute("aria-hidden") !== "true" &&
+      !tab.closest('[role="tablist"][aria-hidden="true"]')
+  );
+}
+
+function handleTablistKeydown(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  const currentTab = event.target.closest('[role="tab"]');
+  const tablist = event.currentTarget;
+  if (!currentTab || currentTab.closest('[role="tablist"]') !== tablist) {
+    return;
+  }
+
+  const tabs = getAvailableTabs(tablist);
+  const currentIndex = tabs.indexOf(currentTab);
+  if (currentIndex < 0 || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    return;
+  }
+
+  event.preventDefault();
+  let nextIndex = currentIndex;
+  if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = tabs.length - 1;
+  } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+    nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  } else {
+    nextIndex = (currentIndex + 1) % tabs.length;
+  }
+
+  const nextTab = tabs[nextIndex];
+  nextTab.focus();
+  nextTab.click();
+}
+
+function initializeTablistKeyboardNavigation() {
+  for (const tablist of document.querySelectorAll('[role="tablist"]')) {
+    tablist.addEventListener("keydown", handleTablistKeydown);
+  }
+}
+
+function setModalBackgroundInert(modal, shouldBeInert) {
+  if (shouldBeInert) {
+    modalBackgroundInertState.clear();
+    for (const element of document.body.children) {
+      if (element === modal || element.tagName === "SCRIPT") {
+        continue;
+      }
+      modalBackgroundInertState.set(element, element.hasAttribute("inert"));
+      element.setAttribute("inert", "");
+    }
+    return;
+  }
+
+  for (const [element, hadInert] of modalBackgroundInertState) {
+    if (!hadInert) {
+      element.removeAttribute("inert");
+    }
+  }
+  modalBackgroundInertState.clear();
+}
+
+function resolveModalInitialFocus(modal, initialFocus) {
+  if (typeof initialFocus === "string") {
+    return modal.querySelector(initialFocus);
+  }
+  if (initialFocus instanceof HTMLElement && modal.contains(initialFocus)) {
+    return initialFocus;
+  }
+  return modal.querySelector('[role="dialog"]');
+}
+
+function openModal(modal, options = {}) {
+  if (!modal) {
+    return;
+  }
+
+  if (activeModalState && activeModalState.modal !== modal) {
+    const closeActiveModal = activeModalState.onClose;
+    if (typeof closeActiveModal === "function") {
+      closeActiveModal();
+    } else {
+      closeModal(activeModalState.modal);
+    }
+  }
+
+  const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  activeModalState = {
+    modal,
+    onClose: options.onClose,
+    returnFocus
+  };
+  bodyOverflowBeforeModal = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  setModalBackgroundInert(modal, true);
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+
+  window.requestAnimationFrame(() => {
+    if (activeModalState?.modal !== modal) {
+      return;
+    }
+    resolveModalInitialFocus(modal, options.initialFocus)?.focus({ preventScroll: true });
+  });
+}
+
+function closeModal(modal) {
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  if (activeModalState?.modal !== modal) {
+    return;
+  }
+
+  const returnFocus = activeModalState.returnFocus;
+  activeModalState = null;
+  document.body.style.overflow = bodyOverflowBeforeModal;
+  bodyOverflowBeforeModal = "";
+  setModalBackgroundInert(modal, false);
+
+  window.requestAnimationFrame(() => {
+    if (!activeModalState && returnFocus?.isConnected) {
+      returnFocus.focus({ preventScroll: true });
+    }
+  });
+}
+
+function getModalFocusableElements(modal) {
+  return [...modal.querySelectorAll(FOCUSABLE_ELEMENT_SELECTOR)].filter(
+    (element) => element.getAttribute("aria-hidden") !== "true" && !element.closest(".hidden") && element.getClientRects().length > 0
+  );
+}
+
+function handleModalKeydown(event) {
+  const state = activeModalState;
+  if (!state || state.modal.classList.contains("hidden")) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof state.onClose === "function") {
+      state.onClose();
+    } else {
+      closeModal(state.modal);
+    }
+    return;
+  }
+
+  if (event.key !== "Tab") {
+    return;
+  }
+
+  const focusableElements = getModalFocusableElements(state.modal);
+  const activeElement = document.activeElement;
+  if (!focusableElements.length) {
+    event.preventDefault();
+    state.modal.querySelector('[role="dialog"]')?.focus({ preventScroll: true });
+    return;
+  }
+
+  const activeIndex = focusableElements.indexOf(activeElement);
+  if (activeIndex < 0) {
+    event.preventDefault();
+    focusableElements[event.shiftKey ? focusableElements.length - 1 : 0].focus({ preventScroll: true });
+    return;
+  }
+
+  if (event.shiftKey && activeIndex === 0) {
+    event.preventDefault();
+    focusableElements.at(-1)?.focus({ preventScroll: true });
+  } else if (!event.shiftKey && activeIndex === focusableElements.length - 1) {
+    event.preventDefault();
+    focusableElements[0].focus({ preventScroll: true });
+  }
+}
+
+function initializeModalAccessibility() {
+  for (const modal of document.querySelectorAll(".modal-backdrop")) {
+    modal.setAttribute("aria-hidden", String(modal.classList.contains("hidden")));
+  }
+  document.addEventListener("keydown", handleModalKeydown, true);
+}
+
+initializeTablistKeyboardNavigation();
+initializeModalAccessibility();
 
 toastViewport?.addEventListener("click", (event) => {
   const closeButton = event.target.closest("[data-toast-dismiss]");
@@ -1344,47 +1561,6 @@ marketEventModalBody?.addEventListener("click", (event) => {
   renderMarketEventModal();
 });
 
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !stockModal.classList.contains("hidden")) {
-    closeStockModal();
-    return;
-  }
-
-  if (event.key === "Escape" && indexChartModal && !indexChartModal.classList.contains("hidden")) {
-    closeIndexChartModal();
-    return;
-  }
-
-  if (event.key === "Escape" && swingScoreModal && !swingScoreModal.classList.contains("hidden")) {
-    closeSwingScoreModal();
-    return;
-  }
-
-  if (event.key === "Escape" && portfolioDetailModal && !portfolioDetailModal.classList.contains("hidden")) {
-    closePortfolioDetailModal();
-    return;
-  }
-
-  if (event.key === "Escape" && historyMatrixModal && !historyMatrixModal.classList.contains("hidden")) {
-    closeHistoryMatrixModal();
-    return;
-  }
-
-  if (event.key === "Escape" && historyChartModal && !historyChartModal.classList.contains("hidden")) {
-    closeHistoryChartModal();
-    return;
-  }
-
-  if (event.key === "Escape" && marketEventModal && !marketEventModal.classList.contains("hidden")) {
-    closeMarketEventModal();
-    return;
-  }
-
-  if (event.key === "Escape" && themeDetailModal && !themeDetailModal.classList.contains("hidden")) {
-    closeThemeDetailModal();
-  }
-});
-
 stockForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const item = buildStockFromForm();
@@ -1961,16 +2137,52 @@ async function refreshSwingPatternSnapshots() {
 function renderAppTabs() {
   if (appTabs) {
     for (const tab of appTabs.querySelectorAll("[data-view]")) {
-      tab.classList.toggle("active", tab.dataset.view === activeView);
+      const isSelected = tab.dataset.view === activeView;
+      tab.classList.toggle("active", isSelected);
+      setTabSelection(tab, isSelected);
     }
   }
 
-  newsView?.classList.toggle("hidden", activeView !== "news");
-  indexView?.classList.toggle("hidden", activeView !== "index");
-  historyView?.classList.toggle("hidden", activeView !== "history");
-  portfolioView?.classList.toggle("hidden", activeView !== "portfolio");
-  analysisView?.classList.toggle("hidden", activeView !== "analysis");
-  moversView?.classList.toggle("hidden", activeView !== "movers");
+  for (const view of APP_VIEWS) {
+    const panel = document.getElementById(`${view}View`);
+    const isSelected = view === activeView;
+    panel?.classList.toggle("hidden", !isSelected);
+    panel?.setAttribute("aria-hidden", String(!isSelected));
+  }
+
+  if (activeView === "news") {
+    void ensureNewsDashboardLoaded();
+  }
+}
+
+function ensureNewsDashboardLoaded() {
+  if (newsDashboardModulePromise) {
+    return newsDashboardModulePromise;
+  }
+
+  newsDashboardModulePromise = import("/news-signal-dashboard.js").catch((error) => {
+    console.error(error);
+    newsDashboardModulePromise = null;
+    const root = document.querySelector("#newsSignalRoot");
+    if (!root) {
+      return;
+    }
+
+    root.innerHTML = `
+      <section class="panel news-dashboard-panel">
+        <div class="error-box news-dashboard-error-box" role="alert">
+          <strong>뉴스 화면을 불러오지 못했습니다.</strong>
+          <p>잠시 후 다시 시도해 주세요.</p>
+          <button class="ghost-button" type="button" data-news-module-retry>다시 시도</button>
+        </div>
+      </section>
+    `;
+    root.querySelector("[data-news-module-retry]")?.addEventListener("click", () => {
+      void ensureNewsDashboardLoaded();
+    });
+  });
+
+  return newsDashboardModulePromise;
 }
 
 function setPortfolioStatus(kind, text) {
@@ -2101,7 +2313,7 @@ function getPortfolioDashboardState(summary, items) {
     return {
       tone: "danger",
       strategy: "축소 우선 전략",
-      mood: "Risk Off",
+      mood: "위험 회피",
       summary: `현재 위험 종목은 ${formatNumber(highCount)}개이며 추가매수보다 리스크 관리가 우선입니다.`
     };
   }
@@ -2110,7 +2322,7 @@ function getPortfolioDashboardState(summary, items) {
     return {
       tone: "neutral",
       strategy: "복구 확인 전략",
-      mood: "Recovery",
+      mood: "회복 확인",
       summary: `손실 구간 종목은 회복 신호 확인이 먼저입니다. 신규 대응은 조건이 확인된 종목만 검토합니다.`
     };
   }
@@ -2119,7 +2331,7 @@ function getPortfolioDashboardState(summary, items) {
     return {
       tone: "positive",
       strategy: "분할매수 준비 전략",
-      mood: "Recovery",
+      mood: "회복 확인",
       summary: `추가매수 가능 종목이 ${formatNumber(addCount)}개 있습니다. 무효가를 먼저 고정하고 분할 대응을 준비합니다.`
     };
   }
@@ -2127,7 +2339,7 @@ function getPortfolioDashboardState(summary, items) {
   return {
     tone: "neutral",
     strategy: "보유 점검 전략",
-    mood: "Neutral",
+    mood: "중립",
     summary: "오늘은 즉시 행동보다 보유 상태 점검과 가격 조건 확인이 우선입니다."
   };
 }
@@ -2271,19 +2483,19 @@ function renderPortfolioSummary() {
     ["손익", "평가손익", formatSignedWon(account.totalProfitAmount), "현재 보유 기준", totalProfitClass],
     ["%", "총 수익률", formatPercent(account.totalProfitRate ?? 0), "실시간 현재가 반영", totalProfitClass],
     ["수", "보유종목", `${formatNumber(account.total ?? summary.total ?? 0)} 종목`, "관리 대상"],
-    ["!", "우선 대응", `${formatNumber(summary.highPriority ?? 0)} 종목`, "HIGH priority", summary.highPriority > 0 ? "negative" : ""],
+    ["!", "우선 대응", `${formatNumber(summary.highPriority ?? 0)} 종목`, "긴급 우선", summary.highPriority > 0 ? "negative" : ""],
     ["+", "추가매수", `${formatNumber(addAvailableCount)} 종목`, "조건부 추가매수", addAvailableCount > 0 ? "positive" : ""],
     ["↓", "비중축소", `${formatNumber(summary.reduceOnRebound ?? 0)} 종목`, "반등 시 축소", summary.reduceOnRebound > 0 ? "negative" : ""]
   ];
   portfolioSummary.innerHTML = `
     <section class="portfolio-brief-hero ${escapeHtml(state.tone)}">
       <div>
-        <span class="portfolio-brief-eyebrow">AI Portfolio Brief</span>
+        <span class="portfolio-brief-eyebrow">보유종목 브리핑</span>
         <h3>오늘은 <strong>${escapeHtml(state.strategy)}</strong>입니다.</h3>
         <p>${escapeHtml(state.summary)}</p>
       </div>
       <aside class="portfolio-market-mood ${escapeHtml(state.tone)}">
-        <span>Market Mood</span>
+        <span>시장 분위기</span>
         <strong>${escapeHtml(state.mood)}</strong>
       </aside>
     </section>
@@ -2333,7 +2545,7 @@ function renderPortfolioSummary() {
         }
       </article>
       <article class="portfolio-daily-comment ${escapeHtml(state.tone)}">
-        <span class="portfolio-brief-label">AI Daily Comment</span>
+        <span class="portfolio-brief-label">규칙 기반 코멘트</span>
         ${dailyComment.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
       </article>
     </section>
@@ -2730,7 +2942,7 @@ function renderPortfolioRecoveryProgress(item) {
   return `
     <div class="portfolio-recovery-progress">
       <div class="portfolio-recovery-head">
-        <span>Recovery</span>
+        <span>복구 단계</span>
         <strong>${escapeHtml(String(doneCount))} / ${escapeHtml(String(steps.length))}</strong>
       </div>
       <div class="portfolio-recovery-bar"><span style="width:${progress}%;"></span></div>
@@ -2860,14 +3072,14 @@ function openPortfolioDetailModal(symbol) {
   portfolioDetailModalTitle.textContent = `${item.name ?? item.symbol} 상세`;
   portfolioDetailModalMeta.textContent = `${item.symbol ?? ""} · 평단 ${formatNumber(holding.avgPrice)}원 · 현재 ${formatNumber(holding.currentPrice)}원 · ${formatPercent(holding.profitRate ?? 0)}`;
   portfolioDetailModalBody.innerHTML = renderPortfolioDetailContent(item);
-  portfolioDetailModal.classList.remove("hidden");
+  openModal(portfolioDetailModal, { onClose: closePortfolioDetailModal });
 }
 
 function closePortfolioDetailModal() {
   if (!portfolioDetailModal) {
     return;
   }
-  portfolioDetailModal.classList.add("hidden");
+  closeModal(portfolioDetailModal);
   portfolioDetailModalPointerDownOnBackdrop = false;
   activePortfolioDetailSymbol = "";
 }
@@ -2876,9 +3088,15 @@ function renderPortfolioAdviceCard(item) {
   const holding = item.holding ?? {};
   const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
   const { profitAmount, executionPlan, actionTone, actionZone } = getPortfolioDetailContext(item);
+  const priorityLabel = String(item.priorityLabel ?? "LOW");
+  const priorityLabelText = {
+    HIGH: "긴급",
+    MEDIUM: "주의",
+    LOW: "일반"
+  }[priorityLabel] ?? priorityLabel;
 
   return `
-    <article id="${escapeHtml(getPortfolioCardAnchor(item.symbol))}" class="portfolio-advice-card ${escapeHtml((item.priorityLabel ?? "LOW").toLowerCase())} action-${escapeHtml(actionTone)}" data-portfolio-card-symbol="${escapeHtml(item.symbol)}">
+    <article id="${escapeHtml(getPortfolioCardAnchor(item.symbol))}" class="portfolio-advice-card ${escapeHtml(priorityLabel.toLowerCase())} action-${escapeHtml(actionTone)}" data-portfolio-card-symbol="${escapeHtml(item.symbol)}">
       <div class="portfolio-card-head">
         <div class="portfolio-card-title">
           <h3>${escapeHtml(item.name ?? item.symbol)}</h3>
@@ -2888,8 +3106,8 @@ function renderPortfolioAdviceCard(item) {
         </div>
         <div class="portfolio-card-rank">
           <strong class="portfolio-profit ${escapeHtml(returnClass)}" data-portfolio-profit-rate>${formatPercent(holding.profitRate ?? 0)}</strong>
-          <span>Priority ${formatNumber(item.priority ?? 0)}</span>
-          <em class="${escapeHtml(String(item.priorityLabel ?? "LOW").toLowerCase())}">${escapeHtml(item.priorityLabel ?? "LOW")}</em>
+          <span>우선순위 ${formatNumber(item.priority ?? 0)}</span>
+          <em class="${escapeHtml(priorityLabel.toLowerCase())}">${escapeHtml(priorityLabelText)}</em>
         </div>
       </div>
 
@@ -2928,9 +3146,15 @@ function renderPortfolioAdvice() {
   renderPortfolioSummary();
   portfolioErrorBox.classList.toggle("hidden", !portfolioError);
   portfolioErrorBox.textContent = portfolioError;
+  portfolioAdviceList.setAttribute("aria-busy", String(portfolioLoading && !portfolioLoaded));
 
   if (portfolioLoading && !portfolioLoaded) {
-    portfolioAdviceList.innerHTML = `<div class="empty-state"><p>보유종목 대응안을 계산 중입니다.</p></div>`;
+    portfolioAdviceList.innerHTML = `<div class="empty-state" role="status"><p>보유종목 대응안을 계산 중입니다.</p></div>`;
+    return;
+  }
+
+  if (portfolioError && !portfolioLoaded) {
+    portfolioAdviceList.innerHTML = "";
     return;
   }
 
@@ -2939,7 +3163,7 @@ function renderPortfolioAdvice() {
     portfolioAdviceList.innerHTML = `
       <div class="empty-state">
         <p>등록된 보유 종목이 없습니다.</p>
-        <p><code>data/portfolio-holdings.json</code>에 보유 종목을 추가하면 이 화면에서 행동 제안을 계산합니다.</p>
+        <p>위의 잔고 스크린샷 불러오기를 열어 보유 종목을 등록해 주세요.</p>
       </div>
     `;
     return;
@@ -3496,15 +3720,15 @@ function getExecutedBuyCountForHistoryItem(item) {
 
 function openHistoryMatrixModal() {
   renderHistoryMatrixModalBody();
-  historyMatrixModal?.classList.remove("hidden");
+  openModal(historyMatrixModal, { onClose: closeHistoryMatrixModal });
 }
 
 function closeHistoryMatrixModal() {
-  historyMatrixModal?.classList.add("hidden");
+  closeModal(historyMatrixModal);
 }
 
 function closeHistoryChartModal() {
-  historyChartModal?.classList.add("hidden");
+  closeModal(historyChartModal);
   activeHistoryChartItem = null;
   historyChartLoading = false;
   cleanupHistoryChart();
@@ -3629,7 +3853,7 @@ async function openHistoryChartModal(input = {}) {
   const displayItem = getHistoryChartDisplayItem(item);
   activeHistoryChartItem = displayItem;
   historyChartLoading = true;
-  historyChartModal?.classList.remove("hidden");
+  openModal(historyChartModal, { onClose: closeHistoryChartModal });
   cleanupHistoryChart();
   renderHistoryChartModalShell(item, { loading: true });
 
@@ -5665,12 +5889,12 @@ function openThemeDetailModal(theme) {
   }
 
   renderThemeDetailModal(theme);
-  themeDetailModal.classList.remove("hidden");
+  openModal(themeDetailModal, { onClose: closeThemeDetailModal });
 }
 
 function closeThemeDetailModal() {
   themeDetailModalPointerDownOnBackdrop = false;
-  themeDetailModal?.classList.add("hidden");
+  closeModal(themeDetailModal);
 }
 
 function renderThemeDetailModal(theme) {
@@ -6341,11 +6565,11 @@ function openMarketEventModal(dateText) {
   marketEventCalendarSelectedDate = dateText;
   marketEventCalendarExpandedGroups = new Set();
   renderMarketEventModal();
-  marketEventModal.classList.remove("hidden");
+  openModal(marketEventModal, { onClose: closeMarketEventModal });
 }
 
 function closeMarketEventModal() {
-  marketEventModal?.classList.add("hidden");
+  closeModal(marketEventModal);
 }
 
 function renderMarketEventModal() {
@@ -7370,7 +7594,7 @@ function setDefaultMarketWatchVisibleRange(chart, pointCount, timeframe) {
 
 function openIndexChartModal(key) {
   activeMarketWatchKey = key;
-  indexChartModal?.classList.remove("hidden");
+  openModal(indexChartModal, { onClose: closeIndexChartModal });
   startMarketWatchAutoRefresh();
   window.requestAnimationFrame(() => {
     renderIndexChartModal();
@@ -7381,7 +7605,7 @@ function openIndexChartModal(key) {
 function closeIndexChartModal() {
   activeMarketWatchKey = null;
   cleanupMarketWatchCharts();
-  indexChartModal?.classList.add("hidden");
+  closeModal(indexChartModal);
   startMarketWatchAutoRefresh();
 }
 
@@ -7421,11 +7645,11 @@ function openSwingScoreModal(button) {
         .join("")}
     </div>
   `;
-  swingScoreModal.classList.remove("hidden");
+  openModal(swingScoreModal, { onClose: closeSwingScoreModal });
 }
 
 function closeSwingScoreModal() {
-  swingScoreModal?.classList.add("hidden");
+  closeModal(swingScoreModal);
 }
 
 function renderIndexChartModal() {
@@ -7824,6 +8048,8 @@ async function loadMovers(options = {}) {
   setMoversStatus("loading", "\uC21C\uC704 \uC870\uD68C \uC911");
   showMoversSummary("");
   showMoversError("");
+  riseMoversList?.setAttribute("aria-busy", "true");
+  fallMoversList?.setAttribute("aria-busy", "true");
 
   if (riseMoversList && !preserveMoversUi) {
     riseMoversList.innerHTML = `<div class="empty-state"><p>\uAE09\uB4F1\uC8FC \uC21C\uC704\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4...</p></div>`;
@@ -7871,8 +8097,12 @@ async function loadMovers(options = {}) {
     latestFallMovers = [];
     hasLoadedMovers = true;
     renderMoversThemeLists();
-    renderMoversList(riseMoversList, [], "rise");
-    renderMoversList(fallMoversList, [], "fall");
+    if (riseMoversList) {
+      riseMoversList.innerHTML = "";
+    }
+    if (fallMoversList) {
+      fallMoversList.innerHTML = "";
+    }
     if (riseCountLabel) {
       riseCountLabel.textContent = "0개";
     }
@@ -7887,6 +8117,9 @@ async function loadMovers(options = {}) {
         duration: 5200
       });
     }
+  } finally {
+    riseMoversList?.setAttribute("aria-busy", "false");
+    fallMoversList?.setAttribute("aria-busy", "false");
   }
 }
 
@@ -8553,11 +8786,15 @@ function renderCategoryTabs() {
     const category = tab.dataset.category;
     const isVisible = isVisibleRecommendationCategory(category);
     tab.classList.toggle("hidden", !isVisible);
+    tab.setAttribute("aria-hidden", String(!isVisible));
     if (!isVisible) {
+      setTabSelection(tab, false);
       continue;
     }
 
-    tab.classList.toggle("active", tab.dataset.category === currentCategory);
+    const isSelected = tab.dataset.category === currentCategory;
+    tab.classList.toggle("active", isSelected);
+    setTabSelection(tab, isSelected);
   }
 
   renderSwingProfileTabs();
@@ -8826,6 +9063,22 @@ function renderRecommendationScopePanel() {
   }
 
   updateUniverseRecommendationButton();
+  syncRecommendationTabPanelLabel();
+}
+
+function syncRecommendationTabPanelLabel() {
+  if (!stockSelector) {
+    return;
+  }
+
+  const selectedTabIds = [stockCategoryTabs, swingProfileTabs, longTermBucketTabs, swingBucketTabs]
+    .flatMap((tablist) => (tablist && tablist.getAttribute("aria-hidden") !== "true" ? [...tablist.querySelectorAll('[role="tab"][aria-selected="true"]')] : []))
+    .map((tab) => tab.id)
+    .filter(Boolean);
+
+  if (selectedTabIds.length) {
+    stockSelector.setAttribute("aria-labelledby", selectedTabIds.join(" "));
+  }
 }
 
 function renderSwingProfileTabs() {
@@ -8835,9 +9088,7 @@ function renderSwingProfileTabs() {
 
   const isVisible = currentCategory === "swing";
   swingProfileTabs.classList.toggle("hidden", !isVisible);
-  if (!isVisible) {
-    return;
-  }
+  swingProfileTabs.setAttribute("aria-hidden", String(!isVisible));
 
   const counts = getSwingProfileCounts();
   for (const tab of swingProfileTabs.querySelectorAll("[data-swing-profile]")) {
@@ -8846,7 +9097,9 @@ function renderSwingProfileTabs() {
       continue;
     }
 
-    tab.classList.toggle("active", profile === currentSwingProfile);
+    const isSelected = isVisible && profile === currentSwingProfile;
+    tab.classList.toggle("active", isSelected);
+    setTabSelection(tab, isSelected);
     tab.textContent = `${getSwingProfileLabel(profile)} ${counts[profile]}개`;
   }
 }
@@ -8858,7 +9111,11 @@ function renderLongTermBucketTabs() {
 
   const isVisible = !isSwingCategory(currentCategory);
   longTermBucketTabs.classList.toggle("hidden", !isVisible);
+  longTermBucketTabs.setAttribute("aria-hidden", String(!isVisible));
   if (!isVisible) {
+    for (const tab of longTermBucketTabs.querySelectorAll("[data-long-term-bucket]")) {
+      setTabSelection(tab, false);
+    }
     renderRecommendationScopePanel();
     return;
   }
@@ -8875,11 +9132,15 @@ function renderLongTermBucketTabs() {
     }
     const hideForDividend = isDividendCategory(currentCategory) && bucket === "accumulate";
     tab.classList.toggle("hidden", hideForDividend);
+    tab.setAttribute("aria-hidden", String(hideForDividend));
     if (hideForDividend) {
+      setTabSelection(tab, false);
       continue;
     }
 
-    tab.classList.toggle("active", bucket === currentLongTermBucket);
+    const isSelected = bucket === currentLongTermBucket;
+    tab.classList.toggle("active", isSelected);
+    setTabSelection(tab, isSelected);
     tab.textContent = `${getNonSwingBucketLabel(currentCategory, bucket)} ${counts[bucket]}개`;
   }
 
@@ -8893,7 +9154,11 @@ function renderSwingBucketTabs() {
 
   const isVisible = currentCategory === "swing";
   swingBucketTabs.classList.toggle("hidden", !isVisible);
+  swingBucketTabs.setAttribute("aria-hidden", String(!isVisible));
   if (!isVisible) {
+    for (const tab of swingBucketTabs.querySelectorAll("[data-swing-bucket]")) {
+      setTabSelection(tab, false);
+    }
     renderRecommendationScopePanel();
     return;
   }
@@ -8905,7 +9170,9 @@ function renderSwingBucketTabs() {
       continue;
     }
 
-    tab.classList.toggle("active", bucket === currentSwingBucket);
+    const isSelected = bucket === currentSwingBucket;
+    tab.classList.toggle("active", isSelected);
+    setTabSelection(tab, isSelected);
     tab.textContent = `${getSwingBucketLabel(bucket)} ${counts[bucket]}개`;
   }
 
@@ -9937,13 +10204,12 @@ function openStockModal() {
   }
   renderStockSearchResults();
   showError("");
-  stockModal.classList.remove("hidden");
-  stockSearchInput.focus();
+  openModal(stockModal, { initialFocus: stockSearchInput, onClose: closeStockModal });
 }
 
 function closeStockModal() {
   stockModalPointerDownOnBackdrop = false;
-  stockModal.classList.add("hidden");
+  closeModal(stockModal);
 }
 
 function buildStockFromForm() {
@@ -10157,8 +10423,9 @@ async function runAnalysisForRecommendation(item) {
   setStatus("loading", "분석 중");
   showSummary("");
   showError("");
+  results.setAttribute("aria-busy", "true");
   results.classList.remove("empty");
-  results.innerHTML = `<div class="empty-state"><p>${escapeHtml(item.name)}  데이터를 불러오는 중입니다...</p></div>`;
+  results.innerHTML = `<div class="empty-state" role="status"><p>${escapeHtml(item.name)} 데이터를 불러오는 중입니다...</p></div>`;
 
   try {
     const response = await fetch("/analysis/recommendations", {
@@ -10251,7 +10518,9 @@ async function runAnalysisForRecommendation(item) {
     setStatus("error", "오류");
     showError(message);
     results.classList.add("empty");
-    results.innerHTML = `<div class="empty-state"><p>오류를 해결한 뒤 다시 선택해주세요.</p></div>`;
+    results.innerHTML = "";
+  } finally {
+    results.setAttribute("aria-busy", "false");
   }
 }
 
