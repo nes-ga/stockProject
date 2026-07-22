@@ -3,3 +3,7 @@ dist
 .env
 .cache/
 data/*.json
+!data/server-swing-picks.json
+!data/server-smallcap-swing-picks.json
+!data/server-long-term-picks.json
+!data/server-dividend-picks.json

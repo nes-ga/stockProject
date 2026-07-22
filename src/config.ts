@@ -4,6 +4,7 @@ dotenv.config();
 
 export const config = {
   port: Number(process.env.PORT ?? 3000),
+  portfolioHoldingsPath: process.env.PORTFOLIO_HOLDINGS_PATH ?? "data/portfolio-holdings.json",
   discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL,
   alertWebhookSecret: process.env.ALERT_WEBHOOK_SECRET,
   alertCooldownMs: Number(process.env.ALERT_COOLDOWN_MS ?? 10 * 60 * 1000),

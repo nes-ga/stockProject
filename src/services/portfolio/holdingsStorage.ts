@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PortfolioHolding } from "./types.js";
+import { config } from "../../config.js";
 
-export const portfolioHoldingsPath = path.resolve(process.cwd(), "data", "portfolio-holdings.json");
+export const portfolioHoldingsPath = path.resolve(process.cwd(), config.portfolioHoldingsPath);
 
 async function ensureDir() {
   await mkdir(path.dirname(portfolioHoldingsPath), { recursive: true });
