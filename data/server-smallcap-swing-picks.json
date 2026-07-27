@@ -2,218 +2,20 @@
   "executionItems": [],
   "watchItems": [
     {
-      "key": "미래에셋생명-085620",
-      "name": "미래에셋생명",
-      "symbol": "085620",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 20950~20450 | 손절 13200",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_break",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_break",
-        "risk_reward_ok",
-        "pullback_pending",
-        "broad_review_watch",
-        "above_stop",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 54."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -9.26% over the recent lookback."
-        },
-        {
-          "code": "envelope_lower_break",
-          "label": "SMA20 envelope lower break",
-          "impact": 12,
-          "reason": "Reference close is 16.8% below the SMA20 -10% envelope."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 2,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 20950,
-            "date": "2026-06-10"
-          },
-          {
-            "stage": 2,
-            "price": 18390,
-            "date": "2026-07-07"
-          }
-        ],
-        "averageBuyPrice": 19240,
-        "latestClose": 16730,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -13.06,
-        "maxFavorablePrice": 19770,
-        "maxFavorableDate": "2026-07-07",
-        "maxFavorableReturnPct": 2.74,
-        "maxAdversePrice": 16350,
-        "maxAdverseDate": "2026-07-09",
-        "maxAdverseReturnPct": -15.04,
-        "targetReturnPct": 10
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 22331.5,
-        "upper": 24564.65,
-        "lower": 20098.35,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -25.08,
-        "distanceFromLowerPercent": -16.76,
-        "distanceFromUpperPercent": -31.89,
-        "lowerBreakSessions": 12,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "엑스게이트-356680",
-      "name": "엑스게이트",
-      "symbol": "356680",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 14540~14180 | 손절 10620",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_break",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_break",
-        "risk_reward_ok",
-        "pullback_pending",
-        "broad_review_watch",
-        "above_stop",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -8.07% over the recent lookback."
-        },
-        {
-          "code": "envelope_lower_break",
-          "label": "SMA20 envelope lower break",
-          "impact": 12,
-          "reason": "Reference close is 20.9% below the SMA20 -10% envelope."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 3,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 14540,
-            "date": "2026-04-20"
-          },
-          {
-            "stage": 2,
-            "price": 13240,
-            "date": "2026-04-23"
-          },
-          {
-            "stage": 3,
-            "price": 11910,
-            "date": "2026-07-10"
-          }
-        ],
-        "averageBuyPrice": 12670,
-        "latestClose": 11010,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -13.07,
-        "maxFavorablePrice": 12540,
-        "maxFavorableDate": "2026-07-10",
-        "maxFavorableReturnPct": -0.99,
-        "maxAdversePrice": 10810,
-        "maxAdverseDate": "2026-07-13",
-        "maxAdverseReturnPct": -14.65,
-        "targetReturnPct": 8
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 15472,
-        "upper": 17019.2,
-        "lower": 13924.8,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -28.84,
-        "distanceFromLowerPercent": -20.93,
-        "distanceFromUpperPercent": -35.31,
-        "lowerBreakSessions": 9,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
       "key": "유니드비티플러스-446070",
       "name": "유니드비티플러스",
       "symbol": "446070",
       "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 3180~3105 | 손절 2070",
+      "latestMentionDate": "2026-07-27",
+      "note": "관찰 | 눌림 확인 대기 | 구간 3120~3045 | 손절 2070",
       "bucket": "watch",
       "tags": [
         "tag_sma20_primary",
-        "tag_alt_anchor_shallow_pullback",
         "tag_volume_turnover_strong",
-        "watch_pullback_pending"
+        "tag_support_unstable",
+        "tag_envelope_lower_hold",
+        "watch_pullback_pending",
+        "watch_low_quality"
       ],
       "reasons": [
         "matched_setup",
@@ -221,12 +23,20 @@
         "volume_contraction_ok",
         "candle_structure_ok",
         "sma20_slope_ok",
-        "support_holding",
-        "envelope_in_band",
+        "unstable_support",
+        "envelope_lower_hold",
         "risk_reward_ok",
-        "pullback_pending"
+        "pullback_pending",
+        "probe_demoted_low_score_unstable_support",
+        "quality_not_ready"
       ],
       "penaltyFactors": [
+        {
+          "code": "unstable_support",
+          "label": "Unstable support",
+          "impact": 16,
+          "reason": "Support stability score dropped to 40."
+        },
         {
           "code": "low_price_liquidity",
           "label": "Low price liquidity drag",
@@ -240,32 +50,32 @@
         "executedBuys": [
           {
             "stage": 1,
-            "price": 3180,
-            "date": "2026-07-08"
+            "price": 3120,
+            "date": "2026-07-10"
           }
         ],
-        "averageBuyPrice": 3180,
-        "latestClose": 3275,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": 2.99,
-        "maxFavorablePrice": 3360,
-        "maxFavorableDate": "2026-07-09",
-        "maxFavorableReturnPct": 5.66,
-        "maxAdversePrice": 3060,
-        "maxAdverseDate": "2026-07-10",
-        "maxAdverseReturnPct": -3.77,
+        "averageBuyPrice": 3120,
+        "latestClose": 3190,
+        "latestDate": "2026-07-27",
+        "unrealizedReturnPct": 2.24,
+        "maxFavorablePrice": 3355,
+        "maxFavorableDate": "2026-07-13",
+        "maxFavorableReturnPct": 7.53,
+        "maxAdversePrice": 3000,
+        "maxAdverseDate": "2026-07-22",
+        "maxAdverseReturnPct": -3.85,
         "targetReturnPct": 10
       },
       "envelope": {
         "basisPeriod": 20,
         "bandPercent": 10,
-        "basis": 3062.25,
-        "upper": 3368.48,
-        "lower": 2756.03,
-        "position": "upper_band",
-        "distanceFromBasisPercent": 6.95,
-        "distanceFromLowerPercent": 18.83,
-        "distanceFromUpperPercent": -2.77,
+        "basis": 3257.5,
+        "upper": 3583.25,
+        "lower": 2931.75,
+        "position": "lower_band",
+        "distanceFromBasisPercent": -2.07,
+        "distanceFromLowerPercent": 8.81,
+        "distanceFromUpperPercent": -10.97,
         "lowerBreakSessions": 0,
         "lowerReclaimed": false,
         "inBand": true
@@ -279,7 +89,7 @@
       "name": "제이투케이바이오",
       "symbol": "420570",
       "anchorDate": "2026-07-07",
-      "latestMentionDate": "2026-07-13",
+      "latestMentionDate": "2026-07-27",
       "note": "관찰 | 눌림 확인 대기 | 구간 - | 손절 7780",
       "bucket": "watch",
       "tags": [
@@ -288,7 +98,7 @@
         "tag_volume_turnover_strong",
         "tag_candle_rejection",
         "tag_candle_weak",
-        "tag_support_unstable",
+        "tag_envelope_upper_extension",
         "watch_pullback_pending",
         "watch_low_quality"
       ],
@@ -299,11 +109,10 @@
         "volume_contraction_ok",
         "weak_candle_structure",
         "sma20_slope_ok",
-        "unstable_support",
-        "envelope_in_band",
+        "support_holding",
+        "envelope_upper_extension",
         "risk_reward_ok",
         "pullback_pending",
-        "probe_demoted_low_score_unstable_support",
         "quality_not_ready"
       ],
       "penaltyFactors": [
@@ -312,12 +121,6 @@
           "label": "Upper wick rejection",
           "impact": 18,
           "reason": "Upper wick consumed 34% of the candle range."
-        },
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
         },
         {
           "code": "weak_close_position",
@@ -329,28 +132,28 @@
       "envelope": {
         "basisPeriod": 20,
         "bandPercent": 10,
-        "basis": 7670,
-        "upper": 8437,
-        "lower": 6903,
-        "position": "upper_band",
-        "distanceFromBasisPercent": 4.43,
-        "distanceFromLowerPercent": 16.04,
-        "distanceFromUpperPercent": -5.06,
+        "basis": 8237,
+        "upper": 9060.7,
+        "lower": 7413.3,
+        "position": "above_upper",
+        "distanceFromBasisPercent": 11.69,
+        "distanceFromLowerPercent": 24.1,
+        "distanceFromUpperPercent": 1.54,
         "lowerBreakSessions": 0,
         "lowerReclaimed": false,
-        "inBand": true
+        "inBand": false
       },
       "category": "swing",
       "swingProfile": "smallcap",
       "source": "server-universe"
     },
     {
-      "key": "프로이천-321260",
-      "name": "프로이천",
-      "symbol": "321260",
-      "anchorDate": "2026-07-08",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 1900~1852 | 손절 1601",
+      "key": "엑스게이트-356680",
+      "name": "엑스게이트",
+      "symbol": "356680",
+      "anchorDate": "2026-07-13",
+      "latestMentionDate": "2026-07-27",
+      "note": "관찰 | 눌림 확인 대기 | 구간 11400~11110 | 손절 9500",
       "bucket": "watch",
       "tags": [
         "tag_sma20_primary",
@@ -389,19 +192,13 @@
           "code": "negative_sma20_slope",
           "label": "Negative SMA20 slope",
           "impact": 14,
-          "reason": "SMA20 slope is -11.78% over the recent lookback."
+          "reason": "SMA20 slope is -14.36% over the recent lookback."
         },
         {
           "code": "envelope_lower_break",
           "label": "SMA20 envelope lower break",
           "impact": 12,
-          "reason": "Reference close is 5.7% below the SMA20 -10% envelope."
-        },
-        {
-          "code": "low_price_liquidity",
-          "label": "Low price liquidity drag",
-          "impact": 5,
-          "reason": "Reference price 2055 is low enough that raw share count can overstate true liquidity."
+          "reason": "Reference close is 4.5% below the SMA20 -10% envelope."
         }
       ],
       "postEntryOutcome": {
@@ -410,512 +207,42 @@
         "executedBuys": [
           {
             "stage": 1,
-            "price": 1900,
-            "date": "2026-06-26"
+            "price": 11400,
+            "date": "2026-07-08"
           },
           {
             "stage": 2,
-            "price": 1801,
-            "date": "2026-06-26"
+            "price": 10770,
+            "date": "2026-07-09"
           },
           {
             "stage": 3,
-            "price": 1699,
-            "date": "2026-07-10"
+            "price": 10120,
+            "date": "2026-07-21"
           }
         ],
-        "averageBuyPrice": 1757,
-        "latestClose": 1715,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -2.38,
-        "maxFavorablePrice": 1893,
-        "maxFavorableDate": "2026-07-13",
-        "maxFavorableReturnPct": 7.75,
-        "maxAdversePrice": 1671,
-        "maxAdverseDate": "2026-07-10",
-        "maxAdverseReturnPct": -4.89,
+        "averageBuyPrice": 10490,
+        "latestClose": 10430,
+        "latestDate": "2026-07-27",
+        "unrealizedReturnPct": -0.56,
+        "maxFavorablePrice": 11170,
+        "maxFavorableDate": "2026-07-23",
+        "maxFavorableReturnPct": 6.5,
+        "maxAdversePrice": 9500,
+        "maxAdverseDate": "2026-07-21",
+        "maxAdverseReturnPct": -9.43,
         "targetReturnPct": 8
       },
       "envelope": {
         "basisPeriod": 20,
         "bandPercent": 10,
-        "basis": 2021.55,
-        "upper": 2223.71,
-        "lower": 1819.4,
+        "basis": 12130,
+        "upper": 13343,
+        "lower": 10917,
         "position": "below_lower",
-        "distanceFromBasisPercent": -15.16,
-        "distanceFromLowerPercent": -5.74,
-        "distanceFromUpperPercent": -22.88,
-        "lowerBreakSessions": 30,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "현대오토에버-307950",
-      "name": "현대오토에버",
-      "symbol": "307950",
-      "anchorDate": "2026-07-07",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 510000~497000 | 손절 418000",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_break",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_break",
-        "risk_reward_ok",
-        "pullback_pending",
-        "broad_review_watch",
-        "above_stop",
-        "probe_demoted_low_score_unstable_support",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -10.40% over the recent lookback."
-        },
-        {
-          "code": "envelope_lower_break",
-          "label": "SMA20 envelope lower break",
-          "impact": 12,
-          "reason": "Reference close is 9.5% below the SMA20 -10% envelope."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 3,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 510000,
-            "date": "2026-06-26"
-          },
-          {
-            "stage": 2,
-            "price": 479500,
-            "date": "2026-07-03"
-          },
-          {
-            "stage": 3,
-            "price": 448000,
-            "date": "2026-07-10"
-          }
-        ],
-        "averageBuyPrice": 466000,
-        "latestClose": 442000,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -5.12,
-        "maxFavorablePrice": 485500,
-        "maxFavorableDate": "2026-07-13",
-        "maxFavorableReturnPct": 4.22,
-        "maxAdversePrice": 433000,
-        "maxAdverseDate": "2026-07-13",
-        "maxAdverseReturnPct": -7.05,
-        "targetReturnPct": 8
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 542575,
-        "upper": 596832.5,
-        "lower": 488317.5,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -18.54,
-        "distanceFromLowerPercent": -9.49,
-        "distanceFromUpperPercent": -25.94,
-        "lowerBreakSessions": 17,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "OCI-456040",
-      "name": "OCI",
-      "symbol": "456040",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 - | 손절 87700",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_seed_anchor_confirmed",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_hold",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "seed_anchor_confirmed",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_hold",
-        "risk_reward_ok",
-        "pullback_pending",
-        "probe_demoted_low_score_unstable_support",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -4.15% over the recent lookback."
-        }
-      ],
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 94040,
-        "upper": 103444,
-        "lower": 84636,
-        "position": "basis_zone",
-        "distanceFromBasisPercent": -1.85,
-        "distanceFromLowerPercent": 9.06,
-        "distanceFromUpperPercent": -10.77,
-        "lowerBreakSessions": 0,
-        "lowerReclaimed": true,
-        "inBand": true
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "넥스틸-092790",
-      "name": "넥스틸",
-      "symbol": "092790",
-      "anchorDate": "2026-07-07",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 12230~11920 | 손절 10410",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_break",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_break",
-        "risk_reward_ok",
-        "pullback_pending",
-        "probe_demoted_low_score_unstable_support",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -5.89% over the recent lookback."
-        },
-        {
-          "code": "envelope_lower_break",
-          "label": "SMA20 envelope lower break",
-          "impact": 12,
-          "reason": "Reference close is 8.8% below the SMA20 -10% envelope."
-        },
-        {
-          "code": "small_body",
-          "label": "Small real body",
-          "impact": 8,
-          "reason": "Real body was only 16% of the full range."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 3,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 12230,
-            "date": "2026-06-29"
-          },
-          {
-            "stage": 2,
-            "price": 11620,
-            "date": "2026-07-02"
-          },
-          {
-            "stage": 3,
-            "price": 11010,
-            "date": "2026-07-03"
-          }
-        ],
-        "averageBuyPrice": 11360,
-        "latestClose": 10680,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -5.97,
-        "maxFavorablePrice": 11840,
-        "maxFavorableDate": "2026-07-06",
-        "maxFavorableReturnPct": 4.24,
-        "maxAdversePrice": 10250,
-        "maxAdverseDate": "2026-07-09",
-        "maxAdverseReturnPct": -9.76,
-        "targetReturnPct": 8
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 13014.5,
-        "upper": 14315.95,
-        "lower": 11713.05,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -17.94,
-        "distanceFromLowerPercent": -8.82,
-        "distanceFromUpperPercent": -25.4,
-        "lowerBreakSessions": 12,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "포스코스틸리온-058430",
-      "name": "포스코스틸리온",
-      "symbol": "058430",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 4875~4755 | 손절 4500",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_in_band",
-        "risk_reward_ok",
-        "pullback_pending",
-        "probe_demoted_low_score_unstable_support",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -2.85% over the recent lookback."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 2,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 4875,
-            "date": "2026-06-08"
-          },
-          {
-            "stage": 2,
-            "price": 4750,
-            "date": "2026-07-03"
-          }
-        ],
-        "averageBuyPrice": 4790,
-        "latestClose": 4615,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -3.69,
-        "maxFavorablePrice": 5080,
-        "maxFavorableDate": "2026-07-03",
-        "maxFavorableReturnPct": 6.02,
-        "maxAdversePrice": 4500,
-        "maxAdverseDate": "2026-07-13",
-        "maxAdverseReturnPct": -6.09,
-        "targetReturnPct": 10
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 5189.25,
-        "upper": 5708.18,
-        "lower": 4670.33,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -11.07,
-        "distanceFromLowerPercent": -1.18,
-        "distanceFromUpperPercent": -19.15,
-        "lowerBreakSessions": 1,
-        "lowerReclaimed": false,
-        "inBand": false
-      },
-      "category": "swing",
-      "swingProfile": "smallcap",
-      "source": "server-universe"
-    },
-    {
-      "key": "나무기술-242040",
-      "name": "나무기술",
-      "symbol": "242040",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 4780~4660 | 손절 4095",
-      "bucket": "watch",
-      "tags": [
-        "tag_sma20_primary",
-        "tag_alt_anchor_box_support",
-        "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
-        "tag_support_unstable",
-        "tag_envelope_lower_break",
-        "watch_pullback_pending",
-        "watch_low_quality"
-      ],
-      "reasons": [
-        "matched_setup",
-        "stop_valid_extended_pullback",
-        "entry_zone_pending",
-        "volume_contraction_ok",
-        "candle_structure_ok",
-        "sma20_slope_negative",
-        "unstable_support",
-        "envelope_lower_break",
-        "risk_reward_ok",
-        "pullback_pending",
-        "probe_demoted_low_score_unstable_support",
-        "quality_not_ready"
-      ],
-      "penaltyFactors": [
-        {
-          "code": "unstable_support",
-          "label": "Unstable support",
-          "impact": 16,
-          "reason": "Support stability score dropped to 34."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -15.65% over the recent lookback."
-        },
-        {
-          "code": "envelope_lower_break",
-          "label": "SMA20 envelope lower break",
-          "impact": 12,
-          "reason": "Reference close is 10.5% below the SMA20 -10% envelope."
-        }
-      ],
-      "postEntryOutcome": {
-        "status": "active",
-        "executedBuyCount": 3,
-        "executedBuys": [
-          {
-            "stage": 1,
-            "price": 4780,
-            "date": "2026-06-26"
-          },
-          {
-            "stage": 2,
-            "price": 4550,
-            "date": "2026-06-26"
-          },
-          {
-            "stage": 3,
-            "price": 4320,
-            "date": "2026-07-03"
-          }
-        ],
-        "averageBuyPrice": 4450,
-        "latestClose": 4100,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -7.89,
-        "maxFavorablePrice": 4755,
-        "maxFavorableDate": "2026-07-06",
-        "maxFavorableReturnPct": 6.82,
-        "maxAdversePrice": 3900,
-        "maxAdverseDate": "2026-07-08",
-        "maxAdverseReturnPct": -12.39,
-        "targetReturnPct": 8
-      },
-      "envelope": {
-        "basisPeriod": 20,
-        "bandPercent": 10,
-        "basis": 5087.5,
-        "upper": 5596.25,
-        "lower": 4578.75,
-        "position": "below_lower",
-        "distanceFromBasisPercent": -19.41,
-        "distanceFromLowerPercent": -10.46,
-        "distanceFromUpperPercent": -26.74,
+        "distanceFromBasisPercent": -14.01,
+        "distanceFromLowerPercent": -4.46,
+        "distanceFromUpperPercent": -21.83,
         "lowerBreakSessions": 18,
         "lowerReclaimed": false,
         "inBand": false
@@ -925,12 +252,12 @@
       "source": "server-universe"
     },
     {
-      "key": "한켐-457370",
-      "name": "한켐",
-      "symbol": "457370",
-      "anchorDate": "2026-07-13",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 9510~9270 | 손절 7370",
+      "key": "드림시큐리티-203650",
+      "name": "드림시큐리티",
+      "symbol": "203650",
+      "anchorDate": "2026-07-27",
+      "latestMentionDate": "2026-07-27",
+      "note": "관찰 | 눌림 확인 대기 | 구간 1954~1905 | 손절 1806",
       "bucket": "watch",
       "tags": [
         "tag_sma20_primary",
@@ -967,58 +294,59 @@
           "code": "negative_sma20_slope",
           "label": "Negative SMA20 slope",
           "impact": 14,
-          "reason": "SMA20 slope is -11.48% over the recent lookback."
+          "reason": "SMA20 slope is -6.29% over the recent lookback."
         },
         {
           "code": "envelope_lower_break",
           "label": "SMA20 envelope lower break",
           "impact": 12,
-          "reason": "Reference close is 18.9% below the SMA20 -10% envelope."
+          "reason": "Reference close is 2.7% below the SMA20 -10% envelope."
+        },
+        {
+          "code": "low_price_liquidity",
+          "label": "Low price liquidity drag",
+          "impact": 5,
+          "reason": "Reference price 1846 is low enough that raw share count can overstate true liquidity."
         }
       ],
       "postEntryOutcome": {
         "status": "active",
-        "executedBuyCount": 3,
+        "executedBuyCount": 2,
         "executedBuys": [
           {
             "stage": 1,
-            "price": 9510,
-            "date": "2026-06-26"
+            "price": 1954,
+            "date": "2026-07-14"
           },
           {
             "stage": 2,
-            "price": 8800,
-            "date": "2026-06-26"
-          },
-          {
-            "stage": 3,
-            "price": 8070,
-            "date": "2026-07-03"
+            "price": 1905,
+            "date": "2026-07-21"
           }
         ],
-        "averageBuyPrice": 8480,
-        "latestClose": 7380,
-        "latestDate": "2026-07-13",
-        "unrealizedReturnPct": -13.02,
-        "maxFavorablePrice": 8700,
-        "maxFavorableDate": "2026-07-03",
-        "maxFavorableReturnPct": 2.54,
-        "maxAdversePrice": 7290,
-        "maxAdverseDate": "2026-07-13",
-        "maxAdverseReturnPct": -14.08,
-        "targetReturnPct": 8
+        "averageBuyPrice": 1921,
+        "latestClose": 1820,
+        "latestDate": "2026-07-27",
+        "unrealizedReturnPct": -5.27,
+        "maxFavorablePrice": 2025,
+        "maxFavorableDate": "2026-07-22",
+        "maxFavorableReturnPct": 5.4,
+        "maxAdversePrice": 1806,
+        "maxAdverseDate": "2026-07-23",
+        "maxAdverseReturnPct": -6,
+        "targetReturnPct": 10
       },
       "envelope": {
         "basisPeriod": 20,
         "bandPercent": 10,
-        "basis": 10117.5,
-        "upper": 11129.25,
-        "lower": 9105.75,
+        "basis": 2079.15,
+        "upper": 2287.07,
+        "lower": 1871.24,
         "position": "below_lower",
-        "distanceFromBasisPercent": -27.06,
-        "distanceFromLowerPercent": -18.95,
-        "distanceFromUpperPercent": -33.69,
-        "lowerBreakSessions": 15,
+        "distanceFromBasisPercent": -12.46,
+        "distanceFromLowerPercent": -2.74,
+        "distanceFromUpperPercent": -20.42,
+        "lowerBreakSessions": 6,
         "lowerReclaimed": false,
         "inBand": false
       },
@@ -1027,18 +355,17 @@
       "source": "server-universe"
     },
     {
-      "key": "뷰티스킨-406820",
-      "name": "뷰티스킨",
-      "symbol": "406820",
-      "anchorDate": "2026-07-08",
-      "latestMentionDate": "2026-07-13",
-      "note": "관찰 | 눌림 확인 대기 | 구간 - | 손절 1756",
+      "key": "NHN-181710",
+      "name": "NHN",
+      "symbol": "181710",
+      "anchorDate": "2026-07-27",
+      "latestMentionDate": "2026-07-27",
+      "note": "관찰 | 눌림 확인 대기 | 구간 - | 손절 36150",
       "bucket": "watch",
       "tags": [
         "tag_sma20_primary",
         "tag_alt_anchor_box_support",
         "tag_volume_turnover_strong",
-        "tag_sma20_slope_negative",
         "tag_support_unstable",
         "watch_pullback_pending",
         "watch_low_quality"
@@ -1049,7 +376,7 @@
         "entry_zone_pending",
         "volume_contraction_ok",
         "candle_structure_ok",
-        "sma20_slope_negative",
+        "sma20_slope_ok",
         "unstable_support",
         "envelope_in_band",
         "risk_reward_ok",
@@ -1062,31 +389,19 @@
           "code": "unstable_support",
           "label": "Unstable support",
           "impact": 16,
-          "reason": "Support stability score dropped to 44."
-        },
-        {
-          "code": "negative_sma20_slope",
-          "label": "Negative SMA20 slope",
-          "impact": 14,
-          "reason": "SMA20 slope is -1.04% over the recent lookback."
-        },
-        {
-          "code": "low_price_liquidity",
-          "label": "Low price liquidity drag",
-          "impact": 5,
-          "reason": "Reference price 2600 is low enough that raw share count can overstate true liquidity."
+          "reason": "Support stability score dropped to 54."
         }
       ],
       "envelope": {
         "basisPeriod": 20,
         "bandPercent": 10,
-        "basis": 1843.1,
-        "upper": 2027.41,
-        "lower": 1658.79,
-        "position": "basis_zone",
-        "distanceFromBasisPercent": 0.97,
-        "distanceFromLowerPercent": 12.19,
-        "distanceFromUpperPercent": -8.21,
+        "basis": 36882.5,
+        "upper": 40570.75,
+        "lower": 33194.25,
+        "position": "upper_band",
+        "distanceFromBasisPercent": 4.93,
+        "distanceFromLowerPercent": 16.59,
+        "distanceFromUpperPercent": -4.61,
         "lowerBreakSessions": 0,
         "lowerReclaimed": false,
         "inBand": true

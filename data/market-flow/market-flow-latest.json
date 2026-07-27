@@ -1,24 +1,24 @@
 {
-  "date": "2026-07-22",
+  "date": "2026-07-27",
   "global": {
-    "score": 2,
+    "score": 1,
     "state": "NEUTRAL"
   },
   "local": {
     "score": 1.5,
     "state": "WEAK"
   },
-  "themeRotationScore": 55.08,
+  "themeRotationScore": 62.08,
   "marketMode": "NEUTRAL",
   "topThemes": [
-    "필수소비재",
+    "AI / 플랫폼",
     "금융",
-    "소비 / 화장품"
+    "필수소비재"
   ],
   "bottomThemes": [
     "반도체",
     "2차전지",
     "방산 / 항공우주"
   ],
-  "updatedAt": "2026-07-22T17:43:37.152+09:00"
+  "updatedAt": "2026-07-27T13:42:46.524+09:00"
 }

@@ -1,17 +1,22 @@
 # StockMon 프로젝트 개선 제안서
 
-- Status: Partially implemented - UI shell, Portfolio presentation, and news loading/build
-- Last verified: 2026-07-13
+- Status: Partially implemented - Portfolio Recovery v1, UI shell, recommendation history, and news loading/build
+- Last verified: 2026-07-27
+- Last updated: 2026-07-27 - 급등·급락 기능 감사와 `급변 레이더` 고도화 TODO 추가
 - Scope: 구조, 정확성, 성능, 보안, 저장소, 문서, 주석, UI/UX
-- Verification: Markdown 28개(root README 포함), 주요 서버/프론트 코드, 데스크톱 1440x1000, 모바일 390x844 렌더링
+- Verification: 코드·문서 상태는 2026-07-27 재감사, 데스크톱 1440x1000·모바일 390x844 UI 검증 기록은 2026-07-13 기준
 
 구현 메모:
 
+- 현재 구현 순서와 완료 조건은 [2026-07-27 고도화 실행 계획](./project-enhancement-execution-plan-2026-07-27.md)을 기준으로 한다.
 - 완료: compact sticky navigation, hero 축소, 작업형 2열 분석 화면, Portfolio 행동 우선 배치
 - 사용자 피드백 반영: 배경 parade와 상단 탭별 캐릭터는 브랜드 정체성으로 복원
 - 완료: tabs/dialog/focus 접근성, 오류·로딩·빈 상태 분리, 뉴스 stale/retry 상태
 - 완료: 뉴스 production/minified build와 뉴스 탭 최초 진입 시 lazy loading
-- 미완료: 보안·저장소·서버 모듈 개선, 전체 view 단위 lazy loading, 모바일 분석 master-detail, Portfolio 수동 CRUD
+- 완료: 최신 시세와 동일 snapshot에서 Portfolio advice를 재계산하는 Recovery 금액 계산 v1
+- 완료: 중장기 추천 history v2, policy version, atomic write 기반과 별도 조회 API
+- 계획: 급등·급락 순위의 데이터 파싱 오류를 바로잡고 독립 순위표를 행동 가능한 `급변 레이더`로 통합
+- 미완료: Portfolio 실제 회복 신호·quote-only 시세, 보안·나머지 저장소, 전체 view 단위 lazy loading, 모바일 분석 master-detail, Portfolio 수동 CRUD
 
 ## 1. 결론
 
@@ -58,11 +63,13 @@ public/index.html
 | --- | --- | --- |
 | P0 | 기본 loopback 바인딩, 인증, body/rate limit | Portfolio 데이터, OCR, Discord, 스캔 API가 네트워크에 노출될 수 있음 |
 | P0 | 사용자 입력 webhook URL 제거 또는 allowlist | 서버가 임의 URL로 POST할 수 있어 SSRF와 오용 가능 |
-| P0 | Portfolio 최신 시세 기반 판단 | 표시 가격은 최신인데 행동 판단은 저장 가격 기준일 수 있음 |
+| P0 | Portfolio 실행 신호·기준시각·quote-only 시세 | 최신 snapshot 재계산은 완료했지만 실제 회복 신호 유효기간, 계좌 캡처 시각, 5초 폴링 비용을 보강해야 함 |
 | P0 | 최신 요청만 화면 반영 | 빠른 종목 전환 시 오래된 분석 응답이 최신 화면을 덮을 수 있음 |
+| P0 | 급등·급락 순위 파싱과 점수 정확성 복구 | 현재 네이버 기본 표의 호가·잔량 컬럼을 시가·고가·저가로 해석해 near-high/near-low와 점수가 오염될 수 있음 |
 | P1 | atomic write, write queue, outbox | 동시 요청과 발송 실패 시 데이터 또는 알림 유실 가능 |
 | P1 | 공통 HTTP client와 캐시 분리 | 폴링마다 장기 히스토리를 반복 조회하고 timeout 정책이 없음 |
 | P1 | 핵심 규칙 테스트와 CI | 금융 판단 경계 변경을 타입 검사만으로 검출할 수 없음 |
+| P1 | 급등·급락을 시장 `급변 레이더`로 통합 | 현재 화면은 읽기 전용 순위표라 스윙 관찰, 보유 위험, 뉴스 원인, 알림으로 이어지지 않음 |
 | P1 | 뉴스 외 view lazy load, splitting, 정적 캐시 | 뉴스 production/minify와 최초 진입 lazy loading은 완료했지만 다른 view는 여전히 eager 초기화됨 |
 | P2 | 도메인별 모듈 분리 | 큰 파일의 변경 영향과 리뷰 비용을 낮춰야 함 |
 | P2 | 문서 체계와 런타임 데이터 정리 | 구현 상태와 운영 기준의 source of truth가 불명확함 |
@@ -107,22 +114,32 @@ public/index.html
 - URL을 유지해야 한다면 `https`, `discord.com`, `/api/webhooks/` path를 모두 검사하고 사설 IP, redirect, 다른 host를 차단한다.
 - webhook secret이나 URL을 로그와 응답에 포함하지 않는다.
 
-### 4.3 Portfolio 판단을 최신 시세와 일치시키기
+### 4.3 Portfolio snapshot v1 완료와 실행 안전성 후속
 
-근거:
+상태: Core implemented 2026-07-27, execution-safety follow-up planned.
 
-- `src/services/portfolio/portfolioManager.ts:85`의 advice는 저장된 `currentPrice`, `profitRate`로 판단한다.
-- 같은 파일의 quotes는 최신값을 별도 응답하지만 행동 규칙을 다시 실행하지 않는다.
-- `public/app.js:3001` 이후 UI는 가격 숫자만 갱신하고 `aiAction`, priority, execution plan은 유지한다.
-- `investedAmount`, `evaluationAmount`, `profitRate`가 입력값으로 남아 가격과 불일치할 수 있다.
+완료:
+
+- holdings와 최신 quote를 조합하고 파생 손익을 다시 계산한다.
+- 동일 snapshot으로 summary, advice, Recovery 금액을 생성한다.
+- 저장 시세 또는 오래된 계좌 예산에서는 추가금을 0원으로 차단한다.
+- 종목 노출 15% 상한과 주문가능금액 기반 안전 상한을 적용한다.
+
+남은 문제:
+
+- 실제 거래량 회복과 지지 확인은 아직 계산된 signal evidence가 아니라 조건 문구다.
+- 저장된 중장기 pick의 유효기간을 확인하지 않고 READY 근거로 사용할 수 있다.
+- 스크린샷 저장 시 실제 캡처 시각과 업로드 시각이 구분되지 않는다.
+- Portfolio quote가 상세 분석 경로를 재사용해 최대 2,200거래일 차트를 5초 주기로 반복 조회할 수 있다.
+- 최대 4일 지난 일봉도 UI에서 `실시간 시세`로 표현될 수 있다.
 
 권장 수정:
 
-1. `PortfolioSnapshotService`가 holdings, latest quotes, linked history를 한 번에 조합한다.
-2. 파생값은 `avgPrice`, `currentPrice`, `quantity`에서 항상 다시 계산한다.
-3. 동일 snapshot으로 summary와 advice를 생성한다.
-4. 응답에 `quoteAsOf`, `adviceAsOf`, `isStale`, `source`를 포함한다.
-5. quote 실패 시 과거 판단을 최신 판단처럼 보이지 말고 `STALE` 상태로 표시한다.
+1. `PortfolioRecoverySignal`로 실제 signal evidence와 policy version을 분리한다.
+2. 추천 signal, quote, account의 실제 기준시각과 만료 여부를 각각 검사한다.
+3. 차트 없는 quote-only provider와 timeout, cache, concurrency 정책을 추가한다.
+4. 응답에 `quoteAsOf`, `adviceAsOf`, `isStale`, `source`, `qualityStatus`를 포함한다.
+5. 상세 작업 순서는 [2026-07-27 고도화 실행 계획](./project-enhancement-execution-plan-2026-07-27.md#4-phase-0--portfolio-execution-safety)을 따른다.
 
 권장 응답 경계:
 
@@ -149,6 +166,39 @@ type PortfolioSnapshotResponse = {
 - 화면 상태를 바꾸기 직전에 request sequence가 최신인지 검사한다.
 - timeout, JSON 오류, abort, retry 가능 오류를 하나의 오류 타입으로 표준화한다.
 - 자동 새로고침은 사용자가 수행 중인 요청을 덮지 않도록 한다.
+
+### 4.5 급등·급락 데이터와 점수 정확성 복구
+
+상태: Planned - Not started. 2026-07-27 코드와 현재 네이버 기본 순위표를 대조해 확인한 작업이다.
+
+현재 문제:
+
+- `src/services/koreanMovers.ts`는 네이버 상승·하락 표의 셀 6~8을 `open`, `high`, `low`로 읽는다.
+- 현재 네이버 기본 표에서 해당 위치는 `매수호가`, `매도호가`, `매수총잔량`이므로 OHLC 값이 아니다.
+- 잘못 읽은 값이 `closedNearHigh`, `closedNearLow`와 방향별 10점 가산에 사용된다.
+- ETF, ETN, 레버리지, 인버스 상품이 일반 보통주와 같은 순위와 점수에 섞인다.
+- UI의 `최소 거래량 배수`는 실제 하드 필터가 아니라 점수 가점 기준인데 필터처럼 표시된다.
+- `estimatedTurnover`는 실제 거래대금이 아니라 `현재가 × 누적 거래량` 추정치다.
+- 개별 차트 보강 실패는 품질 상태 없이 watch fallback으로 바뀌어 정상 분석과 구분하기 어렵다.
+
+해야 할 일:
+
+- [ ] 순위표 HTML fixture를 만들고 헤더 이름 기반 파싱 또는 명시적인 provider DTO로 교체한다.
+- [ ] 시가·고가·저가는 순위표 셀 위치에 의존하지 않고 검증된 차트/시세 데이터에서 가져온다.
+- [ ] `low <= min(open, price) <= max(open, price) <= high` 등 OHLC 불변식을 검증한다.
+- [ ] 동일 종목에서 `closedNearHigh`와 `closedNearLow`가 동시에 참이 되는 비정상 케이스를 차단한다.
+- [ ] 보통주, 우선주, ETF, ETN, SPAC을 분류하고 기본 화면은 보통주 중심으로 제공한다.
+- [ ] `minVolumeRatio`를 실제 필터로 적용하거나 UI 문구를 `거래량 가점 기준`으로 변경한다.
+- [ ] 실제 거래대금 provider를 사용하거나 응답과 화면에 `추정 거래대금`임을 명시한다.
+- [ ] 응답에 `fetchedAt`, `source`, `qualityStatus`, `isDelayed`를 추가한다.
+- [ ] 상승·하락 HTML fixture, 컬럼 변경, 차트 보강 실패, ETF/ETN 분리 회귀 테스트를 추가한다.
+
+완료 기준:
+
+- 잘못된 호가·잔량 값이 OHLC로 노출되거나 점수에 반영되지 않는다.
+- 데이터 품질이 낮은 종목은 정상 점수 대신 degraded 상태로 구분된다.
+- 필터 이름과 실제 서버 필터 동작이 일치한다.
+- provider 표 컬럼이 바뀌면 fixture 테스트가 실패한다.
 
 ## 5. P1 개선안
 
@@ -244,6 +294,51 @@ diff 계산 -> durable outbox 저장 -> 발송 -> sent/history/state commit
 7. gzip 또는 Brotli를 적용한다.
 8. `esbuild`를 직접 devDependency로 선언하고 Node engines를 지정한다.
 
+### 5.5 급등·급락 `급변 레이더` 고도화
+
+상태: Planned - Not started. 정확성 복구와 외부 호출 안전장치가 선행 조건이다.
+
+현재 한계:
+
+- 화면에서 할 수 있는 일은 시장·표시 개수·등락률·거래량 기준·점수 설정과 수동 새로고침뿐이다.
+- 종목 카드는 읽기 전용이며 차트, 종목 분석, 뉴스 원인, 관찰 등록, Portfolio 확인으로 이동할 수 없다.
+- 급등·급락 `테마`는 전체 시장 분석이 아니라 최종 순위의 소수 종목을 KRX 업종명으로 묶은 결과다.
+- 급등과 급락에 같은 `watch/strong/explosive` 강도 체계를 사용해 사용자 행동 의미가 불명확하다.
+- 앱 시작 시 현재 탭과 무관하게 양방향 순위를 불러오고, 기본 설정에서도 방향별 최소 20종목의 120일 차트를 병렬 요청한다.
+- `/analysis/korean-movers/discord`는 수동 호출 API이며 화면, scheduler, `/alerts/price-spike`와 연결되지 않는다.
+- 순위 snapshot, 신규 진입, 강도 변화, 해소, 후속 성과를 저장하지 않는다.
+
+제품 방향:
+
+```text
+급등 감지 -> 추격 금지 상태의 스윙 관찰 씨앗 -> 눌림 형성 후 기존 스윙 엔진 재평가
+급락 감지 -> Portfolio/저장 후보 교차 -> 손절·무효가·뉴스·거래정지 위험 인박스
+```
+
+해야 할 일:
+
+- [ ] 독립 상위 탭을 유지할지 결정하고, 기본안은 시장 화면의 `오늘의 급변 레이더`로 통합한다.
+- [ ] 급등은 `수급 유입`, `과열`, `돌파 후 추격 금지`, `눌림 관찰`처럼 후속 상태를 분리한다.
+- [ ] 급락은 `보유 위험`, `구조 이탈`, `패닉/과매도 관찰`, `시장 동반 충격`으로 분리한다.
+- [ ] 각 종목 카드에 `차트 보기`, `종목 분석`, `뉴스 원인`, `스윙 관찰 추가`, `알림 설정` 동작을 제공한다.
+- [ ] 급락 종목을 Portfolio와 저장 후보에 교차해 보유·관심 종목을 최상단에 배치한다.
+- [ ] 급등 종목을 바로 매수 후보로 승격하지 않고 스마트머니 엔진의 watch 입력으로만 연결한다.
+- [ ] 뉴스·공시·이벤트와 연결해 급변 원인과 근거 링크를 제공한다.
+- [ ] 테마 집계는 서버에서 더 넓은 표본을 사용하고 최소 2~3종목 동조, 거래대금 가중, 공통 뉴스 재료를 반영한다.
+- [ ] snapshot을 저장하고 `신규 진입`, `순위 상승`, `강도 증가`, `해소` delta를 계산한다.
+- [ ] 급등·급락 Discord와 `/alerts/price-spike`를 하나의 이벤트·dedupe·outbox 정책으로 통합한다.
+- [ ] 현재 view 최초 진입 시에만 로드하고 cache, in-flight 공유, timeout, provider concurrency 제한을 적용한다.
+- [ ] 상승과 하락을 독립 요청 상태로 관리해 한쪽 실패가 반대쪽 결과를 지우지 않게 한다.
+- [ ] 급변 탐지 이후 1/3/5/10거래일 수익률과 MFE/MAE를 추적해 점수와 상태를 검증한다.
+
+완료 기준:
+
+- 사용자는 순위 확인 후 분석, 관찰, 위험 확인, 뉴스 확인 중 하나의 다음 행동을 수행할 수 있다.
+- 급등은 추격 매수 신호가 아니라 스윙 관찰 입력으로만 연결된다.
+- 급락한 보유종목과 저장 후보가 일반 시장 순위보다 우선 표시된다.
+- 테마는 단일 종목만으로 생성되지 않고 구성 종목과 공통 근거를 확인할 수 있다.
+- 새 이벤트와 상태 변화만 중복 없이 알림으로 전달되고 후속 성과가 남는다.
+
 ## 6. 모듈 구조 개선안
 
 전면 재작성 대신 다음 경계부터 점진적으로 분리한다.
@@ -301,13 +396,14 @@ public/modules/
 
 ### 7.1 즉시 바로잡을 내용
 
-- `docs/current-implemented-features.md`와 `docs/project-overview-2026-04-27.md`는 2026-05-08 snapshot임을 제목과 상단 상태에 표시한다.
+- `[완료 2026-07-27]` `docs/current-implemented-features.md`를 현재 구현 기준일과 Portfolio·추천 history 상태에 맞게 갱신했다.
+- `docs/project-overview-2026-04-27.md`는 당시 아키텍처 snapshot임을 제목과 상단 상태에 명확히 표시한다.
 - README의 시장 감시 대상을 NASDAQ100, SOX, VIX 포함 9개로 갱신한다.
-- Portfolio API, recommendation history, online presence, market-operation Discord, `/api/market-flow` alias를 API 목록에 추가한다.
-- `data/portfolio-*.json`, swing history, Discord JSONL, market-operation state를 데이터 목록에 추가한다.
+- `[부분 완료 2026-07-27]` Portfolio API, recommendation history, online presence를 현재 기능 문서에 반영했다. market-operation Discord와 `/api/market-flow` alias는 추가 확인한다.
+- `[부분 완료 2026-07-27]` `data/portfolio-*.json`과 recommendation history 파일을 현재 기능 문서에 반영했다. Discord JSONL과 market-operation state는 추가 확인한다.
 - Naver intraday 조사 문서는 구현 완료 상태로 바꾸고 investigations로 이동한다.
-- `PortfolioRecoveryPlan`은 아직 계획이며 구현 완료가 아님을 표시한다.
-- 현재 UI의 Recovery 진행 표시는 실제 손익분기/회수 계산이 아니므로 구현 전에는 "회복 조건 확인"으로 표현한다.
+- `[완료 2026-07-27]` `PortfolioRecoveryPlan`을 최신 조회 시세 snapshot 기준 금액 계산으로 구현하고 문서 상태를 갱신했다.
+- `[완료 2026-07-27]` 실제 진척도가 아니던 Recovery 진행 표시를 제거하고 현재 투입금·추가금·새 평단·회수 목표 흐름으로 교체했다.
 - Portfolio 판단은 규칙 기반이므로 "AI Portfolio Brief", "AI Daily Comment"를 "Portfolio Brief", "규칙 기반 코멘트"로 바꾼다.
 - "실시간 알림"은 내장 수집기가 아니라면 "웹훅 기반 급등 평가"로 정확히 표현한다.
 
@@ -453,17 +549,19 @@ Portfolio:
 ### 단계 A: 외부 노출과 정확성
 
 - HOST, 인증, route limit, webhook allowlist
-- Portfolio snapshot 통합과 파생값 재계산
+- Portfolio 실제 Recovery signal evidence, 기준시각, quote-only provider
 - 프론트 request abort/latest-response-wins
 - 규칙 기반/AI/Recovery 문구 정정
+- 급등·급락 순위 컬럼 파싱, OHLC 불변식, 종목 유형, 필터 의미 수정
 
-완료 기준: 보안 route smoke test와 Portfolio action 경계 테스트가 통과한다.
+완료 기준: 보안 route smoke test와 Portfolio action 경계 테스트가 통과하고, 급등·급락 provider fixture가 현재 표 구조를 정확히 파싱한다.
 
 ### 단계 B: 저장과 외부 호출
 
 - JsonRepository, atomic write, write queue
 - alert outbox와 idempotency
 - 공통 HTTP client, provider concurrency, quote/history cache 분리
+- 급등·급락 snapshot 저장과 신규 진입·강도 변화·해소 delta 계산
 - 런타임 데이터 경로와 retention 정리
 
 완료 기준: 동시 쓰기, 발송 실패 재시도, upstream timeout 테스트가 통과한다.
@@ -491,6 +589,8 @@ Portfolio:
 - [ ] 뉴스 외 view 단위 lazy loading
 - [ ] 모바일 분석 master-detail
 - [ ] Portfolio 수동 추가/수정/삭제 UI
+- [ ] 급등·급락 독립 순위표를 시장의 `오늘의 급변 레이더`로 통합
+- [ ] 급변 종목의 차트·분석·뉴스·관찰·알림 후속 행동 추가
 
 검증 기록: 데스크톱 1440x1000과 모바일 390x844에서 겹침과 가로 넘침을 확인했다. 다른 viewport와 키보드 전체 흐름은 후속 검증 범위다.
 
@@ -505,4 +605,4 @@ Portfolio:
 
 ## 11. 이번 감사에서 바로 수정하지 않은 항목
 
-이 문서 작성과 함께 compact navigation/hero, 데스크톱 분석 작업 구조, Portfolio presentation·용어·배치, 접근성, 뉴스 loading/build를 포함한 1차 UI 재설계를 수행했다. 인증, 저장소 전환, 서버 모듈 분리, 뉴스 외 view lazy loading, 모바일 분석 master-detail, Portfolio 수동 CRUD는 아직 수행하지 않았다. 기존 런타임 JSON/JSONL 수정 상태도 보존했다.
+이 문서 작성과 함께 compact navigation/hero, 데스크톱 분석 작업 구조, Portfolio presentation·용어·배치, 접근성, 뉴스 loading/build를 포함한 1차 UI 재설계를 수행했다. 인증, 저장소 전환, 서버 모듈 분리, 뉴스 외 view lazy loading, 모바일 분석 master-detail, Portfolio 수동 CRUD는 아직 수행하지 않았다. 2026-07-27에 추가한 급등·급락 파싱 정확성 복구와 `급변 레이더` 통합도 계획 상태이며 구현하지 않았다. 기존 런타임 JSON/JSONL 수정 상태도 보존했다.

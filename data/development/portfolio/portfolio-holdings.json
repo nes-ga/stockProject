@@ -1,0 +1,93 @@
+[
+  {
+    "id": "000120:screenshot",
+    "symbol": "000120",
+    "name": "CJ대한통운",
+    "avgPrice": 95883,
+    "currentPrice": 75500,
+    "quantity": 105,
+    "investedAmount": 10067715,
+    "evaluationAmount": 7927500,
+    "profitRate": -21.62,
+    "originalIntent": "LONG_TERM",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "008930:screenshot",
+    "symbol": "008930",
+    "name": "한미사이언스",
+    "avgPrice": 38635,
+    "currentPrice": 34450,
+    "quantity": 119,
+    "investedAmount": 4597565,
+    "evaluationAmount": 4099550,
+    "profitRate": -11.23,
+    "originalIntent": "LONG_TERM",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "014970:screenshot",
+    "symbol": "014970",
+    "name": "삼륭물산",
+    "avgPrice": 6467,
+    "currentPrice": 4725,
+    "quantity": 239,
+    "investedAmount": 1545613,
+    "evaluationAmount": 1129275,
+    "profitRate": -27.28,
+    "originalIntent": "SWING",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "090430:screenshot",
+    "symbol": "090430",
+    "name": "아모레퍼시픽",
+    "avgPrice": 123929,
+    "currentPrice": 125900,
+    "quantity": 25,
+    "investedAmount": 3098225,
+    "evaluationAmount": 3147500,
+    "profitRate": 1.16,
+    "originalIntent": "LONG_TERM",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "095700:screenshot",
+    "symbol": "095700",
+    "name": "제넥신",
+    "avgPrice": 4720,
+    "currentPrice": 2410,
+    "quantity": 849,
+    "investedAmount": 4007280,
+    "evaluationAmount": 2046090,
+    "profitRate": -49.21,
+    "originalIntent": "SWING",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "302440:screenshot",
+    "symbol": "302440",
+    "name": "SK바이오사이언스",
+    "avgPrice": 44036,
+    "currentPrice": 38550,
+    "quantity": 69,
+    "investedAmount": 3038484,
+    "evaluationAmount": 2659950,
+    "profitRate": -12.85,
+    "originalIntent": "LONG_TERM",
+    "memo": "기존 보유종목 매칭"
+  },
+  {
+    "id": "376980:screenshot-20260707",
+    "symbol": "376980",
+    "name": "원티드랩",
+    "avgPrice": 5294,
+    "currentPrice": 2260,
+    "quantity": 3506,
+    "investedAmount": 18560764,
+    "evaluationAmount": 7923560,
+    "profitRate": -57.31,
+    "originalIntent": "UNKNOWN",
+    "memo": "2026-07-07 국내주식잔고 스크린샷 입력. 현재가는 하단 메뉴에 가려져 총평가금액 기준으로 역산"
+  }
+]

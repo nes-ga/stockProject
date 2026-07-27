@@ -1,4 +1,5 @@
 import type { ServerLongTermPick } from "../serverLongTermPicks.js";
+import { buildPortfolioRecoveryPlan, type PortfolioRecoveryBudgetContext } from "./recovery.js";
 import type {
   AiAction,
   CurrentMode,
@@ -11,8 +12,13 @@ import type {
 } from "./types.js";
 
 type SwingHistoryCase = {
+  id?: string;
   lifecycleStatus?: string;
   status?: string;
+  initialStopLossPrice?: number;
+  buyPlan?: {
+    stopLossPrice?: number;
+  };
   historyOutcome?: {
     outcome?: string;
     category?: string;
@@ -24,6 +30,7 @@ export type PortfolioRuleContext = {
   swingCase?: SwingHistoryCase;
   longTermPick?: ServerLongTermPick;
   linkedHistory?: PortfolioLinkedHistory;
+  recoveryBudget?: PortfolioRecoveryBudgetContext;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -98,7 +105,41 @@ function priorityLabel(priority: number): "HIGH" | "MEDIUM" | "LOW" {
   return "LOW";
 }
 
-function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, currentMode: CurrentMode): PortfolioExecutionPlan | undefined {
+function resolveFixedInvalidPrice(holding: PortfolioHolding, context: PortfolioRuleContext) {
+  const avgBasedSafetyFloor = roundPrice(holding.avgPrice * 0.7);
+  const isDirectlyLinked =
+    Boolean(holding.sourceRecommendationId) &&
+    context.swingCase?.id === holding.sourceRecommendationId;
+  const canTrustLinkedStop =
+    isDirectlyLinked || hasCurrentSwingCase(context.swingCase);
+  const linkedStopPrice =
+    context.swingCase?.buyPlan?.stopLossPrice ??
+    context.swingCase?.initialStopLossPrice;
+  if (
+    canTrustLinkedStop &&
+    Number.isFinite(linkedStopPrice) &&
+    Number(linkedStopPrice) > 0
+  ) {
+    return {
+      price: roundPrice(
+        Math.max(Number(linkedStopPrice), Number(avgBasedSafetyFloor ?? 0))
+      ),
+      condition: "직접 연결된 손절가와 보유 평단 70% 중 높은 가격을 고정 추가금 금지선으로 사용"
+    };
+  }
+
+  return {
+    price: avgBasedSafetyFloor,
+    condition: "직접 연결된 손절가가 없어 보유 평단의 70%를 고정 추가금 금지선으로 사용"
+  };
+}
+
+function buildExecutionPlan(
+  holding: PortfolioHolding,
+  aiAction: AiAction,
+  currentMode: CurrentMode,
+  context: PortfolioRuleContext
+): PortfolioExecutionPlan | undefined {
   const current = holding.currentPrice;
   const avg = holding.avgPrice;
   const conditions: string[] = [];
@@ -106,6 +147,9 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
   if (!Number.isFinite(current) || current <= 0) {
     return undefined;
   }
+
+  const invalid = resolveFixedInvalidPrice(holding, context);
+  conditions.push(invalid.condition);
 
   if (aiAction === "ROTATION_BUY" || aiAction === "ADD_ALLOWED") {
     conditions.push("지지권 이탈 없이 거래량 회복 확인");
@@ -120,7 +164,7 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
         from: roundPrice(avg * 0.99),
         to: roundPrice(avg * 1.03)
       },
-      invalidPrice: roundPrice(current * 0.92),
+      invalidPrice: invalid.price,
       conditions,
       summary: "현재가 주변 지지 확인 후 추가분만 회전매수로 관리"
     };
@@ -136,7 +180,7 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
         from: roundPrice(current * 0.94),
         to: roundPrice(current * 0.99)
       },
-      invalidPrice: roundPrice(current * 0.9),
+      invalidPrice: invalid.price,
       conditions,
       summary: currentMode === "SWING_BROKEN" ? "스윙 훼손 상태라 복구 신호 전까지 추가매수 대기" : "추가매수 조건 확인 전까지 대기"
     };
@@ -151,7 +195,7 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
         from: roundPrice(current * 1.08),
         to: roundPrice(avg * 0.98)
       },
-      invalidPrice: roundPrice(current * 0.9),
+      invalidPrice: invalid.price,
       conditions,
       summary: "추가 대응보다 반등 시 노출 축소가 우선"
     };
@@ -161,7 +205,7 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
     conditions.push("손실 확대 방지 우선");
     return {
       watchPrice: roundPrice(current),
-      invalidPrice: roundPrice(current),
+      invalidPrice: invalid.price,
       conditions,
       summary: "무효 조건이 이미 훼손되어 손실 확정 검토"
     };
@@ -169,7 +213,7 @@ function buildExecutionPlan(holding: PortfolioHolding, aiAction: AiAction, curre
 
   return {
     watchPrice: roundPrice(current),
-    invalidPrice: roundPrice(current * 0.9),
+    invalidPrice: invalid.price,
     conditions: ["신규 행동보다 관찰 유지"],
     summary: "보유 상태 점검 유지"
   };
@@ -246,7 +290,14 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     reasons.push("손실률이 커 보유 복구 관점의 재평가가 필요합니다.");
   }
 
-  const executionPlan = buildExecutionPlan(holding, aiAction, currentMode);
+  const executionPlan = buildExecutionPlan(holding, aiAction, currentMode, context);
+  const recoveryPlan = buildPortfolioRecoveryPlan({
+    holding,
+    aiAction,
+    currentMode,
+    executionPlan,
+    budget: context.recoveryBudget
+  });
   const priority = buildPriority({
     currentMode,
     aiAction,
@@ -289,6 +340,7 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     reasons: [...new Set(reasons)],
     risks: [...new Set(risks)],
     executionPlan,
+    recoveryPlan,
     linkedHistory: context.linkedHistory,
     questions: holding.originalIntent === "UNKNOWN" ? ["처음 매수 목적이 스윙인지 중장기인지 확인이 필요합니다."] : undefined,
     holding

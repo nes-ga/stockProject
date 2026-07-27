@@ -1,7 +1,14 @@
 import { scanDividendUniverse } from "./dividendEngine.js";
 import { scanLongTermUniverse } from "./longTermEngine.js";
+import {
+  updateLongTermRecommendationHistoryFromScan,
+  type LongTermRecommendationHistoryUpdateResult
+} from "./longTermRecommendationHistory.js";
 import { writeServerDividendPicks } from "./serverDividendPicks.js";
-import { readServerLongTermPicks, writeServerLongTermPicks } from "./serverLongTermPicks.js";
+import {
+  withServerLongTermPicksMutation,
+  type ServerLongTermPick
+} from "./serverLongTermPicks.js";
 import { readServerSwingPickPayload, writeServerSwingPicks, type ServerSwingPick } from "./serverSwingPicks.js";
 import { analyzeSmartMoneyPattern } from "./stockAnalysis.js";
 import { getStockUniverse } from "./stockUniverse.js";
@@ -45,7 +52,10 @@ type RecommendationUniverseScanResult =
       watchCount: number;
       asOfDate: string;
       universeSize: number;
-      items: Awaited<ReturnType<typeof writeServerLongTermPicks>>;
+      items: ServerLongTermPick[];
+      historyUpdated: boolean;
+      historyUpdate?: LongTermRecommendationHistoryUpdateResult;
+      historyUpdateError?: string;
     }
   | {
       category: "dividend";
@@ -72,6 +82,39 @@ type RecommendationUniverseScanResult =
     };
 
 const activeScanByCategory = new Map<RecommendationUniverseScanScope, Promise<RecommendationUniverseScanResult>>();
+
+type LongTermCommitSafetyScan = Pick<
+  LongTermScanResult,
+  "asOfDate" | "scanCompleteness" | "attemptedCount" | "succeededCount" | "failedCount"
+>;
+
+export function assertLongTermUniverseCommitSafety(
+  result: LongTermCommitSafetyScan,
+  previousItems: ServerLongTermPick[] = []
+) {
+  if (
+    result.attemptedCount <= 0 ||
+    result.scanCompleteness !== "complete" ||
+    result.failedCount !== 0 ||
+    result.succeededCount !== result.attemptedCount
+  ) {
+    throw new Error(
+      `Long-term universe scan is incomplete; refusing to publish current/history ` +
+        `(attempted=${result.attemptedCount}, succeeded=${result.succeededCount}, failed=${result.failedCount}).`
+    );
+  }
+
+  const latestPreviousDate = previousItems.reduce<string | null>((latest, item) => {
+    const candidateDate = item.latestMentionDate ?? item.anchorDate;
+    return latest == null || candidateDate > latest ? candidateDate : latest;
+  }, null);
+
+  if (latestPreviousDate != null && result.asOfDate < latestPreviousDate) {
+    throw new Error(
+      `Long-term universe scan asOfDate ${result.asOfDate} is older than current recommendations ${latestPreviousDate}.`
+    );
+  }
+}
 
 function formatLongTermNoteLabel(label: LongTermUniverseCandidate["label"]) {
   switch (label) {
@@ -1078,10 +1121,12 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
   const result = await scanLongTermUniverse({
     forceRefreshUniverse: true
   });
-  const previousPicksBySymbol = new Map((await readServerLongTermPicks()).map((item) => [item.symbol, item]));
-
-  const items = await writeServerLongTermPicks(
-    result.candidates.map((candidate) => {
+  assertLongTermUniverseCommitSafety(result);
+  const capturedAt = new Date().toISOString();
+  const committed = await withServerLongTermPicksMutation(async (previousItems) => {
+    assertLongTermUniverseCommitSafety(result, previousItems);
+    const previousPicksBySymbol = new Map(previousItems.map((item) => [item.symbol, item]));
+    const nextItems: ServerLongTermPick[] = result.candidates.map((candidate) => {
       const longTermBucket = resolveLongTermBucket(candidate);
       const previousPick = previousPicksBySymbol.get(candidate.symbol);
       const bucketEnteredDate =
@@ -1097,12 +1142,43 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
         latestMentionDate: result.asOfDate,
         bucketEnteredDate,
         note: buildLongTermNote(candidate),
-        category: "longTerm" as const,
+        category: "longTerm",
         longTermBucket,
-        source: "server-universe" as const
+        source: "server-universe"
       };
-    })
-  );
+    });
+    const historyUpdate = await updateLongTermRecommendationHistoryFromScan({
+      asOfDate: result.asOfDate,
+      universeSize: result.universeSize,
+      candidates: result.candidates,
+      currentPicks: nextItems,
+      capturedAt,
+      scanCompleteness: "complete",
+      scope: {
+        mode: "full_universe"
+      }
+    });
+    const dateOverrideBySymbol = new Map(
+      historyUpdate.currentPickDateOverrides.map((override) => [override.symbol, override] as const)
+    );
+    const publishedItems = nextItems.map((item) => {
+      const override = dateOverrideBySymbol.get(item.symbol);
+      return override
+        ? {
+            ...item,
+            anchorDate: override.anchorDate,
+            bucketEnteredDate: override.bucketEnteredDate
+          }
+        : item;
+    });
+
+    return {
+      nextItems: publishedItems,
+      result: historyUpdate
+    };
+  });
+  const items = committed.items;
+  const historyUpdate = committed.result;
 
   return {
     category: "longTerm",
@@ -1112,7 +1188,10 @@ async function scanAndSaveLongTermUniverse(): Promise<RecommendationUniverseScan
     watchCount: result.groupedCandidates.watchCandidates.length,
     asOfDate: result.asOfDate,
     universeSize: result.universeSize,
-    items
+    items,
+    historyUpdated: true,
+    historyUpdate,
+    historyUpdateError: undefined
   };
 }
 

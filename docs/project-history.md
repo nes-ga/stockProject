@@ -2,6 +2,50 @@
 
 이 문서는 주요 변경을 날짜 순서로 정리합니다.
 
+## 2026-07-27 - Portfolio 데이터 원본 경계
+
+- ignore되던 `data/portfolio-holdings.json`을 Git 추적 가능한 개발 전용 `data/development/portfolio` 원본으로 이동했습니다.
+- holdings와 account 저장소가 하나의 공통 data source resolver를 사용하도록 통합했습니다.
+- 비운영 개발 실행은 시작 명령과 관계없이 Git 개발 원본을 기본 선택하고, private 모드는 명시적으로 선택한 Git 제외 디렉터리 또는 저장소 밖 절대경로 하나만 사용합니다.
+- 운영 환경에서 Git 개발 원본이나 저장소 내부 private 경로를 선택하면 시작 단계에서 차단합니다.
+- Portfolio 화면과 API에 현재 데이터 원본, 논리 경로, Git 추적 여부, 자동 왕복 금지 정책을 표시합니다.
+- 개발 원본과 private 원본의 자동 fallback·복사·병합·양방향 동기화를 금지하고 수동 1회 운영 이전 절차를 문서화했습니다.
+
+관련 문서:
+
+- [Portfolio 데이터 원본 경계](./portfolio-data-boundary.md)
+
+## 2026-07-27 - Portfolio 금액 기준 Recovery Plan
+
+- 관찰가를 현재가로 복사해 완료처럼 보이던 `복구 단계` 진행률을 제거했습니다.
+- 실시간 시세를 먼저 보유 데이터에 반영한 뒤 행동 판단과 `PortfolioRecoveryPlan`을 같은 snapshot에서 계산합니다.
+- 카드와 상세 화면에 현재 투입금, 평가금, 손실금, 손익분기 가격, 필요한 반등률을 표시합니다.
+- `RECOVERY_READY`는 예시 추가금과 안전 상한, 새 평단, 1차 추가금 회수, 최종 +3% 목표를 제공합니다.
+- `WAIT_SIGNAL`은 지금 추가금을 0원으로 고정하고 추가매수 가정 시뮬레이션을 만들지 않습니다. 목표 반등률까지 낮추는 데 필요한 금액은 실행안이 아닌 부담 설명으로만 안내합니다.
+- `REDUCE_ONLY`는 추가매수를 차단하고 반등 시 비중 축소를 우선합니다.
+- 매수 직후에는 평단만 낮아지고 절대손실은 거의 그대로라는 설명을 화면에 함께 표시합니다.
+- 오래된 시세·계좌 금액으로 추가금이 제시되지 않도록 시세 4일, 계좌 96시간의 최신성 제한과 추정 총자산 필수 조건을 적용했습니다.
+- 무효가는 직접 연결/현재 진행 중인 손절가와 보유 평단 70% 중 높은 고정 기준을 사용하며, 1차 회수 매도 후 잔여 수량 기준으로 최종 +3% 목표를 다시 계산합니다.
+- 누적 매수원금과 평가금 중 큰 값을 기준으로 종목 노출이 추정 총자산의 15%를 넘지 않게 제한합니다.
+- 입력 매수금액이 평균단가×수량과 2% 이상 다르면 원가 오입력으로 보고 보정합니다.
+- 상단 카운터·우선 대응·카드 행동은 실제 금액 안전 조건을 통과한 `RECOVERY_READY` 기준으로 맞춰, 추가금 0원과 `추가매수 가능`이 동시에 보이지 않게 했습니다.
+- 카드 상단 리커버리 영역에 관리 엔진 무효가와 현재가 대비 거리, 유효/이탈 상태, 산정 근거를 항상 표시합니다.
+- 합성 Recovery 시나리오 검증 스크립트 `npm run verify:portfolio-recovery`를 추가했습니다.
+- 구현 후 감사에서 실제 회복 신호 evidence, 추천 신호 유효기간, 계좌 캡처 시각, quote-only 시세 경로를 후속 실행 안전성 범위로 분리했습니다.
+- 급등·급락 정확성 복구, 보유종목 위험 인박스, 판단 성과 검증까지 이어지는 [고도화 실행 계획](./project-enhancement-execution-plan-2026-07-27.md)을 작성했습니다.
+
+관련 수정:
+
+- `src/services/portfolio/recovery.ts`
+- `src/services/portfolio/types.ts`
+- `src/services/portfolio/rules.ts`
+- `src/services/portfolio/portfolioManager.ts`
+- `public/index.html`
+- `public/app.js`
+- `public/app.css`
+- `docs/work-plan-2026-07-08-portfolio-manager.md`
+- `docs/project-enhancement-execution-plan-2026-07-27.md`
+
 ## 2026-07-13 - UI Shell 1차 개편
 
 - 대형 hero를 compact sticky header로 줄이고 분석 화면을 데스크톱 2열, 모바일 단일 열 작업 구조로 정리했습니다.

@@ -3,7 +3,20 @@ dist
 .env
 .cache/
 data/*.json
+data/*.lock
+data/**/*.lock
+data/.*.tmp
+data/**/.*.tmp
 !data/server-swing-picks.json
 !data/server-smallcap-swing-picks.json
 !data/server-long-term-picks.json
 !data/server-dividend-picks.json
+
+# Portfolio data boundary: private runtime data never enters Git.
+data/private/
+
+# Development-only Portfolio source is intentionally Git-trackable.
+!data/development/
+!data/development/portfolio/
+!data/development/portfolio/*.json
+!data/development/portfolio/README.md

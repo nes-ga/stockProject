@@ -25,6 +25,10 @@ type SwingHistoryCase = {
   };
   outcome?: string;
   returnPct?: number;
+  initialStopLossPrice?: number;
+  buyPlan?: {
+    stopLossPrice?: number;
+  };
 };
 
 export type PortfolioHistoryLinks = {

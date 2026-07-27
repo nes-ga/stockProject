@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "strategy": "longTerm",
+  "generatedAt": "2026-07-27T02:41:54.903Z",
+  "asOfDate": null,
+  "scope": {
+    "source": "scanLongTermUniverse",
+    "sourceFiles": [
+      "data/server-long-term-picks.json"
+    ],
+    "includedStartBuckets": [
+      "accumulate",
+      "buy"
+    ],
+    "watchUpdatesExistingCases": true,
+    "removalClosesCase": false
+  },
+  "commonSummary": {
+    "caseCount": 0,
+    "openCaseCount": 0,
+    "currentCaseCount": 0,
+    "staleCaseCount": 0,
+    "closedCaseCount": 0
+  },
+  "strategySummary": {
+    "currentBuyCount": 0,
+    "currentAccumulateCount": 0,
+    "currentWatchCount": 0,
+    "eventCount": 0,
+    "lastScanUniverseSize": 0,
+    "lastScanCandidateCount": 0,
+    "lastScanActionableCount": 0,
+    "lastScanCompleteness": "unknown"
+  },
+  "appliedScans": [],
+  "cases": []
+}

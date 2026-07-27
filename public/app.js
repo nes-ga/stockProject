@@ -2255,6 +2255,64 @@ function getPortfolioActionTitle(action) {
   return labels[action] ?? getPortfolioActionLabel(action);
 }
 
+function getPortfolioRecoveryWaitLabel(plan) {
+  const reasons = new Set(Array.isArray(plan?.blockReasons) ? plan.blockReasons : []);
+  if (reasons.has("QUOTE_UNAVAILABLE")) return "시세 갱신 필요";
+  if (reasons.has("ACCOUNT_BUDGET_UNAVAILABLE")) return "계좌 금액 갱신 필요";
+  if (reasons.has("BELOW_INVALID_PRICE")) return "무효가 이탈 · 추가매수 금지";
+  if (reasons.has("POSITION_LIMIT") || reasons.has("AMOUNT_BELOW_ONE_SHARE")) return "안전 한도 부족 · 추가금 0원";
+  if (reasons.has("LOSS_TOO_DEEP")) return "손실 부담 과다 · 추가매수 보류";
+  if (reasons.has("RISK_LIMIT")) return "평단 개선 효과 부족 · 추가매수 보류";
+  return "복구 신호 확인 전 매수 금지";
+}
+
+function getPortfolioEffectiveAction(item) {
+  const action = item?.aiAction;
+  if (action === "ADD_ALLOWED" || action === "ROTATION_BUY") {
+    if (item?.recoveryPlan?.status === "RECOVERY_READY") {
+      return action;
+    }
+    if (item?.recoveryPlan?.status === "NOT_ELIGIBLE") {
+      return "HOLD";
+    }
+    return "ADD_WAIT";
+  }
+  return action;
+}
+
+function getPortfolioDisplayActionTitle(item) {
+  if (item?.recoveryPlan?.status === "WAIT_SIGNAL") {
+    return getPortfolioRecoveryWaitLabel(item.recoveryPlan);
+  }
+  if (
+    item?.recoveryPlan?.status === "NOT_ELIGIBLE" &&
+    (item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY")
+  ) {
+    return "현재 추가금 불필요 · 보유 유지";
+  }
+  return getPortfolioActionTitle(getPortfolioEffectiveAction(item));
+}
+
+function getPortfolioDisplaySummary(item) {
+  if (
+    item?.recoveryPlan?.status === "WAIT_SIGNAL" &&
+    (item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY")
+  ) {
+    return "기본 종목 규칙은 추가 후보지만 금액·시세·안전 조건이 충족되지 않아 현재 추가금은 0원입니다.";
+  }
+  if (
+    item?.recoveryPlan?.status === "NOT_ELIGIBLE" &&
+    (item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY")
+  ) {
+    return "현재 손익 기준으로는 리커버리 추가금이 필요하지 않아 보유 상태를 유지합니다.";
+  }
+  return item?.summary ?? "";
+}
+
+function getPortfolioItemActionTone(item) {
+  return getPortfolioActionTone(getPortfolioEffectiveAction(item));
+}
+
 function getPortfolioStatusLabel(item) {
   if (item.currentMode === "SWING_BROKEN") return "조건 훼손";
   if (item.currentMode === "SWING_DAMAGED" || item.currentMode === "LONG_TERM_WEAKENED") return "조건 약화";
@@ -2270,7 +2328,8 @@ function isPortfolioRiskAction(action) {
 }
 
 function isPortfolioActionNeeded(item) {
-  return isPortfolioRiskAction(item.aiAction) || item.aiAction === "ADD_WAIT" || item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY";
+  const action = getPortfolioEffectiveAction(item);
+  return isPortfolioRiskAction(action) || action === "ADD_WAIT" || action === "ADD_ALLOWED" || action === "ROTATION_BUY";
 }
 
 function getPortfolioActionSortWeight(item) {
@@ -2284,7 +2343,7 @@ function getPortfolioActionSortWeight(item) {
     HOLD: 5,
     NO_ACTION: 0
   };
-  return weights[item.aiAction] ?? 0;
+  return weights[getPortfolioEffectiveAction(item)] ?? 0;
 }
 
 function sortPortfolioItemsForDecision(items) {
@@ -2303,11 +2362,13 @@ function sortPortfolioItemsForDecision(items) {
 
 function getPortfolioDashboardState(summary, items) {
   const account = summary?.account ?? {};
-  const highCount = Number(summary?.highPriority ?? 0);
+  const highCount = items.filter(
+    (item) => item.priorityLabel === "HIGH" && isPortfolioActionNeeded(item)
+  ).length;
   const reduceCount = Number(summary?.reduceOnRebound ?? 0);
   const totalProfitRate = Number(account.totalProfitRate ?? 0);
-  const addCount = Number(summary?.addAllowed ?? 0) + Number(summary?.rotationBuy ?? 0);
-  const waitCount = items.filter((item) => item.aiAction === "ADD_WAIT" || item.suggestedIntent === "RECOVERY").length;
+  const addCount = items.filter((item) => item.recoveryPlan?.status === "RECOVERY_READY").length;
+  const waitCount = items.filter((item) => item.recoveryPlan?.status === "WAIT_SIGNAL" || item.suggestedIntent === "RECOVERY").length;
 
   if (reduceCount > 0 || highCount >= 2 || totalProfitRate <= -25) {
     return {
@@ -2346,30 +2407,32 @@ function getPortfolioDashboardState(summary, items) {
 
 function getPortfolioActionCounters(items) {
   return {
-    reduce: items.filter((item) => item.aiAction === "REDUCE_ON_REBOUND" || item.aiAction === "CUT_LOSS").length,
-    watch: items.filter((item) => item.aiAction === "ADD_WAIT" || item.aiAction === "WATCH").length,
-    add: items.filter((item) => item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY").length,
-    hold: items.filter((item) => item.aiAction === "HOLD").length
+    reduce: items.filter((item) => isPortfolioRiskAction(getPortfolioEffectiveAction(item))).length,
+    watch: items.filter((item) => {
+      const action = getPortfolioEffectiveAction(item);
+      return action === "ADD_WAIT" || action === "WATCH";
+    }).length,
+    add: items.filter((item) => item.recoveryPlan?.status === "RECOVERY_READY").length,
+    hold: items.filter((item) => getPortfolioEffectiveAction(item) === "HOLD").length
   };
 }
 
 function getPortfolioPriorityBriefItems(items) {
   return sortPortfolioItemsForDecision(items)
-    .filter((item) => item.priorityLabel === "HIGH")
+    .filter((item) => item.priorityLabel === "HIGH" && isPortfolioActionNeeded(item))
     .slice(0, 3);
 }
 
 function getPortfolioBriefActionText(item) {
   if (item.aiAction === "REDUCE_ON_REBOUND") return "반등 시 비중 축소";
-  if (item.aiAction === "ADD_WAIT") return "지지 확인 후 대응";
   if (item.aiAction === "CUT_LOSS") return "손실 정리 검토";
-  return getPortfolioActionTitle(item.aiAction);
+  return getPortfolioDisplayActionTitle(item);
 }
 
 function buildPortfolioDailyComment(summary, items) {
   const state = getPortfolioDashboardState(summary, items);
   const priorityItems = getPortfolioPriorityBriefItems(items);
-  const addCount = items.filter((item) => item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY").length;
+  const addCount = items.filter((item) => item.recoveryPlan?.status === "RECOVERY_READY").length;
 
   if (state.tone === "danger") {
     const names = priorityItems.map((item) => item.name).filter(Boolean).slice(0, 2).join(", ");
@@ -2406,11 +2469,14 @@ function getPortfolioSections(items) {
   const recovery = [];
 
   for (const item of sorted) {
-    if (item.priorityLabel === "HIGH" || item.priority >= 70 || isPortfolioRiskAction(item.aiAction)) {
+    if (
+      isPortfolioRiskAction(item.aiAction) ||
+      ((item.priorityLabel === "HIGH" || item.priority >= 70) && isPortfolioActionNeeded(item))
+    ) {
       urgent.push(item);
       continue;
     }
-    if (item.aiAction === "ADD_WAIT" || item.aiAction === "WATCH" || item.suggestedIntent === "RECOVERY" || item.currentMode === "HOLDING_RECOVERY_CANDIDATE") {
+    if (getPortfolioEffectiveAction(item) === "ADD_WAIT" || item.aiAction === "WATCH" || item.suggestedIntent === "RECOVERY" || item.currentMode === "HOLDING_RECOVERY_CANDIDATE") {
       recovery.push(item);
       continue;
     }
@@ -2432,8 +2498,8 @@ function getPortfolioSections(items) {
     },
     {
       key: "recovery",
-      title: "복구 후보 / 관찰 후보",
-      help: "추가매수보다 회복 신호 확인이 먼저인 종목입니다.",
+      title: "리커버리 대기",
+      help: "신호가 확인되기 전에는 추가매수 금액을 0원으로 두는 종목입니다.",
       items: recovery
     }
   ];
@@ -2442,23 +2508,25 @@ function getPortfolioSections(items) {
 function buildPortfolioTodayComment(items) {
   const sorted = sortPortfolioItemsForDecision(items);
   const riskItems = sorted.filter((item) => isPortfolioRiskAction(item.aiAction) || Number(item.holding?.profitRate ?? 0) <= -25);
-  const buyItems = sorted.filter((item) => item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY");
-  const waitItems = sorted.filter((item) => item.aiAction === "ADD_WAIT");
+  const buyItems = sorted.filter((item) => item.recoveryPlan?.status === "RECOVERY_READY");
+  const waitItems = sorted.filter((item) => item.recoveryPlan?.status === "WAIT_SIGNAL");
 
   if (riskItems.length) {
     const primary = riskItems[0];
     const secondary = waitItems.find((item) => item.symbol !== primary.symbol) ?? riskItems.find((item) => item.symbol !== primary.symbol);
     const firstSentence = `${primary.name}은 ${getPortfolioActionTitle(primary.aiAction)}가 우선입니다.`;
-    const secondSentence = secondary ? `${secondary.name}은 추가 대응보다 ${secondary.aiAction === "ADD_WAIT" ? "지지 확인" : getPortfolioActionTitle(secondary.aiAction)}을 먼저 봅니다.` : "";
+    const secondSentence = secondary
+      ? `${secondary.name}은 ${getPortfolioDisplayActionTitle(secondary)} 상태라 추가 대응을 보류합니다.`
+      : "";
     return [firstSentence, secondSentence].filter(Boolean).join(" ");
   }
 
   if (buyItems.length) {
-    return `${buyItems[0].name}은 조건부 추가매수 가능 후보입니다. 무효가를 먼저 고정하고 분할 대응만 검토합니다.`;
+    return `${buyItems[0].name}은 금액·안전 조건을 통과한 분할매수 검토 후보입니다. 무효가를 먼저 확인합니다.`;
   }
 
   return waitItems.length
-    ? `${waitItems[0].name}은 복구 신호 대기 상태입니다. 오늘은 추가매수보다 관찰가 회복 여부를 먼저 확인합니다.`
+    ? `${waitItems[0].name}은 복구 신호 대기 상태입니다. 신호가 확인되기 전 추가매수 금액은 0원으로 둡니다.`
     : "오늘은 즉시 대응보다 보유 상태 점검이 우선입니다. 신규 행동은 가격 조건이 확인된 종목만 검토합니다.";
 }
 
@@ -2473,21 +2541,41 @@ function renderPortfolioSummary() {
   }
   const items = Array.isArray(portfolioPayload?.items) ? portfolioPayload.items : [];
   const account = summary.account ?? {};
+  const dataSource = portfolioPayload?.dataSource ?? {};
+  const dataSourceTone = dataSource.developmentOnly ? "development" : "private";
+  const dataSourceFlags = dataSource.versionControlled
+    ? "Git 추적 · 개발 전용"
+    : "Git 제외 · 비공개";
   const totalProfitClass = Number(account.totalProfitAmount) > 0 ? "positive" : Number(account.totalProfitAmount) < 0 ? "negative" : "";
-  const addAvailableCount = (summary.addAllowed ?? 0) + (summary.rotationBuy ?? 0);
   const state = getPortfolioDashboardState(summary, items);
   const priorityItems = getPortfolioPriorityBriefItems(items);
   const counters = getPortfolioActionCounters(items);
   const dailyComment = buildPortfolioDailyComment(summary, items);
+  const suggestedRecoveryBudget = Number(summary.suggestedRecoveryBudget ?? 0);
+  const actionableHighPriorityCount = items.filter(
+    (item) => item.priorityLabel === "HIGH" && isPortfolioActionNeeded(item)
+  ).length;
   const cards = [
-    ["손익", "평가손익", formatSignedWon(account.totalProfitAmount), "현재 보유 기준", totalProfitClass],
-    ["%", "총 수익률", formatPercent(account.totalProfitRate ?? 0), "실시간 현재가 반영", totalProfitClass],
-    ["수", "보유종목", `${formatNumber(account.total ?? summary.total ?? 0)} 종목`, "관리 대상"],
-    ["!", "우선 대응", `${formatNumber(summary.highPriority ?? 0)} 종목`, "긴급 우선", summary.highPriority > 0 ? "negative" : ""],
-    ["+", "추가매수", `${formatNumber(addAvailableCount)} 종목`, "조건부 추가매수", addAvailableCount > 0 ? "positive" : ""],
+    ["원", "현재 투입금", `${formatNumber(account.totalInvestedAmount ?? 0)}원`, "보유 원금 합계"],
+    ["평", "현재 평가금", `${formatNumber(account.totalEvaluationAmount ?? 0)}원`, "실시간 현재가 반영"],
+    ["손", "현재 손익", formatSignedWon(account.totalProfitAmount), `수익률 ${formatPercent(account.totalProfitRate ?? 0)}`, totalProfitClass],
+    ["+", "추가 검토금", `${formatNumber(suggestedRecoveryBudget)}원`, "조건·안전 한도 통과 합계", suggestedRecoveryBudget > 0 ? "positive" : ""],
+    ["!", "우선 대응", `${formatNumber(actionableHighPriorityCount)} 종목`, "긴급 우선", actionableHighPriorityCount > 0 ? "negative" : ""],
     ["↓", "비중축소", `${formatNumber(summary.reduceOnRebound ?? 0)} 종목`, "반등 시 축소", summary.reduceOnRebound > 0 ? "negative" : ""]
   ];
   portfolioSummary.innerHTML = `
+    <section class="portfolio-data-source-banner ${escapeHtml(dataSourceTone)}">
+      <div>
+        <span>포트폴리오 데이터 원본</span>
+        <strong>${escapeHtml(dataSource.label ?? "원본 정보 없음")}</strong>
+        <p>이 Portfolio는 <b>${escapeHtml(dataSource.displayPath ?? "-")}</b>만 읽고 저장합니다.</p>
+      </div>
+      <aside>
+        <em>${escapeHtml(dataSourceFlags)}</em>
+        <small>${escapeHtml(dataSource.readWritePolicy ?? "다른 원본과 자동 동기화하지 않습니다.")}</small>
+      </aside>
+    </section>
+
     <section class="portfolio-brief-hero ${escapeHtml(state.tone)}">
       <div>
         <span class="portfolio-brief-eyebrow">보유종목 브리핑</span>
@@ -2519,7 +2607,7 @@ function renderPortfolioSummary() {
 
     <section class="portfolio-priority-counters">
       <span class="danger">축소 ${formatNumber(counters.reduce)}</span>
-      <span class="watch">관찰 ${formatNumber(counters.watch)}</span>
+      <span class="watch">추가대기 ${formatNumber(counters.watch)}</span>
       <span class="positive">추가 ${formatNumber(counters.add)}</span>
       <span class="hold">유지 ${formatNumber(counters.hold)}</span>
     </section>
@@ -2578,10 +2666,6 @@ function formatOptionalPercent(value) {
 
 function getPortfolioProfitClass(value) {
   return Number(value) > 0 ? "positive" : Number(value) < 0 ? "negative" : "neutral";
-}
-
-function isPortfolioBuyAction(action) {
-  return action === "ADD_ALLOWED" || action === "ROTATION_BUY";
 }
 
 function setPortfolioScreenshotStatus(text, tone = "neutral") {
@@ -2869,95 +2953,282 @@ async function savePortfolioDraftRows(options = {}) {
   }
 }
 
-function getPortfolioActionZone(item) {
-  const executionPlan = item.executionPlan ?? {};
-  if (isPortfolioBuyAction(item.aiAction)) {
-    return {
-      label: "추가 구간",
-      zone: executionPlan.addPriceZone
-    };
-  }
-  if (item.aiAction === "REDUCE_ON_REBOUND" || item.aiAction === "CUT_LOSS") {
-    return {
-      label: "축소 구간",
-      zone: executionPlan.reboundReduceZone
-    };
-  }
-  return {
-    label: "관찰구간",
-    zone: executionPlan.watchPriceZone
+function getPortfolioRecoveryStatusMeta(plan) {
+  const status = plan?.status;
+  const values = {
+    RECOVERY_READY: {
+      tone: "ready",
+      label: "금액 계산 완료",
+      amountLabel: "예시 추가금"
+    },
+    WAIT_SIGNAL: {
+      tone: "wait",
+      label: getPortfolioRecoveryWaitLabel(plan),
+      amountLabel: "지금 추가금"
+    },
+    REDUCE_ONLY: {
+      tone: "reduce",
+      label: "추가매수 금지 · 축소 우선",
+      amountLabel: "지금 추가금"
+    },
+    NOT_ELIGIBLE: {
+      tone: "disabled",
+      label: Number(plan?.currentLossAmount) > 0 ? "현재 규칙상 추가금 0원" : "추가 리커버리 불필요",
+      amountLabel: "지금 추가금"
+    }
   };
+  return values[status] ?? values.NOT_ELIGIBLE;
 }
 
-function getPortfolioRecoverySteps(item) {
-  if (!(item.suggestedIntent === "RECOVERY" || item.aiAction === "ADD_WAIT" || item.currentMode === "HOLDING_RECOVERY_CANDIDATE")) {
-    return [];
+function formatPortfolioReboundRate(value) {
+  if (!Number.isFinite(Number(value))) {
+    return "-";
   }
-
-  const holding = item.holding ?? {};
-  const executionPlan = item.executionPlan ?? {};
-  const currentPrice = Number(holding.currentPrice);
-  const steps = [];
-
-  if (Number.isFinite(executionPlan.invalidPrice)) {
-    steps.push({
-      label: "무효가 위 유지",
-      done: Number.isFinite(currentPrice) && currentPrice > executionPlan.invalidPrice
-    });
-  }
-  if (Number.isFinite(executionPlan.watchPrice)) {
-    steps.push({
-      label: "관찰가 회복",
-      done: Number.isFinite(currentPrice) && currentPrice >= executionPlan.watchPrice
-    });
-  }
-  if (executionPlan.watchPriceZone || executionPlan.addPriceZone) {
-    steps.push({
-      label: "지지 구간 확인",
-      done: item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY"
-    });
-  }
-  if (executionPlan.reboundReduceZone) {
-    steps.push({
-      label: "반등 대응 계획",
-      done: true
-    });
-  }
-  steps.push({
-    label: "매수 목적 확인",
-    done: item.originalIntent !== "UNKNOWN"
-  });
-
-  return steps.slice(0, 5);
+  const number = Math.max(0, Number(value));
+  return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
 }
 
-function renderPortfolioRecoveryProgress(item) {
-  const steps = getPortfolioRecoverySteps(item);
-  if (!steps.length) {
+function renderPortfolioRecoveryPlan(item, options = {}) {
+  const plan = item.recoveryPlan;
+  if (!plan) {
     return "";
   }
 
-  const doneCount = steps.filter((step) => step.done).length;
-  const progress = Math.round((doneCount / steps.length) * 100);
+  const compact = Boolean(options.compact);
+  const holding = item.holding ?? {};
+  const simulation = plan.simulation;
+  const statusMeta = getPortfolioRecoveryStatusMeta(plan);
+  const conditions = Array.isArray(plan.conditions) ? plan.conditions : [];
+  const invalidPriceBasis = conditions.find(
+    (condition) =>
+      String(condition).includes("추가금 금지선") ||
+      String(condition).includes("손절가")
+  );
+  const currentPrice = Number(holding.currentPrice);
+  const invalidPrice = Number(plan.invalidPrice ?? item.executionPlan?.invalidPrice);
+  const hasInvalidPrice = Number.isFinite(invalidPrice) && invalidPrice > 0;
+  const canCompareInvalidPrice =
+    hasInvalidPrice && Number.isFinite(currentPrice) && currentPrice > 0;
+  const invalidPriceBreached =
+    canCompareInvalidPrice && currentPrice <= invalidPrice;
+  const invalidPriceDistanceRate = canCompareInvalidPrice
+    ? Math.abs(((currentPrice - invalidPrice) / currentPrice) * 100)
+    : undefined;
+  const invalidPriceMeta = !hasInvalidPrice
+    ? {
+        tone: "missing",
+        status: "미산정",
+        help: "관리 엔진이 무효가를 계산하지 못해 추가매수 판단을 제한합니다."
+      }
+    : !canCompareInvalidPrice
+      ? {
+          tone: "missing",
+          status: "현재가 확인 필요",
+          help: "현재가를 확인할 수 없어 무효가 이탈 여부를 판단하지 못했습니다."
+        }
+    : invalidPriceBreached
+      ? {
+          tone: "breached",
+          status: "기준 이탈",
+          help: `현재 ${formatNumber(currentPrice)}원 · 무효가 이하이므로 추가매수를 중단합니다.`
+        }
+      : {
+          tone: "valid",
+          status: "기준 유효",
+          help: `현재 ${formatNumber(currentPrice)}원 · 무효가는 현재가보다 ${Number(invalidPriceDistanceRate).toFixed(2)}% 아래이며, 이 가격 이하에서는 추가매수를 중단합니다.`
+        };
+  const additionalAmount = plan.status === "RECOVERY_READY" ? Number(plan.suggestedAdditionalBuyAmount ?? 0) : 0;
+  const conditionalAdditionalAmount =
+    plan.status === "WAIT_SIGNAL" ? Number(plan.suggestedAdditionalBuyAmount ?? 0) : 0;
+  const totalAfterBuy =
+    plan.status === "RECOVERY_READY"
+      ? Number(simulation?.newTotalInvestedAmount ?? plan.currentInvestedAmount)
+      : Number(plan.currentInvestedAmount);
+  const avgAfterBuy = Number(simulation?.newAvgPrice ?? plan.breakEvenPrice);
+  const reboundAfterBuy = Number(simulation?.requiredReboundRateAfterBuy ?? plan.requiredReboundRate);
+  const firstTarget = simulation?.firstRecoveryTarget;
+  const finalTarget = simulation?.finalRecoveryTarget;
+  const targetAmountReasonCodes = new Set(["LOSS_TOO_DEEP", "RISK_LIMIT"]);
+  const canShowTargetRequiredAmount = Array.isArray(plan.blockReasons)
+    ? plan.blockReasons.some((reason) => targetAmountReasonCodes.has(reason))
+    : false;
+  const targetRequiredAmount = canShowTargetRequiredAmount
+    ? Number(plan.requiredAdditionalBuyAmountForTarget ?? 0)
+    : 0;
+  const targetRequiredRate = Number(plan.targetRequiredReboundRate ?? 0);
+  const targetExceedsSafetyLimit =
+    Number.isFinite(plan.maxAdditionalBuyAmount) &&
+    targetRequiredAmount > Number(plan.maxAdditionalBuyAmount);
+  const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
+  const reduceZone = plan.reduceTarget;
+  const recoveryTargetMetric = firstTarget
+    ? {
+        label: "1차 추가금 회수",
+        value: `${formatNumber(firstTarget.price)}원`,
+        help: firstTarget.sellQuantity ? `${formatNumber(firstTarget.sellQuantity)}주 회수 기준` : ""
+      }
+    : plan.status === "WAIT_SIGNAL" && targetRequiredAmount > 0
+      ? {
+          label: `본전 부담 +${formatNumber(targetRequiredRate)}% 목표`,
+          value: `${formatNumber(targetRequiredAmount)}원 필요`,
+          help: Number.isFinite(plan.maxAdditionalBuyAmount)
+            ? targetExceedsSafetyLimit
+              ? `안전 상한 ${formatNumber(plan.maxAdditionalBuyAmount)}원 초과`
+              : `안전 상한 ${formatNumber(plan.maxAdditionalBuyAmount)}원 · 신호 후 재계산`
+            : "현재 안전 상한으로는 실행 불가"
+        }
+      : plan.status === "REDUCE_ONLY"
+        ? {
+            label: "반등 축소 구간",
+            value: formatPortfolioPriceZone(reduceZone),
+            help: ""
+          }
+        : {
+            label: "1차 회수",
+            value: "-",
+            help: ""
+          };
+
   return `
-    <div class="portfolio-recovery-progress">
-      <div class="portfolio-recovery-head">
-        <span>복구 단계</span>
-        <strong>${escapeHtml(String(doneCount))} / ${escapeHtml(String(steps.length))}</strong>
-      </div>
-      <div class="portfolio-recovery-bar"><span style="width:${progress}%;"></span></div>
-      <div class="portfolio-recovery-steps">
-        ${steps
-          .map(
-            (step) => `
-              <span class="${step.done ? "done" : "pending"}">
-                <em>${step.done ? "완료" : "대기"}</em>${escapeHtml(step.label)}
-              </span>
-            `
-          )
-          .join("")}
-      </div>
+    <div class="portfolio-money-grid">
+      <span>
+        <em>현재 투입금</em>
+        <strong data-portfolio-invested-amount>${formatNumber(plan.currentInvestedAmount)}원</strong>
+      </span>
+      <span>
+        <em>현재 평가금</em>
+        <strong data-portfolio-evaluation-amount>${formatNumber(plan.currentEvaluationAmount)}원</strong>
+      </span>
+      <span>
+        <em>현재 손익</em>
+        <strong class="portfolio-profit ${escapeHtml(getPortfolioProfitClass(plan.currentProfitAmount))}" data-portfolio-profit-amount>${formatSignedWon(plan.currentProfitAmount)}</strong>
+      </span>
+      <span>
+        <em>지금 본전까지</em>
+        <strong data-portfolio-required-rebound>${escapeHtml(formatPortfolioReboundRate(plan.requiredReboundRate))}</strong>
+      </span>
     </div>
+
+    <section class="portfolio-recovery-plan ${escapeHtml(statusMeta.tone)}">
+      <div class="portfolio-recovery-plan-head">
+        <div>
+          <span>금액 기준 리커버리</span>
+          <strong>${escapeHtml(statusMeta.label)}</strong>
+        </div>
+        <em>${escapeHtml(plan.priceSource === "LIVE_QUOTE" ? "실시간 시세" : "저장 시세")}</em>
+      </div>
+
+      <div class="portfolio-invalid-price ${escapeHtml(invalidPriceMeta.tone)}">
+        <div>
+          <em>관리 엔진 무효가</em>
+          <strong data-portfolio-invalid-price>${hasInvalidPrice ? `${formatNumber(invalidPrice)}원` : "-"}</strong>
+        </div>
+        <span>${escapeHtml(invalidPriceMeta.status)}</span>
+        <small>${escapeHtml(invalidPriceMeta.help)}</small>
+        ${
+          invalidPriceBasis
+            ? `<small class="portfolio-invalid-price-basis">산정 기준: ${escapeHtml(invalidPriceBasis)}</small>`
+            : ""
+        }
+      </div>
+
+      <div class="portfolio-recovery-route">
+        <span>
+          <em>현재 원금</em>
+          <strong>${formatNumber(plan.currentInvestedAmount)}원</strong>
+        </span>
+        <i aria-hidden="true">→</i>
+        <span class="portfolio-recovery-amount">
+          <em>${escapeHtml(statusMeta.amountLabel)}</em>
+          <strong>${formatNumber(additionalAmount)}원</strong>
+          ${
+            plan.status === "RECOVERY_READY" && Number.isFinite(plan.maxAdditionalBuyAmount)
+              ? `<small>안전 상한 ${formatNumber(plan.maxAdditionalBuyAmount)}원</small>`
+              : `<small>${
+                  plan.status === "WAIT_SIGNAL"
+                    ? conditionalAdditionalAmount > 0
+                      ? `신호 후 예시 ${formatNumber(conditionalAdditionalAmount)}원`
+                      : targetRequiredAmount > 0
+                        ? `+${formatNumber(targetRequiredRate)}% 목표 필요금 ${formatNumber(targetRequiredAmount)}원`
+                        : "신호 확인 후 재계산"
+                    : plan.status === "REDUCE_ONLY"
+                      ? "반등 시 회수 우선"
+                      : Number(plan.currentLossAmount) > 0
+                        ? "현재 행동 규칙상 대기"
+                        : "추가 자금 불필요"
+                }</small>`
+          }
+        </span>
+        <i aria-hidden="true">→</i>
+        <span>
+          <em>${plan.status === "RECOVERY_READY" ? "추가 후 총투입" : "현재 총투입"}</em>
+          <strong>${formatNumber(totalAfterBuy)}원</strong>
+        </span>
+      </div>
+
+      <div class="portfolio-recovery-target-grid">
+        <span>
+          <em>${simulation ? (plan.status === "WAIT_SIGNAL" ? "신호 후 예상 평단" : "예상 새 평단") : "현재 손익분기"}</em>
+          <strong>${formatNumber(avgAfterBuy)}원</strong>
+          ${simulation ? `<small>기존 ${formatNumber(plan.breakEvenPrice)}원</small>` : ""}
+        </span>
+        <span>
+          <em>${simulation ? (plan.status === "WAIT_SIGNAL" ? "신호 후 본전까지" : "추가 후 본전까지") : "현재 본전까지"}</em>
+          <strong>${escapeHtml(formatPortfolioReboundRate(reboundAfterBuy))}</strong>
+          ${
+            simulation
+              ? `<small>${escapeHtml(formatPortfolioReboundRate(plan.requiredReboundRate))}에서 ${formatNumber(simulation.reboundRateImprovement)}%p 개선</small>`
+              : ""
+          }
+        </span>
+        <span>
+          <em>${escapeHtml(recoveryTargetMetric.label)}</em>
+          <strong>${escapeHtml(recoveryTargetMetric.value)}</strong>
+          ${recoveryTargetMetric.help ? `<small>${escapeHtml(recoveryTargetMetric.help)}</small>` : ""}
+        </span>
+        <span>
+          <em>최종 플러스 목표</em>
+          <strong>${finalTarget ? `${formatNumber(finalTarget.price)}원` : "-"}</strong>
+          ${
+            finalTarget
+              ? `<small>${
+                  firstTarget && finalTarget.sellQuantity
+                    ? `1차 회수 후 잔여 ${formatNumber(finalTarget.sellQuantity)}주 · `
+                    : ""
+                }전체 자금 +${formatNumber(finalTarget.targetProfitRate)}%</small>`
+              : ""
+          }
+        </span>
+      </div>
+
+      <p class="portfolio-recovery-summary">${escapeHtml(plan.summary ?? "")}</p>
+      ${
+        simulation
+          ? `<p class="portfolio-recovery-truth">평단은 낮아져도 매수 직후 절대손실은 약 ${formatNumber(simulation.lossAmountAfterBuy)}원으로 그대로입니다. 그래서 1차 목표에서 추가매수금부터 회수합니다.</p>`
+          : ""
+      }
+      ${
+        compact || (!conditions.length && !warnings.length)
+          ? ""
+          : `
+            <div class="portfolio-recovery-notes">
+              ${conditions.slice(0, 5).map((text) => `<span>${escapeHtml(text)}</span>`).join("")}
+              ${warnings.slice(0, 3).map((text) => `<span class="warning">${escapeHtml(text)}</span>`).join("")}
+            </div>
+          `
+      }
+      ${
+        compact
+          ? ""
+          : `
+            <div class="portfolio-price-conditions">
+              <span><em>현재가</em><strong>${formatNumber(holding.currentPrice)}원</strong></span>
+              <span><em>추가매수 검토가</em><strong>${escapeHtml(formatPortfolioPriceZone(item.executionPlan?.addPriceZone))}</strong></span>
+              <span><em>신호 확인 구간</em><strong>${escapeHtml(formatPortfolioPriceZone(item.executionPlan?.watchPriceZone))}</strong></span>
+            </div>
+          `
+      }
+    </section>
   `;
 }
 
@@ -3015,29 +3286,22 @@ function getPortfolioDetailContext(item) {
     executionPlan,
     conditions,
     linkedHistory,
-    actionTone: getPortfolioActionTone(item.aiAction),
-    actionZone: getPortfolioActionZone(item)
+    actionTone: getPortfolioItemActionTone(item)
   };
 }
 
 function renderPortfolioDetailContent(item) {
-  const { holding, evaluationAmount, investedAmount, profitAmount, executionPlan, conditions, linkedHistory, actionTone, actionZone } =
+  const { holding, evaluationAmount, investedAmount, conditions, linkedHistory, actionTone } =
     getPortfolioDetailContext(item);
-  const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
 
   return `
     <section class="portfolio-detail-modal-summary">
       <div class="portfolio-action-badge ${escapeHtml(actionTone)}">
-        <strong>${escapeHtml(getPortfolioActionTitle(item.aiAction))}</strong>
+        <strong>${escapeHtml(getPortfolioDisplayActionTitle(item))}</strong>
         <span>${escapeHtml(getPortfolioStatusLabel(item))}</span>
       </div>
-      <p class="portfolio-summary-text">${escapeHtml(item.summary ?? "")}</p>
-      <div class="portfolio-key-price-grid">
-        <span><em>관찰가</em><strong>${Number.isFinite(executionPlan.watchPrice) ? `${formatNumber(executionPlan.watchPrice)}원` : "-"}</strong></span>
-        <span><em>${escapeHtml(actionZone.label)}</em><strong>${escapeHtml(formatPortfolioPriceZone(actionZone.zone))}</strong></span>
-        <span><em>무효가</em><strong>${Number.isFinite(executionPlan.invalidPrice) ? `${formatNumber(executionPlan.invalidPrice)}원` : "-"}</strong></span>
-        <span><em>현재 손익</em><strong class="portfolio-profit ${escapeHtml(returnClass)}">${formatSignedWon(profitAmount)}</strong></span>
-      </div>
+      <p class="portfolio-summary-text">${escapeHtml(getPortfolioDisplaySummary(item))}</p>
+      ${renderPortfolioRecoveryPlan(item)}
     </section>
     <div class="portfolio-detail-grid">
       <section>
@@ -3061,17 +3325,25 @@ function renderPortfolioDetailContent(item) {
   `;
 }
 
-function openPortfolioDetailModal(symbol) {
-  const item = findPortfolioAdviceItem(symbol);
+function updatePortfolioDetailModalContent(item) {
   if (!item || !portfolioDetailModal || !portfolioDetailModalTitle || !portfolioDetailModalMeta || !portfolioDetailModalBody) {
     return;
   }
 
-  activePortfolioDetailSymbol = String(item.symbol ?? "");
   const holding = item.holding ?? {};
   portfolioDetailModalTitle.textContent = `${item.name ?? item.symbol} 상세`;
   portfolioDetailModalMeta.textContent = `${item.symbol ?? ""} · 평단 ${formatNumber(holding.avgPrice)}원 · 현재 ${formatNumber(holding.currentPrice)}원 · ${formatPercent(holding.profitRate ?? 0)}`;
   portfolioDetailModalBody.innerHTML = renderPortfolioDetailContent(item);
+}
+
+function openPortfolioDetailModal(symbol) {
+  const item = findPortfolioAdviceItem(symbol);
+  if (!item || !portfolioDetailModal) {
+    return;
+  }
+
+  activePortfolioDetailSymbol = String(item.symbol ?? "");
+  updatePortfolioDetailModalContent(item);
   openModal(portfolioDetailModal, { onClose: closePortfolioDetailModal });
 }
 
@@ -3087,7 +3359,7 @@ function closePortfolioDetailModal() {
 function renderPortfolioAdviceCard(item) {
   const holding = item.holding ?? {};
   const returnClass = Number(holding.profitRate) > 0 ? "positive" : Number(holding.profitRate) < 0 ? "negative" : "neutral";
-  const { profitAmount, executionPlan, actionTone, actionZone } = getPortfolioDetailContext(item);
+  const { actionTone } = getPortfolioDetailContext(item);
   const priorityLabel = String(item.priorityLabel ?? "LOW");
   const priorityLabelText = {
     HIGH: "긴급",
@@ -3101,7 +3373,7 @@ function renderPortfolioAdviceCard(item) {
         <div class="portfolio-card-title">
           <h3>${escapeHtml(item.name ?? item.symbol)}</h3>
           <div class="portfolio-card-meta">
-            ${escapeHtml(item.symbol)} · 평단 ${formatNumber(holding.avgPrice)}원 · 현재 <span data-portfolio-current-price>${formatNumber(holding.currentPrice)}원</span>
+            ${escapeHtml(item.symbol)} · ${formatNumber(holding.quantity)}주 · 현재 <span data-portfolio-current-price>${formatNumber(holding.currentPrice)}원</span>
           </div>
         </div>
         <div class="portfolio-card-rank">
@@ -3112,25 +3384,18 @@ function renderPortfolioAdviceCard(item) {
       </div>
 
       <div class="portfolio-action-badge ${escapeHtml(actionTone)}">
-        <strong>${escapeHtml(getPortfolioActionTitle(item.aiAction))}</strong>
+        <strong>${escapeHtml(getPortfolioDisplayActionTitle(item))}</strong>
         <span>${escapeHtml(getPortfolioStatusLabel(item))}</span>
       </div>
 
-      <p class="portfolio-summary-text">${escapeHtml(item.summary ?? "")}</p>
+      <p class="portfolio-summary-text">${escapeHtml(getPortfolioDisplaySummary(item))}</p>
 
-      <div class="portfolio-key-price-grid">
-        <span><em>관찰가</em><strong>${Number.isFinite(executionPlan.watchPrice) ? `${formatNumber(executionPlan.watchPrice)}원` : "-"}</strong></span>
-        <span><em>${escapeHtml(actionZone.label)}</em><strong>${escapeHtml(formatPortfolioPriceZone(actionZone.zone))}</strong></span>
-        <span><em>무효가</em><strong>${Number.isFinite(executionPlan.invalidPrice) ? `${formatNumber(executionPlan.invalidPrice)}원` : "-"}</strong></span>
-        <span><em>현재 손익</em><strong data-portfolio-profit-amount>${formatSignedWon(profitAmount)}</strong></span>
-      </div>
-
-      ${renderPortfolioRecoveryProgress(item)}
+      ${renderPortfolioRecoveryPlan(item, { compact: true })}
 
       <div class="portfolio-pill-row compact">
         <span class="portfolio-pill">목적 ${escapeHtml(getPortfolioIntentLabel(item.originalIntent))}</span>
         <span class="portfolio-pill mode">상태 ${escapeHtml(getPortfolioStatusLabel(item))}</span>
-        <span class="portfolio-pill action">행동 ${escapeHtml(getPortfolioActionTitle(item.aiAction))}</span>
+        <span class="portfolio-pill action">행동 ${escapeHtml(getPortfolioDisplayActionTitle(item))}</span>
       </div>
 
       <button class="ghost-button portfolio-detail-button" type="button" data-portfolio-detail-symbol="${escapeHtml(item.symbol)}">상세 보기</button>
@@ -3216,9 +3481,6 @@ async function loadPortfolioAdvice(options = {}) {
   } finally {
     portfolioLoading = false;
     renderPortfolioAdvice();
-    if (activeView === "portfolio" && portfolioLoaded) {
-      void loadPortfolioQuotes({ background: true });
-    }
   }
 }
 
@@ -3254,8 +3516,72 @@ function updatePortfolioCardQuote(quote) {
   }
 }
 
+function capturePortfolioRenderFocus() {
+  const activeElement = document.activeElement;
+  if (
+    !activeElement ||
+    (!portfolioSummary?.contains(activeElement) && !portfolioAdviceList?.contains(activeElement))
+  ) {
+    return undefined;
+  }
+
+  const detailButton = activeElement.closest?.("[data-portfolio-detail-symbol]");
+  if (detailButton?.dataset.portfolioDetailSymbol) {
+    return {
+      type: "detail",
+      value: detailButton.dataset.portfolioDetailSymbol
+    };
+  }
+
+  const href = activeElement.getAttribute?.("href");
+  return href?.startsWith("#portfolio-card-")
+    ? {
+        type: "anchor",
+        value: href
+      }
+    : undefined;
+}
+
+function restorePortfolioRenderFocus(token) {
+  if (!token) {
+    return;
+  }
+
+  const candidates =
+    token.type === "detail"
+      ? document.querySelectorAll("[data-portfolio-detail-symbol]")
+      : portfolioSummary?.querySelectorAll("a[href]") ?? [];
+  const target = [...candidates].find((element) =>
+    token.type === "detail"
+      ? element.dataset.portfolioDetailSymbol === token.value
+      : element.getAttribute("href") === token.value
+  );
+  target?.focus({ preventScroll: true });
+}
+
 function applyPortfolioQuotes(payload) {
   if (!payload || !portfolioPayload) {
+    return;
+  }
+
+  if (payload.advice && Array.isArray(payload.advice.items)) {
+    const adviceChanged = JSON.stringify(portfolioPayload) !== JSON.stringify(payload.advice);
+    const focusToken = adviceChanged ? capturePortfolioRenderFocus() : undefined;
+    portfolioPayload = payload.advice;
+    portfolioLoaded = true;
+    if (adviceChanged) {
+      renderPortfolioAdvice();
+      restorePortfolioRenderFocus(focusToken);
+    }
+    if (
+      adviceChanged &&
+      activePortfolioDetailSymbol &&
+      portfolioDetailModal &&
+      !portfolioDetailModal.classList.contains("hidden")
+    ) {
+      updatePortfolioDetailModalContent(findPortfolioAdviceItem(activePortfolioDetailSymbol));
+    }
+    setPortfolioStatus("positive", `${payload.advice.summary?.total ?? 0}개 · 금액 재계산`);
     return;
   }
 
@@ -3288,7 +3614,7 @@ function applyPortfolioQuotes(payload) {
   }
 
   if (activePortfolioDetailSymbol && portfolioDetailModal && !portfolioDetailModal.classList.contains("hidden")) {
-    openPortfolioDetailModal(activePortfolioDetailSymbol);
+    updatePortfolioDetailModalContent(findPortfolioAdviceItem(activePortfolioDetailSymbol));
   }
 
   setPortfolioStatus("positive", `${payload.summary?.total ?? portfolioPayload.summary?.total ?? 0}개 · 시세 갱신`);

@@ -1,6 +1,6 @@
 # 현재 구현 기능
 
-기준일: 2026-07-13
+기준일: 2026-07-27
 
 이 문서는 현재 코드에 실제로 구현된 기능만 정리합니다.
 
@@ -57,6 +57,8 @@
 - `POST /analysis/realtime-stocks`: 복수 종목 실시간 스냅샷 조회
 - `POST /analysis/realtime-stock-detail`: 단일 종목 상세 차트/스냅샷 조회
 - `GET /analysis/news-signals`: 뉴스 시그널 대시보드 payload 조회
+- `GET /analysis/recommendation-history/swing`: 스윙 추천 히스토리 조회
+- `GET /analysis/recommendation-history/long-term`: 중장기 추천 히스토리 v2 조회
 - `GET /analysis/online-presence`: 접속자 상태 조회
 - `POST /analysis/online-presence/heartbeat`: 접속자 heartbeat
 
@@ -89,9 +91,19 @@ API:
 - 보유종목 요약, 행동 우선순위, 실행 계획과 종목별 상세 제공
 - 규칙 기반 판단을 AI 생성 결과처럼 보이지 않도록 `오늘 우선 대응`, `규칙 기반 코멘트`로 표시
 - 로컬 OCR과 AI 판독 결과를 저장 전 초안으로 검토하고 병합 또는 교체 저장
-- 현재 `복구 단계`는 조건 충족 상태를 보여주는 보조 표시이며 손익분기/회수 금액을 계산하는 `PortfolioRecoveryPlan`은 아님
+- 최신 조회 시세 snapshot 기준 `PortfolioRecoveryPlan`으로 현재 투입금, 평가금, 손실금, 손익분기 가격과 필요 반등률을 계산
+- `RECOVERY_READY`에서만 예시 추가금과 안전 상한, 새 평단, 1차 추가금 회수, 최종 플러스 목표를 활성 표시
+- `WAIT_SIGNAL`은 지금 추가금 0원으로 고정하고 추가매수 시뮬레이션 없이 신호 후 재계산 또는 안전 상한을 넘는 필요 금액만 안내
+- `REDUCE_ONLY`는 추가매수를 차단하고 반등 축소 구간을 우선 표시
+- 최근 4일 이내 시세와 96시간 이내 주문가능금액·추정 총자산이 확인되지 않으면 `RECOVERY_READY`를 차단
+- 직접 연결/현재 진행 중인 손절가와 보유 평단 70% 중 높은 고정 금지선을 사용하고, 1차 회수 후 잔여 수량으로 최종 목표를 재계산
+- 종목별 누적 매수원금과 평가금 중 큰 값 기준으로 추정 총자산 15% 상한 적용
+- 상단 추가 카운터와 카드 행동 문구는 원 규칙의 후보 상태가 아니라 실제 `RECOVERY_READY` 여부를 기준으로 표시
+- 모든 보유종목 카드에 관리 엔진 무효가, 현재가 대비 거리, 기준 유효/이탈 상태와 산정 근거를 항상 표시
 
-Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을 추가, 수정, 삭제하는 UI는 아직 없습니다. 계산형 `PortfolioRecoveryPlan`도 후속 범위입니다.
+Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을 추가, 수정, 삭제하는 UI는 아직 없습니다.
+
+Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후속 범위는 [2026-07-27 고도화 실행 계획](./project-enhancement-execution-plan-2026-07-27.md#4-phase-0--portfolio-execution-safety)을 따릅니다.
 
 ## 6. 시장 감시와 시장 흐름
 
@@ -261,8 +273,14 @@ Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을
 - `data/market-flow/market-flow-latest.json`
 - `data/market-flow/market-flow-history.json`
 - `data/market-flow/theme-rotation-history.json`
-- `data/portfolio-holdings.json`
-- `data/portfolio-account.json`
+- `data/development/portfolio/portfolio-holdings.json` (비운영 개발 실행의 Git 원본)
+- `data/development/portfolio/portfolio-account.json` (계좌 저장 시 생성 가능)
+- `data/private/portfolio/*.json` (`private-local` 기본 Git 제외 원본)
+- 운영 Portfolio는 저장소 밖 절대경로 `PORTFOLIO_DATA_DIR`
+- `data/recommendation-history/swing-history.json`
+- `data/recommendation-history/long-term-history.json`
+
+Portfolio의 holdings와 account는 공통 data source resolver를 사용합니다. 화면과 API에 민감한 절대경로 대신 현재 원본 모드와 논리 경로를 표시하며, 개발·private 원본 사이의 자동 fallback, 복사, 병합, 양방향 동기화는 하지 않습니다.
 
 ## 14. 검증
 
@@ -272,6 +290,8 @@ Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을
 npm run check
 npm run build
 node --check public/app.js
+npm.cmd run verify:portfolio-recovery
+npm.cmd exec -- tsx src/scripts/verifyLongTermRecommendationHistory.ts
 ```
 
 매물대 검증:
@@ -296,5 +316,7 @@ npx tsx src/scripts/checkVolumeProfileImpact.ts
 - 중장기 매물대는 진입 타이밍보다 구조와 보유 품질을 확인합니다.
 - 외부 데이터는 Naver, KRX, Yahoo 응답 품질과 rate limit의 영향을 받습니다.
 - JSON 저장소는 동시 쓰기/배포 persistence 측면에서 DB보다 약합니다.
-- Portfolio `RecoveryPlan` 계산과 수동 CRUD 화면은 아직 구현되지 않았습니다.
+- Portfolio Recovery의 거래량 회복·지지 확인은 아직 독립 signal evidence가 아니라 조건 문구이며, 저장된 추천 신호 유효기간 보강이 필요합니다.
+- Portfolio 시세는 현재 상세 분석 경로를 재사용하므로 quote-only provider 분리가 필요합니다.
+- Portfolio 수동 CRUD 화면은 아직 구현되지 않았습니다.
 - 뉴스 외 view의 데이터와 UI 모듈은 아직 view 단위 lazy loading이 아닙니다.

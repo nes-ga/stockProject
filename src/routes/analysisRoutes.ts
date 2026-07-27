@@ -24,10 +24,12 @@ import {
 import { getMarketWatchSnapshots } from "../services/marketWatch.js";
 import { getRealtimeStockDetail, getRealtimeStockSnapshots } from "../services/realtimeStocks.js";
 import { classifySwingCandidate, scanRecommendationUniverse } from "../services/recommendationUniverse.js";
+import { readLongTermRecommendationHistory } from "../services/longTermRecommendationHistory.js";
 import {
-  diffAndRememberDividendUniverseAlerts,
-  diffAndRememberLongTermUniverseAlerts,
-  diffAndRememberSwingUniverseAlerts,
+  previewDividendUniverseAlerts,
+  previewLongTermUniverseAlerts,
+  previewSwingUniverseAlerts,
+  rememberRecommendationUniverseAlertPreview,
   type RecommendationUniverseAlertDiff
 } from "../services/recommendationUniverseAlerts.js";
 import { getDividendEtfRecommendations } from "../services/dividendEtfService.js";
@@ -895,16 +897,17 @@ async function executeRecommendationUniverseScan(input: RecommendationUniverseSc
   const payload = await scanRecommendationUniverse(input.category, {
     swingProfile
   });
-  const universeDiff =
+  const alertPreview =
     payload.category === "swing"
-      ? await diffAndRememberSwingUniverseAlerts({
+      ? await previewSwingUniverseAlerts({
           profile: swingProfile,
           executionItems: payload.executionItems,
           watchItems: payload.watchItems
         })
       : payload.category === "dividend"
-        ? await diffAndRememberDividendUniverseAlerts(payload.items)
-        : await diffAndRememberLongTermUniverseAlerts(payload.items);
+        ? await previewDividendUniverseAlerts(payload.items)
+        : await previewLongTermUniverseAlerts(payload.items);
+  const universeDiff = alertPreview.diff;
   const discordEnabled = input.discord?.enabled !== false;
   const webhookUrl = input.discord?.webhookUrl ?? config.discordWebhookUrl;
   let discordSent = false;
@@ -943,6 +946,7 @@ async function executeRecommendationUniverseScan(input: RecommendationUniverseSc
       reason: discordSkippedReason
     });
   }
+  const alertStateCommit = await rememberRecommendationUniverseAlertPreview(alertPreview);
 
   logger.info("recommendation-universe-scan:success", {
     category: input.category,
@@ -952,9 +956,10 @@ async function executeRecommendationUniverseScan(input: RecommendationUniverseSc
     discordMessageCount,
     discordSkippedReason,
     diffCount: universeDiff.changes.length,
-    historyUpdated: payload.category === "swing" ? payload.historyUpdated : undefined,
-    historyCaseCount: payload.category === "swing" ? payload.historyUpdate?.caseCount : undefined,
-    historyUpdateError: payload.category === "swing" ? payload.historyUpdateError : undefined
+    alertStateCommitStatus: alertStateCommit.status,
+    historyUpdated: payload.category === "dividend" ? undefined : payload.historyUpdated,
+    historyCaseCount: payload.category === "dividend" ? undefined : payload.historyUpdate?.caseCount,
+    historyUpdateError: payload.category === "dividend" ? undefined : payload.historyUpdateError
   });
 
   return {
@@ -1134,7 +1139,9 @@ analysisRoutes.post("/server-long-term-picks", async (request, response, next) =
     response.json({
       ok: true,
       count: items.length,
-      items
+      items,
+      historyUpdated: false,
+      historySkippedReason: "manual_current_snapshot_has_no_full_decision_snapshot"
     });
   } catch (error) {
     logger.error("server-long-term-picks:save:failed", toErrorContext(error));
@@ -1322,6 +1329,16 @@ analysisRoutes.get("/recommendation-history/swing", async (_request, response, n
     response.json(payload);
   } catch (error) {
     logger.error("recommendation-history:swing:failed", toErrorContext(error));
+    next(error);
+  }
+});
+
+analysisRoutes.get("/recommendation-history/long-term", async (_request, response, next) => {
+  try {
+    const payload = await readLongTermRecommendationHistory();
+    response.json(payload);
+  } catch (error) {
+    logger.error("recommendation-history:long-term:failed", toErrorContext(error));
     next(error);
   }
 });

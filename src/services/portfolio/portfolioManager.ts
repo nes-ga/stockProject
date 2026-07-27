@@ -1,6 +1,8 @@
 import { getCurrentIsoDate, SEOUL_TIME_ZONE } from "../../lib/dates.js";
 import { getRealtimeStockSnapshots } from "../realtimeStocks.js";
 import { readPortfolioAccountSnapshot, writePortfolioAccountSnapshot } from "./accountStorage.js";
+import { calculateHoldingEvaluationAmount, resolveHoldingInvestedAmount } from "./amounts.js";
+import { getPortfolioDataSourceInfo } from "./dataSource.js";
 import { linkPortfolioHistories } from "./historyLinker.js";
 import { readPortfolioHoldings, writePortfolioHoldings } from "./holdingsStorage.js";
 import { evaluatePortfolioHolding } from "./rules.js";
@@ -13,6 +15,9 @@ import type {
   PortfolioQuoteItem,
   PortfolioQuotesResponse
 } from "./types.js";
+
+const MAX_MARKET_QUOTE_AGE_DAYS = 4;
+const MAX_ACCOUNT_SNAPSHOT_AGE_MS = 96 * 60 * 60 * 1000;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -27,11 +32,56 @@ function roundPercent(value: number) {
 }
 
 function getHoldingInvestedAmount(holding: PortfolioHolding) {
-  return isFiniteNumber(holding.investedAmount) ? holding.investedAmount : holding.avgPrice * holding.quantity;
+  return resolveHoldingInvestedAmount(holding).amount;
 }
 
 function getHoldingEvaluationAmount(holding: PortfolioHolding) {
-  return isFiniteNumber(holding.evaluationAmount) ? holding.evaluationAmount : holding.currentPrice * holding.quantity;
+  return calculateHoldingEvaluationAmount(holding);
+}
+
+export function isPortfolioQuoteDateFresh(
+  latestDate: string | undefined,
+  today = getCurrentIsoDate(SEOUL_TIME_ZONE)
+) {
+  const latestIsoDate = latestDate?.slice(0, 10);
+  if (!latestIsoDate || !/^\d{4}-\d{2}-\d{2}$/.test(latestIsoDate)) {
+    return false;
+  }
+
+  const latestTime = Date.parse(`${latestIsoDate}T00:00:00Z`);
+  const todayTime = Date.parse(`${today}T00:00:00Z`);
+  if (!Number.isFinite(latestTime) || !Number.isFinite(todayTime)) {
+    return false;
+  }
+
+  const ageDays = (todayTime - latestTime) / (24 * 60 * 60 * 1000);
+  return ageDays >= 0 && ageDays <= MAX_MARKET_QUOTE_AGE_DAYS;
+}
+
+export function isPortfolioAccountSnapshotFresh(
+  account: PortfolioAccountSnapshot | undefined,
+  now = Date.now()
+) {
+  const capturedAt = Date.parse(account?.capturedAt ?? "");
+  if (!Number.isFinite(capturedAt)) {
+    return false;
+  }
+
+  const ageMs = now - capturedAt;
+  return ageMs >= -5 * 60 * 1000 && ageMs <= MAX_ACCOUNT_SNAPSHOT_AGE_MS;
+}
+
+export function isPortfolioAccountBudgetUsable(
+  accountSummary: PortfolioAccountSummary,
+  now = Date.now()
+) {
+  return (
+    isPortfolioAccountSnapshotFresh(accountSummary.account, now) &&
+    isFiniteNumber(accountSummary.buyingPower) &&
+    accountSummary.buyingPower >= 0 &&
+    isFiniteNumber(accountSummary.estimatedTotalAsset) &&
+    accountSummary.estimatedTotalAsset > 0
+  );
 }
 
 function buildAccountSummary(holdings: PortfolioHolding[], account?: PortfolioAccountSnapshot): PortfolioAccountSummary {
@@ -78,35 +128,32 @@ function buildAdviceSummary(
     rotationBuy: items.filter((item) => item.aiAction === "ROTATION_BUY").length,
     reduceOnRebound: items.filter((item) => item.aiAction === "REDUCE_ON_REBOUND").length,
     deadMoney: items.filter((item) => item.currentMode === "DEAD_MONEY").length,
+    suggestedRecoveryBudget: roundAmount(
+      items.reduce(
+        (sum, item) =>
+          sum +
+          (item.recoveryPlan?.status === "RECOVERY_READY"
+            ? item.recoveryPlan.suggestedAdditionalBuyAmount ?? 0
+            : 0),
+        0
+      )
+    ),
+    maxRecoveryBudget: roundAmount(
+      items.reduce(
+        (sum, item) =>
+          sum +
+          (item.recoveryPlan?.status === "RECOVERY_READY"
+            ? item.recoveryPlan.maxAdditionalBuyAmount ?? 0
+            : 0),
+        0
+      )
+    ),
     account: accountSummary
   };
 }
 
-export async function getPortfolioAdvice(): Promise<PortfolioAdviceResponse> {
-  const holdings = await readPortfolioHoldings();
-  const account = await readPortfolioAccountSnapshot();
-  const links = await linkPortfolioHistories(holdings);
-  const items = holdings
-    .map((holding) => {
-      const link = links.get(holding.id);
-      return evaluatePortfolioHolding(holding, {
-        swingCase: link?.swingCase,
-        longTermPick: link?.longTermPick,
-        linkedHistory: link?.linkedHistory
-      });
-    })
-    .sort((left, right) => right.priority - left.priority || right.confidence - left.confidence || left.name.localeCompare(right.name, "ko"));
-
-  return {
-    asOfDate: getCurrentIsoDate(SEOUL_TIME_ZONE),
-    summary: buildAdviceSummary(items, buildAccountSummary(holdings, account)),
-    items
-  };
-}
-
-export async function getPortfolioQuotes(): Promise<PortfolioQuotesResponse> {
-  const holdings = await readPortfolioHoldings();
-  const account = await readPortfolioAccountSnapshot();
+async function buildLivePortfolioSnapshot() {
+  const [holdings, account] = await Promise.all([readPortfolioHoldings(), readPortfolioAccountSnapshot()]);
   const payload = await getRealtimeStockSnapshots(
     holdings.map((holding) => ({
       key: holding.id,
@@ -115,10 +162,23 @@ export async function getPortfolioQuotes(): Promise<PortfolioQuotesResponse> {
     }))
   );
   const snapshotsById = new Map(payload.items.map((item) => [item.key ?? item.symbol, item]));
+  const priceSourceById = new Map<string, "LIVE_QUOTE" | "STORED_FALLBACK">();
 
   const itemsWithoutWeights = holdings.map((holding): Omit<PortfolioQuoteItem, "stockWeightPercent" | "assetWeightPercent"> => {
     const snapshot = snapshotsById.get(holding.id) ?? snapshotsById.get(holding.symbol);
-    const currentPrice = isFiniteNumber(snapshot?.latestClose) ? snapshot.latestClose : holding.currentPrice;
+    const livePrice = snapshot?.latestClose;
+    const hasFreshLiveQuote =
+      isFiniteNumber(livePrice) &&
+      livePrice > 0 &&
+      isPortfolioQuoteDateFresh(snapshot?.latestDate);
+    const currentPrice = hasFreshLiveQuote ? livePrice : holding.currentPrice;
+    priceSourceById.set(holding.id, hasFreshLiveQuote ? "LIVE_QUOTE" : "STORED_FALLBACK");
+    const quoteFreshnessError =
+      isFiniteNumber(livePrice) && livePrice > 0 && !hasFreshLiveQuote
+        ? snapshot?.latestDate
+          ? `시세 기준일 ${snapshot.latestDate}이 최신 허용 범위를 벗어났습니다.`
+          : "시세 기준일을 확인할 수 없습니다."
+        : undefined;
     const investedAmount = roundAmount(getHoldingInvestedAmount(holding));
     const evaluationAmount = roundAmount(currentPrice * holding.quantity);
     const profitAmount = roundAmount(evaluationAmount - investedAmount);
@@ -139,7 +199,7 @@ export async function getPortfolioQuotes(): Promise<PortfolioQuotesResponse> {
       profitAmount,
       profitRate,
       latestDate: snapshot?.latestDate,
-      error: snapshot?.error
+      error: snapshot?.error ?? quoteFreshnessError
     };
   });
 
@@ -167,13 +227,133 @@ export async function getPortfolioQuotes(): Promise<PortfolioQuotesResponse> {
 
   return {
     fetchedAt: payload.fetchedAt,
+    account,
+    holdings: quoteHoldings,
     summary: buildAccountSummary(quoteHoldings, account),
+    quoteItems: items,
+    priceSourceById
+  };
+}
+
+function getRecoveryBudgetCap(
+  holding: PortfolioHolding,
+  accountSummary: PortfolioAccountSummary,
+  eligibleCount: number
+) {
+  if (
+    !isFiniteNumber(accountSummary.buyingPower) ||
+    !isFiniteNumber(accountSummary.estimatedTotalAsset) ||
+    accountSummary.estimatedTotalAsset <= 0
+  ) {
+    return undefined;
+  }
+
+  const buyingPowerCap =
+    Math.max(0, accountSummary.buyingPower * 0.5) /
+    Math.max(1, eligibleCount);
+  const currentPositionExposure = Math.max(
+    getHoldingInvestedAmount(holding),
+    getHoldingEvaluationAmount(holding)
+  );
+  const positionExposureCap = Math.max(
+    0,
+    accountSummary.estimatedTotalAsset * 0.15 - currentPositionExposure
+  );
+
+  return Math.min(buyingPowerCap, positionExposureCap);
+}
+
+async function buildPortfolioAdvicePayload(
+  holdings: PortfolioHolding[],
+  accountSummary: PortfolioAccountSummary,
+  priceSourceById: Map<string, "LIVE_QUOTE" | "STORED_FALLBACK">
+): Promise<PortfolioAdviceResponse> {
+  const links = await linkPortfolioHistories(holdings);
+  const evaluate = (
+    holding: PortfolioHolding,
+    maxAdditionalBuyAmount?: number,
+    budgetAvailable = false
+  ) => {
+    const link = links.get(holding.id);
+    return evaluatePortfolioHolding(holding, {
+      swingCase: link?.swingCase,
+      longTermPick: link?.longTermPick,
+      linkedHistory: link?.linkedHistory,
+      recoveryBudget: {
+        priceSource: priceSourceById.get(holding.id) ?? "STORED_FALLBACK",
+        maxAdditionalBuyAmount,
+        budgetAvailable
+      }
+    });
+  };
+
+  const initialItems = holdings.map((holding) => evaluate(holding));
+  const eligibleCount = Math.max(
+    1,
+    initialItems.filter((item) => {
+      const plan = item.recoveryPlan;
+      return (
+        (item.aiAction === "ADD_ALLOWED" || item.aiAction === "ROTATION_BUY") &&
+        plan?.priceSource === "LIVE_QUOTE" &&
+        Number(plan.currentLossAmount) > 0 &&
+        Number(plan.requiredReboundRate) >= 1 &&
+        (!Number.isFinite(plan.invalidPrice) || plan.calculatedAtPrice > Number(plan.invalidPrice))
+      );
+    }).length
+  );
+  const accountBudgetAvailable = isPortfolioAccountBudgetUsable(accountSummary);
+  const items = holdings
+    .map((holding) =>
+      evaluate(
+        holding,
+        accountBudgetAvailable
+          ? getRecoveryBudgetCap(holding, accountSummary, eligibleCount)
+          : undefined,
+        accountBudgetAvailable
+      )
+    )
+    .sort(
+      (left, right) =>
+        right.priority - left.priority ||
+        right.confidence - left.confidence ||
+        left.name.localeCompare(right.name, "ko")
+    );
+
+  return {
+    asOfDate: getCurrentIsoDate(SEOUL_TIME_ZONE),
+    dataSource: getPortfolioDataSourceInfo(),
+    summary: buildAdviceSummary(items, accountSummary),
     items
+  };
+}
+
+export async function getPortfolioAdvice(): Promise<PortfolioAdviceResponse> {
+  const snapshot = await buildLivePortfolioSnapshot();
+  return buildPortfolioAdvicePayload(snapshot.holdings, snapshot.summary, snapshot.priceSourceById);
+}
+
+export async function getPortfolioQuotes(): Promise<PortfolioQuotesResponse> {
+  const snapshot = await buildLivePortfolioSnapshot();
+  const advice = await buildPortfolioAdvicePayload(
+    snapshot.holdings,
+    snapshot.summary,
+    snapshot.priceSourceById
+  );
+
+  return {
+    fetchedAt: snapshot.fetchedAt,
+    summary: snapshot.summary,
+    items: snapshot.quoteItems,
+    advice
   };
 }
 
 export async function getPortfolioHoldings() {
   return readPortfolioHoldings();
+}
+
+export function getPortfolioDataSource() {
+  return getPortfolioDataSourceInfo();
 }
 
 export async function savePortfolioHoldings(items: PortfolioHolding[]) {

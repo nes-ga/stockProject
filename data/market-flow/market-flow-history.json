@@ -1,50 +1,5 @@
 [
   {
-    "date": "2024-07-22",
-    "globalScore": 2,
-    "globalState": "NEUTRAL",
-    "localScore": 0,
-    "localState": "DEFENSIVE",
-    "themeRotationScore": 51.82,
-    "marketMode": "DEFENSIVE"
-  },
-  {
-    "date": "2024-07-23",
-    "globalScore": 2,
-    "globalState": "NEUTRAL",
-    "localScore": 3,
-    "localState": "SELECTIVE",
-    "themeRotationScore": 54.64,
-    "marketMode": "SELECTIVE"
-  },
-  {
-    "date": "2024-07-24",
-    "globalScore": 2,
-    "globalState": "NEUTRAL",
-    "localScore": 3,
-    "localState": "SELECTIVE",
-    "themeRotationScore": 53,
-    "marketMode": "SELECTIVE"
-  },
-  {
-    "date": "2024-07-25",
-    "globalScore": 3,
-    "globalState": "RISK_ON",
-    "localScore": 3,
-    "localState": "SELECTIVE",
-    "themeRotationScore": 56.18,
-    "marketMode": "SELECTIVE"
-  },
-  {
-    "date": "2024-07-26",
-    "globalScore": 4,
-    "globalState": "RISK_ON",
-    "localScore": 1.5,
-    "localState": "WEAK",
-    "themeRotationScore": 53.55,
-    "marketMode": "NEUTRAL"
-  },
-  {
     "date": "2024-07-29",
     "globalScore": 3,
     "globalState": "RISK_ON",
@@ -4119,6 +4074,15 @@
     "localScore": 1.5,
     "localState": "WEAK",
     "themeRotationScore": 55.08,
+    "marketMode": "NEUTRAL"
+  },
+  {
+    "date": "2026-07-27",
+    "globalScore": 1,
+    "globalState": "NEUTRAL",
+    "localScore": 1.5,
+    "localState": "WEAK",
+    "themeRotationScore": 62.08,
     "marketMode": "NEUTRAL"
   }
 ]

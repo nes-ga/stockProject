@@ -4,6 +4,7 @@ import { createLogger, toErrorContext } from "../lib/logger.js";
 import {
   deletePortfolioHolding,
   getPortfolioAdvice,
+  getPortfolioDataSource,
   getPortfolioHoldings,
   getPortfolioQuotes,
   savePortfolioAccount,
@@ -68,6 +69,7 @@ portfolioRoutes.get("/holdings", async (_request, response, next) => {
     const items = await getPortfolioHoldings();
     response.json({
       count: items.length,
+      dataSource: getPortfolioDataSource(),
       items
     });
   } catch (error) {
@@ -90,6 +92,7 @@ portfolioRoutes.post("/holdings", async (request, response, next) => {
     response.json({
       ok: true,
       count: items.length,
+      dataSource: getPortfolioDataSource(),
       items,
       account
     });
@@ -109,6 +112,7 @@ portfolioRoutes.put("/holdings/:id", async (request, response, next) => {
     response.json({
       ok: true,
       count: items.length,
+      dataSource: getPortfolioDataSource(),
       items
     });
   } catch (error) {
@@ -122,6 +126,7 @@ portfolioRoutes.delete("/holdings/:id", async (request, response, next) => {
     const result = await deletePortfolioHolding(request.params.id);
     response.json({
       ok: true,
+      dataSource: getPortfolioDataSource(),
       ...result
     });
   } catch (error) {

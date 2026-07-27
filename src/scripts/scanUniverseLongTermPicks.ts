@@ -12,6 +12,13 @@ async function main() {
   console.log(`Buy candidates: ${result.buyCount}`);
   console.log(`Accumulate candidates: ${result.accumulateCount}`);
   console.log(`Watch candidates: ${result.watchCount}`);
+  if (result.historyUpdated) {
+    console.log(
+      `Long-term history updated: ${result.historyUpdate?.caseCount ?? 0} cases (${result.historyUpdate?.startedCaseCount ?? 0} started)`
+    );
+  } else {
+    console.warn(`Long-term history update skipped or failed: ${result.historyUpdateError ?? "unknown reason"}`);
+  }
 
   for (const item of result.items.slice(0, 30)) {
     console.log(

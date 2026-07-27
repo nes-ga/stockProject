@@ -178,8 +178,12 @@ async function enrichRankedMetricsWithFundamentals(
   entries: LongTermRankedEntry[],
   filters: LongTermScanFilters,
   chunkSize = 4
-): Promise<LongTermRankedEntry[]> {
+): Promise<{
+  entries: LongTermRankedEntry[];
+  failedSymbols: string[];
+}> {
   const enriched: LongTermRankedEntry[] = [];
+  const failedSymbols: string[] = [];
 
   for (let index = 0; index < entries.length; index += chunkSize) {
     const chunk = entries.slice(index, index + chunkSize);
@@ -199,20 +203,26 @@ async function enrichRankedMetricsWithFundamentals(
       })
     );
 
-    for (const result of settled) {
+    for (const [resultIndex, result] of settled.entries()) {
       if (result.status === "fulfilled") {
         enriched.push(result.value);
+      } else {
+        failedSymbols.push(chunk[resultIndex]!.seed.symbol);
       }
     }
   }
 
-  return enriched;
+  return {
+    entries: enriched,
+    failedSymbols
+  };
 }
 
 function buildScanResult(
   rankedItems: LongTermRankedEntry[],
   filters: LongTermScanFilters,
-  requestedUniverseSize: number
+  requestedUniverseSize: number,
+  failedCount: number
 ): LongTermScanResult {
   const candidates = rankedItems
     .map((item) => {
@@ -242,6 +252,10 @@ function buildScanResult(
   return {
     asOfDate: rankedItems[0]?.metrics.latestDate ?? new Date().toISOString().slice(0, 10),
     universeSize: requestedUniverseSize,
+    scanCompleteness: failedCount === 0 ? "complete" : "partial",
+    attemptedCount: requestedUniverseSize,
+    succeededCount: requestedUniverseSize - failedCount,
+    failedCount,
     filters,
     candidates,
     groupedCandidates: {
@@ -291,7 +305,7 @@ export async function scanLongTermLeaders(options?: {
     }
   }
 
-  return buildScanResult(rankMetrics(loaded), filters, targetSeeds.length);
+  return buildScanResult(rankMetrics(loaded), filters, targetSeeds.length, targetSeeds.length - loaded.length);
 }
 
 export async function scanLongTermUniverse(options?: {
@@ -316,6 +330,7 @@ export async function scanLongTermUniverse(options?: {
   });
 
   const loaded: LongTermRankedEntry[] = [];
+  const failedSymbols = new Set<string>();
 
   for (let index = 0; index < targets.length; index += UNIVERSE_SCAN_CHUNK_SIZE) {
     const chunk = targets.slice(index, index + UNIVERSE_SCAN_CHUNK_SIZE);
@@ -333,9 +348,11 @@ export async function scanLongTermUniverse(options?: {
       })
     );
 
-    for (const result of settled) {
+    for (const [resultIndex, result] of settled.entries()) {
       if (result.status === "fulfilled") {
         loaded.push(result.value);
+      } else {
+        failedSymbols.add(chunk[resultIndex]!.code);
       }
     }
 
@@ -343,7 +360,8 @@ export async function scanLongTermUniverse(options?: {
       scanLabel: "universe-v2",
       processed: Math.min(index + chunk.length, targets.length),
       universeSize: targets.length,
-      loadedCount: loaded.length
+      loadedCount: loaded.length,
+      failedCount: failedSymbols.size
     });
   }
 
@@ -380,8 +398,11 @@ export async function scanLongTermUniverse(options?: {
         (right.metrics.liquidity.avgTurnover60 ?? 0) - (left.metrics.liquidity.avgTurnover60 ?? 0)
     )
     .slice(0, 24);
-  const enrichedEntries = await enrichRankedMetricsWithFundamentals([...prelimEntries, ...rescueEntries], filters);
-  const candidates = enrichedEntries
+  const enrichment = await enrichRankedMetricsWithFundamentals([...prelimEntries, ...rescueEntries], filters);
+  for (const symbol of enrichment.failedSymbols) {
+    failedSymbols.add(symbol);
+  }
+  const candidates = enrichment.entries
     .map((item) => ({
       item,
       candidate: buildLongTermCandidate(item, filters)
@@ -417,7 +438,9 @@ export async function scanLongTermUniverse(options?: {
   logger.info("scan:finish", {
     scanLabel: "universe-v2",
     universeSize: targets.length,
-    loadedCount: loaded.length,
+    attemptedCount: targets.length,
+    succeededCount: targets.length - failedSymbols.size,
+    failedCount: failedSymbols.size,
     prelimCount: prelimEntries.length,
     rescuePrelimCount: rescueEntries.length,
     candidateCount: candidates.length,
@@ -429,6 +452,10 @@ export async function scanLongTermUniverse(options?: {
   return {
     asOfDate: ranked[0]?.metrics.latestDate ?? new Date().toISOString().slice(0, 10),
     universeSize: targets.length,
+    scanCompleteness: failedSymbols.size === 0 ? "complete" : "partial",
+    attemptedCount: targets.length,
+    succeededCount: targets.length - failedSymbols.size,
+    failedCount: failedSymbols.size,
     filters,
     candidates,
     groupedCandidates: {

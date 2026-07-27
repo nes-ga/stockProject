@@ -1407,6 +1407,10 @@ export type LongTermScanFilters = {
 export type LongTermScanResult = {
   asOfDate: string;
   universeSize: number;
+  scanCompleteness: "complete" | "partial";
+  attemptedCount: number;
+  succeededCount: number;
+  failedCount: number;
   filters: LongTermScanFilters;
   candidates: LongTermScanCandidate[];
   groupedCandidates: {

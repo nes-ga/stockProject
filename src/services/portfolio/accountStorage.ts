@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { portfolioDataSource } from "./dataSource.js";
 import type { PortfolioAccountSnapshot } from "./types.js";
 
-export const portfolioAccountPath = path.resolve(process.cwd(), "data", "portfolio-account.json");
+export const portfolioAccountPath = portfolioDataSource.accountPath;
 
 async function ensureDir() {
   await mkdir(path.dirname(portfolioAccountPath), { recursive: true });
@@ -12,9 +13,12 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-export function normalizePortfolioAccountSnapshot(input: Partial<PortfolioAccountSnapshot>): PortfolioAccountSnapshot {
+export function normalizePortfolioAccountSnapshot(
+  input: Partial<PortfolioAccountSnapshot>,
+  missingCapturedAt = new Date().toISOString()
+): PortfolioAccountSnapshot {
   const snapshot: PortfolioAccountSnapshot = {
-    capturedAt: input.capturedAt ?? new Date().toISOString(),
+    capturedAt: input.capturedAt ?? missingCapturedAt,
     source: input.source ?? "manual"
   };
 
@@ -50,7 +54,9 @@ export async function readPortfolioAccountSnapshot(): Promise<PortfolioAccountSn
   try {
     const raw = await readFile(portfolioAccountPath, "utf8");
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? normalizePortfolioAccountSnapshot(parsed) : undefined;
+    return parsed && typeof parsed === "object"
+      ? normalizePortfolioAccountSnapshot(parsed, new Date(0).toISOString())
+      : undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("ENOENT")) {

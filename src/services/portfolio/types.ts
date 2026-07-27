@@ -113,6 +113,72 @@ export type PortfolioExecutionPlan = {
   summary?: string;
 };
 
+export type RecoveryPlanStatus = "NOT_ELIGIBLE" | "WAIT_SIGNAL" | "RECOVERY_READY" | "REDUCE_ONLY";
+
+export type RecoveryPlanBlockReason =
+  | "INVALID_HOLDING"
+  | "QUOTE_UNAVAILABLE"
+  | "ACCOUNT_BUDGET_UNAVAILABLE"
+  | "ACTION_NOT_ALLOWED"
+  | "BELOW_INVALID_PRICE"
+  | "POSITION_LIMIT"
+  | "RISK_LIMIT"
+  | "LOSS_TOO_DEEP"
+  | "AMOUNT_BELOW_ONE_SHARE";
+
+export type PortfolioRecoveryTarget = {
+  price: number;
+  sellQuantity?: number;
+  expectedProceeds?: number;
+  label: string;
+};
+
+export type PortfolioRecoverySimulation = {
+  buyPrice: number;
+  requestedAdditionalBuyAmount: number;
+  additionalBuyQuantity: number;
+  actualAdditionalBuyAmount: number;
+  newQuantity: number;
+  newTotalInvestedAmount: number;
+  newAvgPrice: number;
+  lossAmountAfterBuy: number;
+  requiredReboundRateAfterBuy: number;
+  reboundRateImprovement: number;
+  avgPriceReductionRate: number;
+  firstRecoveryTarget?: PortfolioRecoveryTarget;
+  finalRecoveryTarget: PortfolioRecoveryTarget & {
+    targetProfitRate: number;
+    expectedProfitAmount: number;
+  };
+};
+
+export type PortfolioRecoveryPlan = {
+  status: RecoveryPlanStatus;
+  priceSource: "LIVE_QUOTE" | "STORED_FALLBACK";
+  calculatedAtPrice: number;
+  currentQuantity: number;
+  currentInvestedAmount: number;
+  currentEvaluationAmount: number;
+  currentProfitAmount: number;
+  currentLossAmount: number;
+  breakEvenPrice: number;
+  requiredReboundRate: number;
+  targetRequiredReboundRate?: number;
+  requiredAdditionalBuyAmountForTarget?: number;
+  suggestedAdditionalBuyAmount?: number;
+  maxAdditionalBuyAmount?: number;
+  simulation?: PortfolioRecoverySimulation;
+  reduceTarget?: {
+    from?: number;
+    to?: number;
+  };
+  invalidPrice?: number;
+  blockReasons: RecoveryPlanBlockReason[];
+  warnings: string[];
+  summary: string;
+  conditions: string[];
+};
+
 export type PortfolioAdvice = {
   symbol: string;
   name: string;
@@ -128,13 +194,26 @@ export type PortfolioAdvice = {
   reasons: string[];
   risks: string[];
   executionPlan?: PortfolioExecutionPlan;
+  recoveryPlan?: PortfolioRecoveryPlan;
   linkedHistory?: PortfolioLinkedHistory;
   questions?: string[];
   holding: PortfolioHolding;
 };
 
+export type PortfolioDataSourceMode = "repository-development" | "private-local";
+
+export type PortfolioDataSourceInfo = {
+  mode: PortfolioDataSourceMode;
+  label: string;
+  displayPath: string;
+  versionControlled: boolean;
+  developmentOnly: boolean;
+  readWritePolicy: string;
+};
+
 export type PortfolioAdviceResponse = {
   asOfDate: string;
+  dataSource: PortfolioDataSourceInfo;
   summary: {
     total: number;
     highPriority: number;
@@ -143,6 +222,8 @@ export type PortfolioAdviceResponse = {
     rotationBuy: number;
     reduceOnRebound: number;
     deadMoney: number;
+    suggestedRecoveryBudget: number;
+    maxRecoveryBudget: number;
     account: PortfolioAccountSummary;
   };
   items: PortfolioAdvice[];
@@ -152,6 +233,7 @@ export type PortfolioQuotesResponse = {
   fetchedAt: string;
   summary: PortfolioAccountSummary;
   items: PortfolioQuoteItem[];
+  advice: PortfolioAdviceResponse;
 };
 
 export type PortfolioScreenshotDraftHolding = {

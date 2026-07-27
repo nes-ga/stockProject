@@ -1,29 +1,19 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { calculateHoldingEvaluationAmount, resolveHoldingInvestedAmount } from "./amounts.js";
+import { portfolioDataSource } from "./dataSource.js";
 import type { PortfolioHolding } from "./types.js";
-import { config } from "../../config.js";
 
-export const portfolioHoldingsPath = path.resolve(process.cwd(), config.portfolioHoldingsPath);
+export const portfolioHoldingsPath = portfolioDataSource.holdingsPath;
 
 async function ensureDir() {
   await mkdir(path.dirname(portfolioHoldingsPath), { recursive: true });
 }
 
 export function normalizeHoldingAmounts(holding: PortfolioHolding): PortfolioHolding {
-  const investedAmount =
-    typeof holding.investedAmount === "number" && Number.isFinite(holding.investedAmount)
-      ? holding.investedAmount
-      : holding.avgPrice * holding.quantity;
-  const evaluationAmount =
-    typeof holding.evaluationAmount === "number" && Number.isFinite(holding.evaluationAmount)
-      ? holding.evaluationAmount
-      : holding.currentPrice * holding.quantity;
-  const profitRate =
-    typeof holding.profitRate === "number" && Number.isFinite(holding.profitRate)
-      ? holding.profitRate
-      : investedAmount > 0
-        ? ((evaluationAmount - investedAmount) / investedAmount) * 100
-        : 0;
+  const investedAmount = resolveHoldingInvestedAmount(holding).amount;
+  const evaluationAmount = calculateHoldingEvaluationAmount(holding);
+  const profitRate = investedAmount > 0 ? ((evaluationAmount - investedAmount) / investedAmount) * 100 : 0;
 
   return {
     ...holding,

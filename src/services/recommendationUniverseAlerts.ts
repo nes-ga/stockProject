@@ -1,5 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { withJsonFileMutation, writeJsonFileAtomic } from "../lib/jsonFile.js";
 import type { ServerDividendPick } from "./serverDividendPicks.js";
 import type { ServerLongTermPick } from "./serverLongTermPicks.js";
 import type { ServerSwingPick } from "./serverSwingPicks.js";
@@ -8,7 +10,7 @@ import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfi
 export type RecommendationUniverseAlertCategory = "longTerm" | "dividend" | "swing" | "smallcapSwing";
 export type RecommendationUniverseAlertBucket = "buy" | "accumulate" | "execution" | "watch";
 
-type RecommendationUniverseAlertItem = {
+export type RecommendationUniverseAlertItem = {
   symbol: string;
   name: string;
   bucket: RecommendationUniverseAlertBucket;
@@ -38,19 +40,29 @@ export type RecommendationUniverseAlertDiff = {
   previousCount: number;
 };
 
+export type RecommendationUniverseAlertPreview = {
+  category: RecommendationUniverseAlertCategory;
+  diff: RecommendationUniverseAlertDiff;
+  currentItems: RecommendationUniverseAlertItem[];
+  baseFingerprint: string;
+  targetFingerprint: string;
+};
+
+type RecommendationUniverseAlertStorageOptions = {
+  filePath?: string;
+};
+
 const recommendationUniverseAlertStatePath = path.resolve(
   process.cwd(),
   "data",
   "recommendation-universe-alert-state.json"
 );
 
-async function ensureDir() {
-  await mkdir(path.dirname(recommendationUniverseAlertStatePath), { recursive: true });
-}
-
-async function readRecommendationUniverseAlertState(): Promise<RecommendationUniverseAlertState> {
+async function readRecommendationUniverseAlertState(
+  filePath = recommendationUniverseAlertStatePath
+): Promise<RecommendationUniverseAlertState> {
   try {
-    const raw = await readFile(recommendationUniverseAlertStatePath, "utf8");
+    const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") {
       return {};
@@ -66,9 +78,11 @@ async function readRecommendationUniverseAlertState(): Promise<RecommendationUni
   }
 }
 
-async function writeRecommendationUniverseAlertState(state: RecommendationUniverseAlertState) {
-  await ensureDir();
-  await writeFile(recommendationUniverseAlertStatePath, JSON.stringify(state, null, 2), "utf8");
+async function writeRecommendationUniverseAlertState(
+  state: RecommendationUniverseAlertState,
+  filePath = recommendationUniverseAlertStatePath
+) {
+  await writeJsonFileAtomic(filePath, state);
 }
 
 function normalizeAlertItem(item: RecommendationUniverseAlertItem): RecommendationUniverseAlertItem {
@@ -131,6 +145,10 @@ function buildSnapshotItemMap(items: RecommendationUniverseAlertItem[]) {
     mapped.set(item.symbol, item);
   }
   return mapped;
+}
+
+function fingerprintAlertItems(items: RecommendationUniverseAlertItem[]) {
+  return createHash("sha256").update(JSON.stringify(sortAlertItems(items))).digest("hex");
 }
 
 function compareAlertChanges(left: RecommendationUniverseAlertChange, right: RecommendationUniverseAlertChange) {
@@ -200,69 +218,114 @@ function diffAlertItems(params: {
   };
 }
 
+async function previewUniverseAlerts(
+  category: RecommendationUniverseAlertCategory,
+  currentItems: RecommendationUniverseAlertItem[],
+  options?: RecommendationUniverseAlertStorageOptions
+) {
+  const filePath = options?.filePath ?? recommendationUniverseAlertStatePath;
+  const state = await readRecommendationUniverseAlertState(filePath);
+  const previousSnapshot = state[category];
+  const previousItems = Array.isArray(previousSnapshot?.items) ? sortAlertItems(previousSnapshot.items) : [];
+  const normalizedCurrentItems = sortAlertItems(currentItems);
+  return {
+    category,
+    diff: diffAlertItems({
+      category,
+      previous: previousItems,
+      current: normalizedCurrentItems
+    }),
+    currentItems: normalizedCurrentItems,
+    baseFingerprint: fingerprintAlertItems(previousItems),
+    targetFingerprint: fingerprintAlertItems(normalizedCurrentItems)
+  } satisfies RecommendationUniverseAlertPreview;
+}
+
+export async function rememberRecommendationUniverseAlertPreview(
+  preview: RecommendationUniverseAlertPreview,
+  options?: RecommendationUniverseAlertStorageOptions
+) {
+  const filePath = options?.filePath ?? recommendationUniverseAlertStatePath;
+  return withJsonFileMutation(filePath, async () => {
+    const state = await readRecommendationUniverseAlertState(filePath);
+    const latestItems = Array.isArray(state[preview.category]?.items)
+      ? sortAlertItems(state[preview.category]!.items)
+      : [];
+    const latestFingerprint = fingerprintAlertItems(latestItems);
+
+    if (latestFingerprint === preview.targetFingerprint) {
+      return {
+        status: "deduplicated" as const,
+        category: preview.category
+      };
+    }
+    if (latestFingerprint !== preview.baseFingerprint) {
+      throw new Error(`Recommendation universe alert state changed before commit: ${preview.category}`);
+    }
+
+    state[preview.category] = {
+      updatedAt: new Date().toISOString(),
+      items: preview.currentItems
+    };
+    await writeRecommendationUniverseAlertState(state, filePath);
+    return {
+      status: "applied" as const,
+      category: preview.category
+    };
+  });
+}
+
+export async function previewSwingUniverseAlerts(payload: {
+  profile?: SwingEngineProfile;
+  executionItems: ServerSwingPick[];
+  watchItems: ServerSwingPick[];
+}, options?: RecommendationUniverseAlertStorageOptions) {
+  const profile = resolveSwingEngineProfile(payload.profile);
+  const category = profile === "smallcap" ? "smallcapSwing" : "swing";
+  const currentItems = buildSwingAlertItems(payload);
+  return previewUniverseAlerts(category, currentItems, options);
+}
+
+export async function previewLongTermUniverseAlerts(
+  items: ServerLongTermPick[],
+  options?: RecommendationUniverseAlertStorageOptions
+) {
+  const currentItems = buildLongTermAlertItems(items);
+  return previewUniverseAlerts("longTerm", currentItems, options);
+}
+
+export async function previewDividendUniverseAlerts(
+  items: ServerDividendPick[],
+  options?: RecommendationUniverseAlertStorageOptions
+) {
+  const currentItems = buildDividendAlertItems(items);
+  return previewUniverseAlerts("dividend", currentItems, options);
+}
+
 export async function diffAndRememberSwingUniverseAlerts(payload: {
   profile?: SwingEngineProfile;
   executionItems: ServerSwingPick[];
   watchItems: ServerSwingPick[];
 }): Promise<RecommendationUniverseAlertDiff> {
-  const state = await readRecommendationUniverseAlertState();
-  const profile = resolveSwingEngineProfile(payload.profile);
-  const category = profile === "smallcap" ? "smallcapSwing" : "swing";
-  const currentItems = buildSwingAlertItems(payload);
-  const previousSnapshot = state[category];
-  const previousItems = Array.isArray(previousSnapshot?.items) ? sortAlertItems(previousSnapshot.items) : [];
-  const diff = diffAlertItems({
-    category,
-    previous: previousItems,
-    current: currentItems
-  });
-
-  state[category] = {
-    updatedAt: new Date().toISOString(),
-    items: currentItems
-  };
-  await writeRecommendationUniverseAlertState(state);
-  return diff;
+  const preview = await previewSwingUniverseAlerts(payload);
+  await rememberRecommendationUniverseAlertPreview(preview);
+  return preview.diff;
 }
 
 export async function diffAndRememberLongTermUniverseAlerts(
   items: ServerLongTermPick[]
 ): Promise<RecommendationUniverseAlertDiff> {
-  const state = await readRecommendationUniverseAlertState();
-  const currentItems = buildLongTermAlertItems(items);
-  const previousItems = Array.isArray(state.longTerm?.items) ? sortAlertItems(state.longTerm.items) : [];
-  const diff = diffAlertItems({
-    category: "longTerm",
-    previous: previousItems,
-    current: currentItems
-  });
-
-  state.longTerm = {
-    updatedAt: new Date().toISOString(),
-    items: currentItems
-  };
-  await writeRecommendationUniverseAlertState(state);
-  return diff;
+  const preview = await previewLongTermUniverseAlerts(items);
+  await rememberRecommendationUniverseAlertPreview(preview);
+  return preview.diff;
 }
 
 export async function diffAndRememberDividendUniverseAlerts(
   items: ServerDividendPick[]
 ): Promise<RecommendationUniverseAlertDiff> {
-  const state = await readRecommendationUniverseAlertState();
-  const currentItems = buildDividendAlertItems(items);
-  const previousItems = Array.isArray(state.dividend?.items) ? sortAlertItems(state.dividend.items) : [];
-  const diff = diffAlertItems({
-    category: "dividend",
-    previous: previousItems,
-    current: currentItems
-  });
-
-  state.dividend = {
-    updatedAt: new Date().toISOString(),
-    items: currentItems
-  };
-  await writeRecommendationUniverseAlertState(state);
-  return diff;
+  const preview = await previewDividendUniverseAlerts(items);
+  await rememberRecommendationUniverseAlertPreview(preview);
+  return preview.diff;
 }
 
 export { recommendationUniverseAlertStatePath };

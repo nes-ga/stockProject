@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { withJsonFileMutation, writeJsonFileAtomic } from "../lib/jsonFile.js";
 
 export type ServerLongTermPick = {
   key: string;
@@ -16,13 +17,16 @@ export type ServerLongTermPick = {
 
 const serverLongTermPicksPath = path.resolve(process.cwd(), "data", "server-long-term-picks.json");
 
-async function ensureDir() {
-  await mkdir(path.dirname(serverLongTermPicksPath), { recursive: true });
-}
+type ServerLongTermPicksStorageOptions = {
+  filePath?: string;
+};
 
-export async function readServerLongTermPicks(): Promise<ServerLongTermPick[]> {
+export async function readServerLongTermPicks(
+  options?: ServerLongTermPicksStorageOptions
+): Promise<ServerLongTermPick[]> {
+  const filePath = options?.filePath ?? serverLongTermPicksPath;
   try {
-    const raw = await readFile(serverLongTermPicksPath, "utf8");
+    const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
       ? parsed.filter((item): item is ServerLongTermPick => Boolean(item && typeof item === "object"))
@@ -36,10 +40,41 @@ export async function readServerLongTermPicks(): Promise<ServerLongTermPick[]> {
   }
 }
 
-export async function writeServerLongTermPicks(items: ServerLongTermPick[]) {
-  await ensureDir();
-  await writeFile(serverLongTermPicksPath, JSON.stringify(items, null, 2), "utf8");
-  return items;
+export async function writeServerLongTermPicks(
+  items: ServerLongTermPick[],
+  options?: ServerLongTermPicksStorageOptions
+) {
+  const committed = await withServerLongTermPicksMutation(async () => ({
+    nextItems: items,
+    result: items
+  }), options);
+  return committed.items;
+}
+
+export async function withServerLongTermPicksMutation<T>(
+  mutation: (
+    previousItems: ServerLongTermPick[]
+  ) =>
+    | {
+        nextItems: ServerLongTermPick[];
+        result: T;
+      }
+    | Promise<{
+        nextItems: ServerLongTermPick[];
+        result: T;
+      }>,
+  options?: ServerLongTermPicksStorageOptions
+) {
+  const filePath = options?.filePath ?? serverLongTermPicksPath;
+  return withJsonFileMutation(filePath, async () => {
+    const previousItems = await readServerLongTermPicks({ filePath });
+    const outcome = await mutation(previousItems);
+    await writeJsonFileAtomic(filePath, outcome.nextItems);
+    return {
+      items: outcome.nextItems,
+      result: outcome.result
+    };
+  });
 }
 
 export { serverLongTermPicksPath };

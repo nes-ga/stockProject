@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/devServer.ts",
     "build": "tsc -p tsconfig.json && node scripts/build-news-dashboard.mjs",
     "build:news-dashboard": "node scripts/build-news-dashboard.mjs",
     "start": "node dist/server.js",
     "check": "tsc --noEmit",
+    "verify:portfolio-recovery": "tsx src/scripts/verifyPortfolioRecovery.ts",
     "refresh:swing-picks": "tsx scripts/refresh-server-swing-picks.ts",
     "scan:swing-universe": "npm.cmd run build && node dist/scripts/scanUniverseSwingPicks.js",
     "scan:dividend-universe": "npm.cmd run build && node dist/scripts/scanUniverseDividendPicks.js",
