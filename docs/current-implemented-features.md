@@ -159,7 +159,7 @@ Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후�
 - `execution_ready`, `execution_probe`, `watch` bucket 분류
 - 사용자 화면의 `진입 가능`은 `execution_ready`만 사용하며, `execution_probe`는 관찰/확인 후보로 취급
 - `entry_zone_pending`이 붙은 후보는 매수가 도달 상태가 아니므로 `watchItems`에 둠
-- 체결된 기존 스윙 케이스는 새 스캔에서 패턴이 사라져도 손절/목표/시간 종료 전까지 `watchItems`로 보존
+- 체결된 기존 스윙 케이스는 새 스캔에서 패턴이 사라져도 손절/목표 또는 명시적 종료 전까지 `watchItems`로 보존
 - SMA20 기반 눌림 진입 구간
 - breakout 추격 금지 상태
 - staged buy plan, stop-loss reference, risk/reward 계산

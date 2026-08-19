@@ -419,7 +419,7 @@ function preserveEnteredHistoryPlan(
 }
 
 // 아직 종료 조건이 없는 체결 히스토리 케이스를 watch 후보로 되살립니다.
-// 실행 후보로 승격하는 경로가 아니라, 손절/목표/시간 종료 전까지
+// 실행 후보로 승격하는 경로가 아니라, 손절/목표 종료 전까지
 // 현재 후보 파일에서 사라지지 않게 하는 생명주기 보호 장치입니다.
 function toCarryForwardSwingWatchPick(historyCase: SwingCarryForwardCase, profile: SwingEngineProfile): ServerSwingPick {
   const anchorDate = historyCase.openedDate ?? historyCase.initialSnapshot?.anchorDate ?? historyCase.dataDate ?? "";

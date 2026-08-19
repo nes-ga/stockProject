@@ -113,6 +113,15 @@ export type PortfolioExecutionPlan = {
   summary?: string;
 };
 
+export type PortfolioSellPlan = {
+  status: "PROFIT_MANAGEMENT";
+  calculatedAtPrice: number;
+  profitProtectionPrice: number;
+  stages: Array<{ stage: 1 | 2 | 3; label: string; price: number; allocationRate: number; quantity: number; expectedProceeds: number }>;
+  summary: string;
+  conditions: string[];
+};
+
 export type RecoveryPlanStatus = "NOT_ELIGIBLE" | "WAIT_SIGNAL" | "RECOVERY_READY" | "REDUCE_ONLY";
 
 export type RecoveryPlanBlockReason =
@@ -152,6 +161,35 @@ export type PortfolioRecoverySimulation = {
   };
 };
 
+export type PortfolioRecoveryBuyStage = {
+  stage: 1 | 2 | 3;
+  label: string;
+  trigger: string;
+  buyPrice: number;
+  allocationRate: number;
+  requestedAmount: number;
+  quantity: number;
+  actualAmount: number;
+  cumulativeAdditionalAmount: number;
+  cumulativeQuantity: number;
+  newAvgPrice: number;
+  requiredReboundRate: number;
+  maxLossAtInvalidPrice?: number;
+};
+
+export type PortfolioRecoveryScenario = {
+  key: "NONE" | "STAGE_1" | "STAGE_1_2" | "ALL";
+  label: string;
+  executedStages: number;
+  totalAdditionalAmount: number;
+  totalAdditionalQuantity: number;
+  totalQuantity: number;
+  totalInvestedAmount: number;
+  newAvgPrice: number;
+  requiredReboundRate: number;
+  maxLossAtInvalidPrice?: number;
+};
+
 export type PortfolioRecoveryPlan = {
   status: RecoveryPlanStatus;
   priceSource: "LIVE_QUOTE" | "STORED_FALLBACK";
@@ -168,6 +206,8 @@ export type PortfolioRecoveryPlan = {
   suggestedAdditionalBuyAmount?: number;
   maxAdditionalBuyAmount?: number;
   simulation?: PortfolioRecoverySimulation;
+  buyStages?: PortfolioRecoveryBuyStage[];
+  scenarios?: PortfolioRecoveryScenario[];
   reduceTarget?: {
     from?: number;
     to?: number;
@@ -195,6 +235,8 @@ export type PortfolioAdvice = {
   risks: string[];
   executionPlan?: PortfolioExecutionPlan;
   recoveryPlan?: PortfolioRecoveryPlan;
+  sellPlan?: PortfolioSellPlan;
+  technicalSetup?: import("./technicalSetup.js").PortfolioTechnicalSetup;
   linkedHistory?: PortfolioLinkedHistory;
   questions?: string[];
   holding: PortfolioHolding;

@@ -170,7 +170,14 @@ function resolveUniverseItem(
 }
 
 function normalizeLine(value: string): string {
-  return value.replace(/[|·•]/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/[|·•]/g, " ")
+    // Korean brokerage screens use integer KRW values. Tesseract sometimes
+    // reads a thousands separator as a period (for example 3.291 or
+    // -1.928,999), which otherwise shifts every following table column.
+    .replace(/(?<=\d)\.(?=\d{3}(?:\D|$))/g, ",")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function includesAnyCompact(value: string, labels: string[]): boolean {
@@ -330,6 +337,18 @@ function extractLikelyTotalInvestedAmount(lines: string[]): number | undefined {
   return candidates.length ? Math.max(...candidates) : undefined;
 }
 
+function normalizeLikelyOcrPercent(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  // A compact value such as `50.825039-2370%` is commonly recognized from
+  // `50,825,039 -23.70%`. Only repair an implausibly large loss rate.
+  if (value <= -1_000 && value >= -10_000) {
+    return value / 100;
+  }
+  return value;
+}
+
 function cleanName(value: string): string {
   return value
     .replace(/\b[A-Z]?\d{6}\b/g, " ")
@@ -414,7 +433,10 @@ function parseSingleNumericLine(line: string): { value: number; isPercent: boole
   const token = tokens[0];
   const leftover = line
     .replace(token.raw, "")
-    .replace(/[,%₩원+\-−–—.\s]/g, "")
+    // Loss signs in narrow mobile tables are frequently recognized as =, <,
+    // or >. The first numeric column is informational for row alignment, so
+    // tolerate those glyphs instead of discarding the entire holding row.
+    .replace(/[=<>~,%₩원+\-−–—.\s]/g, "")
     .trim();
   if (leftover) {
     return undefined;
@@ -497,6 +519,50 @@ function collectPortfolioRowNumbers(lines: string[], startIndex: number): Array<
     numbers.push(numeric);
     index += 1;
   }
+
+  if (
+    numbers.length >= 7 &&
+    numbers[3]?.isPercent &&
+    !numbers[4]?.isPercent &&
+    !numbers[5]?.isPercent &&
+    numbers[6]?.isPercent
+  ) {
+    // Tesseract can move the weight percentage behind current/sellable price
+    // while preserving every value: profit, avg, qty, profitRate, current,
+    // sellable, weight. Restore the canonical brokerage column order.
+    return [numbers[0], numbers[1], numbers[2], numbers[6], numbers[3], numbers[4], numbers[5]];
+  }
+
+  if (!numbers.length && startIndex + 1 < lines.length) {
+    // The evaluation-profit cell is the first number in a brokerage row and
+    // its minus sign is often merged with arbitrary OCR text. The remaining
+    // six cells still uniquely describe the row, so skip only that damaged
+    // first cell and preserve the column positions with a placeholder.
+    const remaining: Array<{ value: number; isPercent: boolean; raw: string }> = [];
+    index = startIndex + 1;
+    while (index < lines.length && remaining.length < 6) {
+      const numeric = parseSingleNumericLine(lines[index]);
+      if (!numeric) {
+        break;
+      }
+      remaining.push(numeric);
+      index += 1;
+    }
+    if (remaining.length === 6 && remaining[2]?.isPercent && !remaining[3]?.isPercent && !remaining[4]?.isPercent && remaining[5]?.isPercent) {
+      return [
+        { value: 0, isPercent: false, raw: lines[startIndex] },
+        remaining[0],
+        remaining[1],
+        remaining[5],
+        remaining[2],
+        remaining[3],
+        remaining[4]
+      ];
+    }
+    if (remaining.length === 6 && remaining[2]?.isPercent && remaining[3]?.isPercent) {
+      return [{ value: 0, isPercent: false, raw: lines[startIndex] }, ...remaining];
+    }
+  }
   return numbers;
 }
 
@@ -515,10 +581,20 @@ function resolveKnownHolding(draft: PortfolioScreenshotDraftHolding, knownHoldin
     if (nameScore >= 0.88) {
       return holding;
     }
+    if (nameScore >= 0.7 && normalizeMatchText(draft.name).length >= 3) {
+      return holding;
+    }
     if (draft.quantity === holding.quantity) score += 3;
     if (closeEnough(draft.avgPrice, holding.avgPrice)) score += 3;
     if (closeEnough(draft.currentPrice, holding.currentPrice)) score += 3;
     if (closeEnough(draft.profitRate, holding.profitRate, 0.08)) score += 1;
+
+    // A later screenshot can reflect additional purchases, so quantity and
+    // average price may both move. Two independently similar prices are still
+    // a useful identity signal when OCR destroyed the stock name completely.
+    const approximateAvgPrice = closeEnough(draft.avgPrice, holding.avgPrice, 0.35);
+    const approximateCurrentPrice = closeEnough(draft.currentPrice, holding.currentPrice, 0.15);
+    if (approximateAvgPrice && approximateCurrentPrice) score += 6;
 
     score += nameScore >= 0.55 ? 1 : 0;
 
@@ -641,6 +717,45 @@ function parseBrokerBalanceTable(
     }
 
     index += 1;
+  }
+
+  // Second pass: recover rows whose stock-name cell was lost or mistaken for
+  // a UI label. Numeric brokerage columns have a stable seven-cell shape and
+  // can be linked safely to an existing holding by price metadata afterward.
+  for (let numericStart = startIndex + 1; numericStart < lines.length; numericStart += 1) {
+    const numbers = collectPortfolioRowNumbers(lines, numericStart);
+    if (numbers.length < 7 || !numbers[3]?.isPercent || !numbers[4]?.isPercent) {
+      continue;
+    }
+
+    const duplicate = drafts.some(
+      (draft) =>
+        draft.avgPrice === roundNumber(numbers[1]?.value) &&
+        draft.quantity === roundNumber(numbers[2]?.value) &&
+        draft.currentPrice === roundNumber(numbers[5]?.value)
+    );
+    if (duplicate) {
+      continue;
+    }
+
+    const precedingName = [lines[numericStart - 1], lines[numericStart - 2]].find(
+      (line): line is string => typeof line === "string" && isPortfolioTableNameLine(line)
+    );
+    const recovered = buildTableDraft([precedingName ?? "미확인 보유종목"], numbers, knownHoldings, universeItems);
+    if (recovered) {
+      recovered.memo = recovered.memo ? `${recovered.memo}; 숫자 열 기반 복구` : "숫자 열 기반 복구";
+      recovered.confidence = Math.min(recovered.confidence ?? 0.75, 0.9);
+      const nextDraftIndex = drafts.findIndex((draft) => {
+        const source = draft.sourceRowText ?? "";
+        const sourceLineIndex = lines.findIndex((line) => source.startsWith(`${line} `));
+        return sourceLineIndex > numericStart;
+      });
+      if (nextDraftIndex >= 0) {
+        drafts.splice(nextDraftIndex, 0, recovered);
+      } else {
+        drafts.push(recovered);
+      }
+    }
   }
 
   return drafts;
@@ -787,11 +902,13 @@ function extractKoreanAccountFields(lines: string[]): Partial<PortfolioScreensho
   return {
     cashBalance: extractLabeledNumberNear(lines, ["D+2예수금", "0+2예수금", "2+2예수금", "예수금", "출금가능"], { lookahead: 3 }),
     totalEvaluationAmount: extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }),
-    totalProfitRate: extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
+    totalProfitRate: normalizeLikelyOcrPercent(
+      extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
+    )
   };
 }
 
-function parseHoldingsFromText(
+export function parsePortfolioOcrText(
   rawText: string,
   knownHoldings: PortfolioHolding[] = [],
   universeItems: StockUniverseItem[] = []
@@ -824,6 +941,9 @@ function parseHoldingsFromText(
   }
 
   const resultDrafts = dedupeDrafts(drafts);
+  const derivedEvaluationAmount = resultDrafts.length
+    ? roundNumber(resultDrafts.reduce((sum, draft) => sum + (Number(draft.evaluationAmount) || 0), 0))
+    : undefined;
   const warnings: string[] = [];
   if (!resultDrafts.length) {
     warnings.push("로컬 OCR이 보유 종목 행을 확정하지 못했습니다. 표가 잘 보이도록 확대하거나 GPT 판독을 보조로 사용해 주세요.");
@@ -836,14 +956,16 @@ function parseHoldingsFromText(
   }
 
   return {
-    cashBalance: extractLabeledNumberNear(lines, ["D+2예수금", "0+2예수금", "출금가능"], { lookahead: 3 }),
+    ...extractKoreanAccountFields(lines),
     totalInvestedAmount: extractLikelyTotalInvestedAmount(lines),
-    totalEvaluationAmount: extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }),
-    totalProfitRate: extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 }),
+    totalEvaluationAmount:
+      extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }) ?? derivedEvaluationAmount,
+    totalProfitRate: normalizeLikelyOcrPercent(
+      extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
+    ),
     draftHoldings: resultDrafts,
     warnings,
-    rawText,
-    ...extractKoreanAccountFields(lines)
+    rawText
   };
 }
 
@@ -856,7 +978,7 @@ export async function parsePortfolioScreenshotWithLocalOcr(imageDataUrl: string)
     const universeItems = await getStockUniverse()
       .then((payload) => payload.items)
       .catch(() => []);
-    return parseHoldingsFromText(result.data.text, knownHoldings, universeItems);
+    return parsePortfolioOcrText(result.data.text, knownHoldings, universeItems);
   } catch (error) {
     workerPromise = null;
     const message = error instanceof Error ? error.message : String(error);

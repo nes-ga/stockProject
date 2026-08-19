@@ -2258,12 +2258,29 @@ function getPortfolioActionTitle(action) {
 function getPortfolioRecoveryWaitLabel(plan) {
   const reasons = new Set(Array.isArray(plan?.blockReasons) ? plan.blockReasons : []);
   if (reasons.has("QUOTE_UNAVAILABLE")) return "시세 갱신 필요";
-  if (reasons.has("ACCOUNT_BUDGET_UNAVAILABLE")) return "계좌 금액 갱신 필요";
+  if (reasons.has("ACCOUNT_BUDGET_UNAVAILABLE")) return "예수금·주문가능금액 미입력";
   if (reasons.has("BELOW_INVALID_PRICE")) return "무효가 이탈 · 추가매수 금지";
   if (reasons.has("POSITION_LIMIT") || reasons.has("AMOUNT_BELOW_ONE_SHARE")) return "안전 한도 부족 · 추가금 0원";
   if (reasons.has("LOSS_TOO_DEEP")) return "손실 부담 과다 · 추가매수 보류";
   if (reasons.has("RISK_LIMIT")) return "평단 개선 효과 부족 · 추가매수 보류";
   return "복구 신호 확인 전 매수 금지";
+}
+
+function formatPortfolioAccountCapturedAt(value) {
+  if (!value) {
+    return "캡처 시각 없음";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "캡처 시각 확인 필요";
+  }
+  return `캡처 ${new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date)}`;
 }
 
 function getPortfolioEffectiveAction(item) {
@@ -2552,12 +2569,22 @@ function renderPortfolioSummary() {
   const counters = getPortfolioActionCounters(items);
   const dailyComment = buildPortfolioDailyComment(summary, items);
   const suggestedRecoveryBudget = Number(summary.suggestedRecoveryBudget ?? 0);
+  const cashBalance = Number(account.cashBalance);
+  const buyingPower = Number(account.buyingPower);
+  const estimatedTotalAsset = Number(account.estimatedTotalAsset);
+  const hasCashBalance = account.cashBalance != null && Number.isFinite(cashBalance);
+  const hasBuyingPower = account.buyingPower != null && Number.isFinite(buyingPower);
+  const hasEstimatedTotalAsset = account.estimatedTotalAsset != null && Number.isFinite(estimatedTotalAsset);
+  const accountCapturedAt = formatPortfolioAccountCapturedAt(account.account?.capturedAt);
   const actionableHighPriorityCount = items.filter(
     (item) => item.priorityLabel === "HIGH" && isPortfolioActionNeeded(item)
   ).length;
   const cards = [
     ["원", "현재 투입금", `${formatNumber(account.totalInvestedAmount ?? 0)}원`, "보유 원금 합계"],
     ["평", "현재 평가금", `${formatNumber(account.totalEvaluationAmount ?? 0)}원`, "실시간 현재가 반영"],
+    ["현", "D+2 예수금", hasCashBalance ? `${formatNumber(cashBalance)}원` : "미입력", accountCapturedAt, hasCashBalance ? "positive" : "negative"],
+    ["주", "주문가능금액", hasBuyingPower ? `${formatNumber(buyingPower)}원` : "미입력", "추가매수 안전 한도 계산 기준", hasBuyingPower ? "" : "negative"],
+    ["자", "추정 총자산", hasEstimatedTotalAsset ? `${formatNumber(estimatedTotalAsset)}원` : "계산 보류", "실시간 평가금 + 예수금"],
     ["손", "현재 손익", formatSignedWon(account.totalProfitAmount), `수익률 ${formatPercent(account.totalProfitRate ?? 0)}`, totalProfitClass],
     ["+", "추가 검토금", `${formatNumber(suggestedRecoveryBudget)}원`, "조건·안전 한도 통과 합계", suggestedRecoveryBudget > 0 ? "positive" : ""],
     ["!", "우선 대응", `${formatNumber(actionableHighPriorityCount)} 종목`, "긴급 우선", actionableHighPriorityCount > 0 ? "negative" : ""],
@@ -2649,6 +2676,51 @@ function formatPortfolioPriceZone(zone) {
   return from && to ? `${from} ~ ${to}` : from || to;
 }
 
+function renderPortfolioPendingBuySchedule(item, plan) {
+  if (plan?.status !== "WAIT_SIGNAL") {
+    return "";
+  }
+  const executionPlan = item.executionPlan ?? {};
+  const watchZone = formatPortfolioPriceZone(executionPlan.watchPriceZone);
+  const addZone = formatPortfolioPriceZone(executionPlan.addPriceZone);
+  const watchPrice = Number(executionPlan.watchPrice);
+  const watchTarget = watchZone !== "-"
+    ? watchZone
+    : Number.isFinite(watchPrice) && watchPrice > 0
+      ? `${formatNumber(watchPrice)}원 부근`
+      : "가격 신호 대기";
+  const addTarget = addZone !== "-" ? addZone : "지지 유지 후 재계산";
+  const blockedByInvalidPrice = Array.isArray(plan.blockReasons) && plan.blockReasons.includes("BELOW_INVALID_PRICE");
+
+  return `
+    <section class="portfolio-pending-buy-schedule">
+      <div class="portfolio-recovery-subhead">
+        <strong>추가매수 예정표</strong>
+        <span>날짜가 아니라 가격·신호 충족 순서</span>
+      </div>
+      <div class="portfolio-pending-buy-steps">
+        <article class="current">
+          <em>현재</em>
+          <strong>${blockedByInvalidPrice ? "무효가 회복 대기" : "관찰 구간 대기"}</strong>
+          <p>${escapeHtml(blockedByInvalidPrice ? "무효가 위로 회복하기 전에는 다음 단계로 가지 않습니다." : `1차 확인 가격 ${watchTarget}`)}</p>
+        </article>
+        <i aria-hidden="true">→</i>
+        <article>
+          <em>허용 전환</em>
+          <strong>지지·거래 회복 확인</strong>
+          <p>${escapeHtml(`검토 가격 ${addTarget} · 종가 지지와 거래 회복이 함께 확인되어야 합니다.`)}</p>
+        </article>
+        <i aria-hidden="true">→</i>
+        <article>
+          <em>실행 예정</em>
+          <strong>30% · 30% · 40%</strong>
+          <p>ADD_ALLOWED 전환 후 금액과 수량을 다시 계산합니다. 전환 전 배정금은 0원입니다.</p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
 function formatSignedWon(value) {
   if (value == null || Number.isNaN(value)) {
     return "-";
@@ -2704,10 +2776,14 @@ function loadImageFromDataUrl(dataUrl) {
 async function normalizeScreenshotDataUrl(file) {
   const sourceDataUrl = await readFileAsDataUrl(file);
   const image = await loadImageFromDataUrl(sourceDataUrl);
-  const maxSide = 2200;
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
-  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
-  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const maxSide = 2600;
+  const minimumOcrWidth = 1200;
+  const upscale = sourceWidth < minimumOcrWidth ? minimumOcrWidth / sourceWidth : 1;
+  const scale = Math.min(upscale, maxSide / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -2860,7 +2936,8 @@ async function parseSelectedPortfolioScreenshot(mode = "local") {
     renderPortfolioDraftPreview();
     const cashText = Number.isFinite(payload.cashBalance) ? ` 예수금 ${formatNumber(payload.cashBalance)}원.` : "";
     const warningText = Array.isArray(payload.warnings) && payload.warnings.length ? ` 경고 ${payload.warnings.length}건.` : "";
-    setPortfolioScreenshotStatus(`${parserConfig.label} 완료: ${portfolioDraftRows.length}개 후보.${cashText}${warningText} 저장 전 값을 확인해 주세요.`, "positive");
+    const parserVersionText = payload.parserVersion ? ` (${payload.parserVersion})` : "";
+    setPortfolioScreenshotStatus(`${parserConfig.label}${parserVersionText} 완료: ${portfolioDraftRows.length}개 후보.${cashText}${warningText} 저장 전 값을 확인해 주세요.`, "positive");
   } catch (error) {
     portfolioDraftRows = [];
     portfolioDraftAccount = null;
@@ -3048,6 +3125,8 @@ function renderPortfolioRecoveryPlan(item, options = {}) {
   const reboundAfterBuy = Number(simulation?.requiredReboundRateAfterBuy ?? plan.requiredReboundRate);
   const firstTarget = simulation?.firstRecoveryTarget;
   const finalTarget = simulation?.finalRecoveryTarget;
+  const buyStages = plan.status === "RECOVERY_READY" && Array.isArray(plan.buyStages) ? plan.buyStages : [];
+  const recoveryScenarios = plan.status === "RECOVERY_READY" && Array.isArray(plan.scenarios) ? plan.scenarios : [];
   const targetAmountReasonCodes = new Set(["LOSS_TOO_DEEP", "RISK_LIMIT"]);
   const canShowTargetRequiredAmount = Array.isArray(plan.blockReasons)
     ? plan.blockReasons.some((reason) => targetAmountReasonCodes.has(reason))
@@ -3061,6 +3140,15 @@ function renderPortfolioRecoveryPlan(item, options = {}) {
     targetRequiredAmount > Number(plan.maxAdditionalBuyAmount);
   const warnings = Array.isArray(plan.warnings) ? plan.warnings : [];
   const reduceZone = plan.reduceTarget;
+  const sellPlan = item.sellPlan;
+  const technicalSetup = item.technicalSetup;
+  const technicalChecks = technicalSetup?.checks ?? {};
+  const technicalCheckRows = [
+    ["20일선 평탄·상승", technicalChecks.sma20FlatOrRising],
+    ["현재가 20일선 ±5%", technicalChecks.nearSma20],
+    ["20일 박스 폭 12% 이하", technicalChecks.boxFormed],
+    ["최근 저점 방어", technicalChecks.lowHolding]
+  ];
   const recoveryTargetMetric = firstTarget
     ? {
         label: "1차 추가금 회수",
@@ -3200,6 +3288,101 @@ function renderPortfolioRecoveryPlan(item, options = {}) {
           }
         </span>
       </div>
+
+      ${technicalSetup ? `
+        <section class="portfolio-technical-setup status-${escapeHtml(String(technicalSetup.status).toLowerCase())}">
+          <div class="portfolio-recovery-subhead"><strong>중장기 차트 매수 조건</strong><span>${escapeHtml({ READY: "조건 충족", FORMING: "형성 중", WAIT: "대기", UNAVAILABLE: "데이터 부족" }[technicalSetup.status] ?? technicalSetup.status)}</span></div>
+          <div class="portfolio-technical-checks">
+            ${technicalCheckRows.map(([label, passed]) => `<span class="${passed ? "passed" : "failed"}"><b>${passed ? "✓" : "–"}</b>${escapeHtml(label)}</span>`).join("")}
+          </div>
+          <div class="portfolio-technical-metrics">
+            <span><em>20일선</em><strong>${formatNumber(technicalSetup.sma20)}원</strong></span>
+            <span><em>20일선 5일 기울기</em><strong>${Number.isFinite(Number(technicalSetup.sma20Slope5dPercent)) ? `${Number(technicalSetup.sma20Slope5dPercent) >= 0 ? "+" : ""}${Number(technicalSetup.sma20Slope5dPercent).toFixed(2)}%` : "-"}</strong></span>
+            <span><em>20일 박스 폭</em><strong>${Number.isFinite(Number(technicalSetup.boxRange20dPercent)) ? `${Number(technicalSetup.boxRange20dPercent).toFixed(2)}%` : "-"}</strong></span>
+            <span><em>차트 무효가</em><strong>${technicalSetup.invalidPrice ? `${formatNumber(technicalSetup.invalidPrice)}원` : "-"}</strong></span>
+          </div>
+          <p class="portfolio-recovery-truth">${escapeHtml(technicalSetup.summary)}</p>
+        </section>
+      ` : ""}
+
+      ${sellPlan && Array.isArray(sellPlan.stages) && sellPlan.stages.length ? `
+        <section class="portfolio-sell-plan">
+          <div class="portfolio-recovery-subhead"><strong>분할 매도 추천가</strong><span>30% · 30% · 잔여 40%</span></div>
+          <div class="portfolio-sell-stage-grid">
+            ${sellPlan.stages.map((stage) => `<article><em>${escapeHtml(stage.label)}</em><strong>${formatNumber(stage.price)}원</strong><span>${formatNumber(stage.quantity)}주 · 예상 ${formatNumber(stage.expectedProceeds)}원</span></article>`).join("")}
+          </div>
+          <div class="portfolio-profit-protection"><span>수익보호선</span><strong>${formatNumber(sellPlan.profitProtectionPrice)}원</strong><small>종가 이탈 시 비중 축소 재검토</small></div>
+          <p class="portfolio-recovery-truth">${escapeHtml(sellPlan.summary)}</p>
+        </section>
+      ` : ""}
+
+      ${renderPortfolioPendingBuySchedule(item, plan)}
+
+      ${
+        buyStages.length
+          ? `
+            <section class="portfolio-recovery-stages">
+              <div class="portfolio-recovery-subhead">
+                <strong>3단계 추가매수 계획</strong>
+                <span>30% · 30% · 40% 분할</span>
+              </div>
+              <div class="portfolio-recovery-stage-grid">
+                ${buyStages
+                  .map(
+                    (stage) => `
+                      <article class="portfolio-recovery-stage">
+                        <div><em>${formatNumber(stage.stage)}단계</em><strong>${escapeHtml(stage.label)}</strong></div>
+                        <p>${escapeHtml(stage.trigger)}</p>
+                        <dl>
+                          <div><dt>검토 가격</dt><dd>${formatNumber(stage.buyPrice)}원</dd></div>
+                          <div><dt>배정 금액</dt><dd>${formatNumber(stage.actualAmount)}원 · ${formatNumber(stage.quantity)}주</dd></div>
+                          <div><dt>누적 새 평단</dt><dd>${formatNumber(stage.newAvgPrice)}원</dd></div>
+                          <div><dt>해당 가격에서 본전까지</dt><dd>${escapeHtml(formatPortfolioReboundRate(stage.requiredReboundRate))}</dd></div>
+                          <div><dt>무효가 도달 시 최대손실</dt><dd>${Number.isFinite(stage.maxLossAtInvalidPrice) ? `${formatNumber(stage.maxLossAtInvalidPrice)}원` : "-"}</dd></div>
+                        </dl>
+                      </article>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </section>
+          `
+          : ""
+      }
+
+      ${
+        recoveryScenarios.length
+          ? `
+            <section class="portfolio-recovery-scenarios">
+              <div class="portfolio-recovery-subhead">
+                <strong>실행 시나리오 비교</strong>
+                <span>전 단계 조건 충족을 가정한 계산</span>
+              </div>
+              <div class="portfolio-recovery-scenario-wrap">
+                <table>
+                  <thead><tr><th>선택</th><th>추가금</th><th>추가 수량</th><th>예상 평단</th><th>현재가 기준 본전까지</th><th>무효가 최대손실</th></tr></thead>
+                  <tbody>
+                    ${recoveryScenarios
+                      .map(
+                        (scenario) => `
+                          <tr class="${scenario.key === "ALL" ? "recommended" : ""}">
+                            <th>${escapeHtml(scenario.label)}</th>
+                            <td>${formatNumber(scenario.totalAdditionalAmount)}원</td>
+                            <td>${formatNumber(scenario.totalAdditionalQuantity)}주</td>
+                            <td>${formatNumber(scenario.newAvgPrice)}원</td>
+                            <td>${escapeHtml(formatPortfolioReboundRate(scenario.requiredReboundRate))}</td>
+                            <td>${Number.isFinite(scenario.maxLossAtInvalidPrice) ? `${formatNumber(scenario.maxLossAtInvalidPrice)}원` : "-"}</td>
+                          </tr>
+                        `
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          `
+          : ""
+      }
 
       <p class="portfolio-recovery-summary">${escapeHtml(plan.summary ?? "")}</p>
       ${
@@ -8727,6 +8910,21 @@ function renderSelector() {
           : longTermInsightKeywords?.length
             ? longTermInsightKeywords.slice(0, 4).join(" / ")
             : formatLongTermSummary(longTermInsightNote, item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET);
+      const longTermInsightHtml =
+        item.category === "swing"
+          ? ""
+          : longTermKeywords.length
+            ? `
+              <span class="stock-card-keywords" title="${escapeHtml(longTermInsightNote ?? "")}">
+                ${longTermKeywords
+                  .map(
+                    (keyword) =>
+                      `<span class="stock-card-keyword ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(keyword)}</span>`
+                  )
+                  .join("")}
+              </span>
+            `
+            : `<span class="stock-card-note">${escapeHtml(longTermNoteSummary || longTermInsightNote || "")}</span>`;
       const realtimeLine = renderStockRealtimeLine(item);
       const swingExecutionTradeHtml =
         item.category === "swing" && swingTradePlan && effectiveSwingBucket === "execution"
@@ -8799,26 +8997,15 @@ function renderSelector() {
               ${dividendInfoLine ? `<span class="stock-card-meta">${escapeHtml(dividendInfoLine)}</span>` : ""}
               ${realtimeLine}
               ${swingStatusHtml}
-              ${
-                item.category === "swing"
-                  ? ""
-                  : longTermKeywords.length
-                    ? `
-                      <span class="stock-card-keywords" title="${escapeHtml(longTermInsightNote ?? "")}">
-                        ${longTermKeywords
-                          .map(
-                            (keyword) =>
-                              `<span class="stock-card-keyword ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(keyword)}</span>`
-                          )
-                          .join("")}
-                      </span>
-                    `
-                    : `<span class="stock-card-note">${escapeHtml(longTermNoteSummary || longTermInsightNote || "")}</span>`
-              }
             </button>
             ${groupPillHtml}
             <button class="stock-card-delete" type="button" data-delete-key="${escapeHtml(item.key)}" aria-label="${escapeHtml(item.name)} 삭제">×</button>
           </span>
+          ${
+            longTermInsightHtml
+              ? `<button class="stock-card-select stock-card-insight-select" type="button" data-stock-key="${escapeHtml(item.key)}">${longTermInsightHtml}</button>`
+              : ""
+          }
           ${
             swingExecutionTradeHtml || swingManagedTradeHtml
               ? `<button class="stock-card-select stock-card-trade-select" type="button" data-stock-key="${escapeHtml(item.key)}">${swingManagedTradeHtml || swingExecutionTradeHtml}</button>`

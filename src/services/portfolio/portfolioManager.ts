@@ -1,11 +1,13 @@
 import { getCurrentIsoDate, SEOUL_TIME_ZONE } from "../../lib/dates.js";
 import { getRealtimeStockSnapshots } from "../realtimeStocks.js";
+import { fetchQuoteAndChart } from "../stockAnalysis.js";
 import { readPortfolioAccountSnapshot, writePortfolioAccountSnapshot } from "./accountStorage.js";
 import { calculateHoldingEvaluationAmount, resolveHoldingInvestedAmount } from "./amounts.js";
 import { getPortfolioDataSourceInfo } from "./dataSource.js";
 import { linkPortfolioHistories } from "./historyLinker.js";
 import { readPortfolioHoldings, writePortfolioHoldings } from "./holdingsStorage.js";
 import { evaluatePortfolioHolding } from "./rules.js";
+import { buildPortfolioTechnicalSetup, type PortfolioTechnicalSetup } from "./technicalSetup.js";
 import type {
   PortfolioAccountSnapshot,
   PortfolioAccountSummary,
@@ -269,6 +271,19 @@ async function buildPortfolioAdvicePayload(
   priceSourceById: Map<string, "LIVE_QUOTE" | "STORED_FALLBACK">
 ): Promise<PortfolioAdviceResponse> {
   const links = await linkPortfolioHistories(holdings);
+  const technicalSetups = new Map<string, PortfolioTechnicalSetup>();
+  await Promise.all(
+    holdings
+      .filter((holding) => holding.originalIntent === "LONG_TERM")
+      .map(async (holding) => {
+        try {
+          const { points } = await fetchQuoteAndChart(holding.symbol, { range: "6mo", naverCount: 140 });
+          technicalSetups.set(holding.id, buildPortfolioTechnicalSetup(points));
+        } catch {
+          technicalSetups.set(holding.id, buildPortfolioTechnicalSetup([]));
+        }
+      })
+  );
   const evaluate = (
     holding: PortfolioHolding,
     maxAdditionalBuyAmount?: number,
@@ -283,7 +298,8 @@ async function buildPortfolioAdvicePayload(
         priceSource: priceSourceById.get(holding.id) ?? "STORED_FALLBACK",
         maxAdditionalBuyAmount,
         budgetAvailable
-      }
+      },
+      technicalSetup: technicalSetups.get(holding.id)
     });
   };
 

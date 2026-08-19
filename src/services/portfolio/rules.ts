@@ -1,5 +1,6 @@
 import type { ServerLongTermPick } from "../serverLongTermPicks.js";
 import { buildPortfolioRecoveryPlan, type PortfolioRecoveryBudgetContext } from "./recovery.js";
+import type { PortfolioTechnicalSetup } from "./technicalSetup.js";
 import type {
   AiAction,
   CurrentMode,
@@ -8,6 +9,7 @@ import type {
   PortfolioExecutionPlan,
   PortfolioHolding,
   PortfolioLinkedHistory,
+  PortfolioSellPlan,
   SuggestedIntent
 } from "./types.js";
 
@@ -31,6 +33,7 @@ export type PortfolioRuleContext = {
   longTermPick?: ServerLongTermPick;
   linkedHistory?: PortfolioLinkedHistory;
   recoveryBudget?: PortfolioRecoveryBudgetContext;
+  technicalSetup?: PortfolioTechnicalSetup;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -42,6 +45,31 @@ function roundPrice(value: number) {
     return undefined;
   }
   return Math.round(value);
+}
+
+function roundToMarketUnit(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const unit = value >= 500_000 ? 1_000 : value >= 100_000 ? 100 : value >= 10_000 ? 50 : 10;
+  return Math.round(value / unit) * unit;
+}
+
+function buildSellPlan(holding: PortfolioHolding): PortfolioSellPlan | undefined {
+  const current = Number(holding.currentPrice);
+  const avg = Number(holding.avgPrice);
+  const quantity = Math.max(0, Math.floor(Number(holding.quantity)));
+  if (!(current > 0 && avg > 0 && quantity > 0 && Number(holding.profitRate ?? 0) > 0)) return undefined;
+  const prices = [roundToMarketUnit(Math.max(current * 1.04, avg * 1.1)), roundToMarketUnit(Math.max(current * 1.1128, avg * 1.2)), roundToMarketUnit(Math.max(current * 1.202, avg * 1.3))];
+  const profitProtectionPrice = roundToMarketUnit(Math.max(avg * 1.01, current * 0.95));
+  if (prices.some((price) => !price) || !profitProtectionPrice) return undefined;
+  const quantities = quantity >= 3 ? [Math.max(1, Math.floor(quantity * 0.3)), Math.max(1, Math.floor(quantity * 0.3))] : [0, quantity >= 2 ? 1 : 0];
+  quantities.push(quantity - quantities[0] - quantities[1]);
+  const labels = ["1차 수익 실현", "2차 수익 실현", "잔여 물량 목표"];
+  return {
+    status: "PROFIT_MANAGEMENT", calculatedAtPrice: current, profitProtectionPrice,
+    stages: prices.map((price, index) => ({ stage: (index + 1) as 1 | 2 | 3, label: labels[index], price: Number(price), allocationRate: [30, 30, 40][index], quantity: quantities[index], expectedProceeds: Number(price) * quantities[index] })).filter((stage) => stage.quantity > 0),
+    summary: "수익 종목은 추가매수보다 분할 매도와 수익 보호를 우선합니다.",
+    conditions: ["추천가는 현재가와 평균매입가 기준의 관리 가격이며 보장 수익률이 아닙니다.", "수익보호선 종가 이탈 시 비중 축소를 재검토합니다."]
+  };
 }
 
 function isLossOutcome(swingCase?: SwingHistoryCase) {
@@ -63,6 +91,7 @@ function buildPriority(params: {
   originalIntent: OriginalIntent;
   linkedHistory?: PortfolioLinkedHistory;
   executionPlan?: PortfolioExecutionPlan;
+  profitRate: number;
 }) {
   let score = 30;
 
@@ -77,6 +106,7 @@ function buildPriority(params: {
   if (params.currentMode === "DEAD_MONEY") score -= 35;
   if (params.aiAction === "NO_ACTION") score -= 20;
   if (!params.executionPlan?.invalidPrice) score -= 10;
+  if (params.profitRate > 0 && params.aiAction === "HOLD") score -= 20;
 
   return clamp(Math.round(score), 0, 100);
 }
@@ -256,15 +286,17 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     }
   } else if (holding.originalIntent === "LONG_TERM") {
     suggestedIntent = "LONG_TERM";
-    if (context.longTermPick?.longTermBucket === "buy" && profitRate <= -3) {
+    if (context.technicalSetup?.status === "READY" && profitRate <= 0) {
       currentMode = "LONG_TERM_VALID";
-      aiAction = "ROTATION_BUY";
-      reasons.push("중장기 서버 픽에서 본격매수 후보로 유지됩니다.");
-      reasons.push("추가매수분 회수 계획이 있으면 회전매수 후보로 볼 수 있습니다.");
-    } else if (context.longTermPick?.longTermBucket === "accumulate") {
+      aiAction = context.longTermPick?.longTermBucket === "buy" ? "ROTATION_BUY" : "ADD_ALLOWED";
+      reasons.push("최근 저점 방어와 20일선 박스권 조건이 모두 확인됐습니다.");
+      if (context.longTermPick?.longTermBucket === "buy" || context.longTermPick?.longTermBucket === "accumulate") {
+        reasons.push("중장기 서버 분석에서도 매수 검토 버킷을 유지하고 있습니다.");
+      }
+    } else if (context.technicalSetup?.status === "FORMING" && profitRate <= 0) {
       currentMode = "LONG_TERM_VALID";
-      aiAction = "ADD_ALLOWED";
-      reasons.push("중장기 서버 픽에서 분할매수 후보로 유지됩니다.");
+      aiAction = "ADD_WAIT";
+      reasons.push("저점 또는 20일선 박스권이 형성 중이므로 완성 전까지 추가매수를 기다립니다.");
     } else if (profitRate <= -25) {
       currentMode = "LONG_TERM_WEAKENED";
       aiAction = "ADD_WAIT";
@@ -298,12 +330,14 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     executionPlan,
     budget: context.recoveryBudget
   });
+  const sellPlan = buildSellPlan(holding);
   const priority = buildPriority({
     currentMode,
     aiAction,
     originalIntent: holding.originalIntent,
     linkedHistory: context.linkedHistory,
-    executionPlan
+    executionPlan,
+    profitRate
   });
   const confidence = buildConfidence({
     holding,
@@ -341,6 +375,8 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     risks: [...new Set(risks)],
     executionPlan,
     recoveryPlan,
+    sellPlan,
+    technicalSetup: context.technicalSetup,
     linkedHistory: context.linkedHistory,
     questions: holding.originalIntent === "UNKNOWN" ? ["처음 매수 목적이 스윙인지 중장기인지 확인이 필요합니다."] : undefined,
     holding

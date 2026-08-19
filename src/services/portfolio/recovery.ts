@@ -3,7 +3,9 @@ import type {
   CurrentMode,
   PortfolioExecutionPlan,
   PortfolioHolding,
+  PortfolioRecoveryBuyStage,
   PortfolioRecoveryPlan,
+  PortfolioRecoveryScenario,
   PortfolioRecoverySimulation
 } from "./types.js";
 import { resolveHoldingInvestedAmount } from "./amounts.js";
@@ -15,6 +17,7 @@ const FIRST_RECOVERY_RETURN_RATE = 5;
 const MAX_REQUIRED_REBOUND_AFTER_BUY = 30;
 const MIN_REBOUND_IMPROVEMENT = 0.5;
 const RECOVERY_REBOUND_TARGET_RATE = 20;
+const STAGE_ALLOCATION_RATES = [0.3, 0.3, 0.4] as const;
 
 export type PortfolioRecoveryBudgetContext = {
   priceSource?: PortfolioRecoveryPlan["priceSource"];
@@ -140,6 +143,106 @@ function simulateRecovery(params: {
       expectedProfitAmount: roundAmount(newTotalInvestedAmount * (FINAL_PROFIT_TARGET_RATE / 100))
     }
   };
+}
+
+function buildStagedRecoveryStrategy(params: {
+  currentPrice: number;
+  currentQuantity: number;
+  currentInvestedAmount: number;
+  totalBudget: number;
+  invalidPrice?: number;
+  addPriceZone?: PortfolioExecutionPlan["addPriceZone"];
+}): { stages: PortfolioRecoveryBuyStage[]; scenarios: PortfolioRecoveryScenario[] } {
+  const lowerZonePrice = Number(params.addPriceZone?.from);
+  const upperZonePrice = Number(params.addPriceZone?.to);
+  const floorAboveInvalid = isFinitePositive(params.invalidPrice) ? params.invalidPrice * 1.01 : 1;
+  const supportPrice = Math.max(
+    floorAboveInvalid,
+    isFinitePositive(lowerZonePrice)
+      ? Math.min(params.currentPrice, lowerZonePrice)
+      : params.currentPrice * 0.97
+  );
+  const confirmationPrice = Math.max(
+    params.currentPrice,
+    isFinitePositive(upperZonePrice) ? upperZonePrice : params.currentPrice * 1.03
+  );
+  const stagePrices = [params.currentPrice, supportPrice, confirmationPrice];
+  const labels = ["1차 시험 매수", "2차 지지 확인", "3차 회복 확인"];
+  const triggers = [
+    "현재 회복 신호와 무효가 유효 상태 유지",
+    "추가매수 구간 지지와 하락 둔화 재확인",
+    "현재가 회복 또는 상단 돌파 확인"
+  ];
+  const stages: PortfolioRecoveryBuyStage[] = [];
+  let cumulativeAdditionalAmount = 0;
+  let cumulativeAdditionalQuantity = 0;
+
+  for (let index = 0; index < STAGE_ALLOCATION_RATES.length; index += 1) {
+    const allocationRate = STAGE_ALLOCATION_RATES[index];
+    const buyPrice = roundPrice(stagePrices[index]);
+    const requestedAmount = roundAmount(
+      index === STAGE_ALLOCATION_RATES.length - 1
+        ? Math.max(0, params.totalBudget - cumulativeAdditionalAmount)
+        : params.totalBudget * allocationRate
+    );
+    const quantity = buyPrice > 0 ? Math.floor(requestedAmount / buyPrice) : 0;
+    const actualAmount = quantity * buyPrice;
+    cumulativeAdditionalAmount += actualAmount;
+    cumulativeAdditionalQuantity += quantity;
+    const totalQuantity = params.currentQuantity + cumulativeAdditionalQuantity;
+    const totalInvestedAmount = params.currentInvestedAmount + cumulativeAdditionalAmount;
+    const newAvgPrice = totalQuantity > 0 ? totalInvestedAmount / totalQuantity : 0;
+    const maxLossAtInvalidPrice = isFinitePositive(params.invalidPrice)
+      ? Math.max(0, totalInvestedAmount - totalQuantity * params.invalidPrice)
+      : undefined;
+    stages.push({
+      stage: (index + 1) as 1 | 2 | 3,
+      label: labels[index],
+      trigger: triggers[index],
+      buyPrice,
+      allocationRate: allocationRate * 100,
+      requestedAmount,
+      quantity,
+      actualAmount,
+      cumulativeAdditionalAmount,
+      cumulativeQuantity: cumulativeAdditionalQuantity,
+      newAvgPrice: roundPrice(newAvgPrice),
+      requiredReboundRate: roundPercent(calculateRequiredReboundRate(newAvgPrice, buyPrice)),
+      maxLossAtInvalidPrice: maxLossAtInvalidPrice === undefined ? undefined : roundAmount(maxLossAtInvalidPrice)
+    });
+  }
+
+  const scenarioDefinitions = [
+    { key: "NONE" as const, label: "추가매수 안 함", count: 0 },
+    { key: "STAGE_1" as const, label: "1차만 실행", count: 1 },
+    { key: "STAGE_1_2" as const, label: "2차까지 실행", count: 2 },
+    { key: "ALL" as const, label: "전체 계획 실행", count: 3 }
+  ];
+  const scenarios: PortfolioRecoveryScenario[] = scenarioDefinitions.map((definition) => {
+    const lastStage = definition.count ? stages[definition.count - 1] : undefined;
+    const additionalAmount = lastStage?.cumulativeAdditionalAmount ?? 0;
+    const additionalQuantity = lastStage?.cumulativeQuantity ?? 0;
+    const totalQuantity = params.currentQuantity + additionalQuantity;
+    const totalInvestedAmount = params.currentInvestedAmount + additionalAmount;
+    const newAvgPrice = totalInvestedAmount / totalQuantity;
+    const maxLossAtInvalidPrice = isFinitePositive(params.invalidPrice)
+      ? Math.max(0, totalInvestedAmount - totalQuantity * params.invalidPrice)
+      : undefined;
+    return {
+      key: definition.key,
+      label: definition.label,
+      executedStages: definition.count,
+      totalAdditionalAmount: additionalAmount,
+      totalAdditionalQuantity: additionalQuantity,
+      totalQuantity,
+      totalInvestedAmount: roundAmount(totalInvestedAmount),
+      newAvgPrice: roundPrice(newAvgPrice),
+      requiredReboundRate: roundPercent(calculateRequiredReboundRate(newAvgPrice, params.currentPrice)),
+      maxLossAtInvalidPrice: maxLossAtInvalidPrice === undefined ? undefined : roundAmount(maxLossAtInvalidPrice)
+    };
+  });
+
+  return { stages, scenarios };
 }
 
 export function buildPortfolioRecoveryPlan(params: {
@@ -412,17 +515,28 @@ export function buildPortfolioRecoveryPlan(params: {
     };
   }
 
+  const stagedStrategy = buildStagedRecoveryStrategy({
+    currentPrice,
+    currentQuantity,
+    currentInvestedAmount,
+    totalBudget: suggestedAdditionalBuyAmount,
+    invalidPrice,
+    addPriceZone: params.executionPlan?.addPriceZone
+  });
+
   return {
     ...base,
     status: "RECOVERY_READY",
     suggestedAdditionalBuyAmount,
     maxAdditionalBuyAmount,
     simulation,
+    buyStages: stagedStrategy.stages,
+    scenarios: stagedStrategy.scenarios,
     blockReasons: [],
     warnings,
     summary: `예시 추가금 ${suggestedAdditionalBuyAmount.toLocaleString("ko-KR")}원으로 새 평단과 회수 목표를 계산했습니다.`,
     conditions: unique([
-      "예시 추가금은 한 번에 쓰지 않고 분할",
+      "예시 추가금은 30% · 30% · 40%로 분할",
       "1차 목표에서 추가매수금부터 회수",
       "무효가 이탈 시 추가매수 중단",
       ...conditions

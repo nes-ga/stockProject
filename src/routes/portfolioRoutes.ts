@@ -16,6 +16,7 @@ import { parsePortfolioScreenshot } from "../services/portfolio/screenshotReader
 
 const logger = createLogger("portfolioRoutes");
 export const portfolioRoutes = Router();
+const LOCAL_OCR_PARSER_VERSION = "2026-08-19.5";
 
 const originalIntentSchema = z.enum(["SWING", "LONG_TERM", "UNKNOWN"]);
 
@@ -175,6 +176,7 @@ portfolioRoutes.post("/screenshot/ocr-local", async (request, response, next) =>
     response.json({
       ok: true,
       parser: "local_ocr",
+      parserVersion: LOCAL_OCR_PARSER_VERSION,
       fileName: input.fileName,
       ...result
     });

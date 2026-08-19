@@ -6,6 +6,7 @@ import {
 } from "../services/portfolio/portfolioManager.js";
 import { buildPortfolioRecoveryPlan } from "../services/portfolio/recovery.js";
 import { evaluatePortfolioHolding } from "../services/portfolio/rules.js";
+import { buildPortfolioTechnicalSetup } from "../services/portfolio/technicalSetup.js";
 import type { AiAction, PortfolioHolding } from "../services/portfolio/types.js";
 
 function createHolding(overrides: Partial<PortfolioHolding> = {}): PortfolioHolding {
@@ -44,6 +45,19 @@ function build(action: AiAction, overrides: Partial<PortfolioHolding> = {}, budg
   });
 }
 
+const flatBoxPoints = Array.from({ length: 45 }, (_, index) => ({
+  date: `2026-06-${String(index + 1).padStart(2, "0")}`,
+  open: 9_950 + (index % 3) * 20,
+  high: 10_150 + (index % 4) * 10,
+  low: index < 35 ? 9_700 + (index % 3) * 10 : 9_850 + (index % 3) * 10,
+  close: 10_000 + (index % 5) * 10,
+  volume: 100_000
+}));
+const flatBoxSetup = buildPortfolioTechnicalSetup(flatBoxPoints);
+assert.equal(flatBoxSetup.status, "READY");
+assert.equal(flatBoxSetup.checks.sma20FlatOrRising, true);
+assert.equal(flatBoxSetup.checks.boxFormed, true);
+
 const ready = build("ADD_ALLOWED");
 assert.equal(ready.status, "RECOVERY_READY");
 assert.ok((ready.suggestedAdditionalBuyAmount ?? 0) > 0);
@@ -53,6 +67,18 @@ assert.ok(ready.simulation.newAvgPrice < ready.breakEvenPrice);
 assert.ok(ready.simulation.requiredReboundRateAfterBuy < ready.requiredReboundRate);
 assert.equal(ready.simulation.lossAmountAfterBuy, ready.currentLossAmount);
 assert.ok(ready.simulation.firstRecoveryTarget);
+assert.equal(ready.buyStages?.length, 3);
+assert.equal(ready.scenarios?.length, 4);
+assert.deepEqual(ready.buyStages?.map((stage) => stage.allocationRate), [30, 30, 40]);
+assert.ok((ready.buyStages?.[0]?.actualAmount ?? 0) > 0);
+assert.ok((ready.buyStages?.[2]?.cumulativeAdditionalAmount ?? 0) <= (ready.suggestedAdditionalBuyAmount ?? 0));
+assert.equal(ready.scenarios?.[0]?.totalAdditionalAmount, 0);
+assert.ok((ready.scenarios?.[3]?.newAvgPrice ?? Infinity) < ready.breakEvenPrice);
+assert.ok(
+  (ready.scenarios?.[3]?.requiredReboundRate ?? Infinity) <
+    (ready.scenarios?.[0]?.requiredReboundRate ?? 0)
+);
+assert.ok(Number.isFinite(ready.scenarios?.[3]?.maxLossAtInvalidPrice));
 const stagedRecoveryProceeds =
   (ready.simulation.firstRecoveryTarget.expectedProceeds ?? 0) +
   ready.simulation.finalRecoveryTarget.price *
@@ -69,11 +95,14 @@ const waiting = build("ADD_WAIT");
 assert.equal(waiting.status, "WAIT_SIGNAL");
 assert.equal(waiting.suggestedAdditionalBuyAmount, undefined);
 assert.equal(waiting.simulation, undefined);
+assert.equal(waiting.buyStages, undefined);
+assert.equal(waiting.scenarios, undefined);
 
 const reduceOnly = build("REDUCE_ON_REBOUND");
 assert.equal(reduceOnly.status, "REDUCE_ONLY");
 assert.equal(reduceOnly.suggestedAdditionalBuyAmount, undefined);
 assert.equal(reduceOnly.simulation, undefined);
+assert.equal(reduceOnly.buyStages, undefined);
 
 const profitable = build("ADD_ALLOWED", {
   currentPrice: 11_000,
@@ -160,6 +189,12 @@ const longTermPick = {
   category: "longTerm",
   longTermBucket: "accumulate"
 } as const;
+const profitableLongTermAdvice = evaluatePortfolioHolding(createHolding({ currentPrice: 11_000, evaluationAmount: 1_100_000, profitRate: 10 }), { longTermPick });
+assert.equal(profitableLongTermAdvice.aiAction, "HOLD");
+assert.equal(profitableLongTermAdvice.priorityLabel, "LOW");
+assert.equal(profitableLongTermAdvice.sellPlan?.stages.length, 3);
+assert.equal(profitableLongTermAdvice.sellPlan?.stages.reduce((sum, stage) => sum + stage.quantity, 0), 100);
+assert.ok((profitableLongTermAdvice.sellPlan?.profitProtectionPrice ?? 0) > 10_000);
 const fixedInvalidAtFirstQuote = evaluatePortfolioHolding(createHolding(), {
   longTermPick
 }).executionPlan?.invalidPrice;

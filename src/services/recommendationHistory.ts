@@ -15,7 +15,6 @@ const SWING_TARGET_RETURN_PCT = 10;
 const SWING_DEEP_ENTRY_TARGET_RETURN_PCT = 8;
 const SWING_DRIFT_PROFIT_RETURN_PCT = 5;
 const SWING_MISSED_UPSIDE_FROM_FIRST_BUY_PCT = 7;
-const SWING_STALE_TIMEOUT_BUSINESS_DAYS = 20;
 const CLOSED_CASE_MARKET_REFRESH_SESSIONS = 80;
 const MARKET_SHOCK_GRACE_SESSIONS = 1;
 const THIRD_BUY_MIN_STOP_BUFFER_PCT = 6;
@@ -2086,18 +2085,6 @@ function deriveHistoryOutcome(historyCase: SwingHistoryCase, lifecycleStatus: "c
     );
   }
 
-  if (businessDaysSinceFirstBuy >= SWING_STALE_TIMEOUT_BUSINESS_DAYS) {
-    return buildHistoryOutcome(
-      "stale_timeout",
-      "시간 종료",
-      "neutral",
-      true,
-      `첫 체결 후 ${SWING_STALE_TIMEOUT_BUSINESS_DAYS}거래일 이상 목표/손절 없이 후보에서 이탈했습니다. ${returnDescription}`,
-      latestCloseReturnBasis,
-      closeBasis
-    );
-  }
-
   return buildHistoryOutcome(
     "closed_unknown",
     "종료",
@@ -3070,7 +3057,7 @@ function buildClosedMonthSummaries(cases: SwingHistoryCase[]) {
 
 // 중요: 이미 체결 가정이 생긴 스윙 케이스는 최신 스캔에서 새 패턴이
 // 잡히지 않았다는 이유만으로 종료하면 안 됩니다. 손절, 목표 수익,
-// 완만 상승 종료, 시간 종료, 명시적 제거가 나오기 전까지 watch로 유지합니다.
+// 완만 상승 종료 또는 명시적 제거가 나오기 전까지 watch로 유지합니다.
 function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
   const executedBuyCount = getExecutedBuyStage(historyCase);
   if (
@@ -3094,6 +3081,14 @@ function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
     return false;
   }
 
+  // A carry-forward may reopen a stale/unknown case whose position is still
+  // live, but it must never resurrect a case with a confirmed terminal exit.
+  // In particular, a market-shock grace observed today cannot override a
+  // stop that closed the case on an earlier trading day.
+  if (isProfitExitHistoryCase(historyCase) || isStopOutcomeHistoryCase(historyCase)) {
+    return false;
+  }
+
   const targetReturnPct = getTargetReturnPct(executedBuyCount);
   const returnPct = getReturnPct(historyCase);
   const maxFavorableReturnPct = getMaxFavorableReturnPct(historyCase);
@@ -3104,12 +3099,11 @@ function shouldCarryForwardSwingCase(historyCase: SwingHistoryCase) {
     return false;
   }
 
-  const businessDaysSinceFirstBuy = countBusinessDaysBetween(getFirstExecutedBuyDate(historyCase), historyCase.dataDate);
-  return businessDaysSinceFirstBuy < SWING_STALE_TIMEOUT_BUSINESS_DAYS;
+  return true;
 }
 
 // recommendationUniverse가 현재 스윙 후보 파일을 덮어쓰기 전에 사용합니다.
-// 펄어비스 같은 체결 케이스가 손절가 위에 있고 목표/시간 종료가 아닌데
+// 펄어비스 같은 체결 케이스가 손절가 위에 있고 목표 종료가 아닌데
 // watchItems에서 사라지는 일을 막기 위한 보존 경로입니다.
 export async function readSwingCarryForwardCases(profile?: string): Promise<SwingCarryForwardCase[]> {
   const existingPayload = await readOptionalJsonFile<SwingHistoryPayload>(swingHistoryPath);
@@ -3119,10 +3113,7 @@ export async function readSwingCarryForwardCases(profile?: string): Promise<Swin
         .filter((historyCase) => !isPennyStockHistoryCase(historyCase))
     : [];
   const asOfDate = formatDateInSeoul(new Date());
-  const cases = await refreshCaseMarketPrices(
-    rawCases.map((historyCase) => enrichClosedDateFields(historyCase, "current", asOfDate)),
-    asOfDate
-  );
+  const cases = await refreshCaseMarketPrices(rawCases, asOfDate);
   const resolveMarketShockContext = await createMarketShockContextResolver();
   const casesWithMarketStopGrace = applyMarketStopGraceToCases(cases, resolveMarketShockContext, asOfDate);
 
