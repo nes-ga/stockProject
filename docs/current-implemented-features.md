@@ -1,6 +1,6 @@
 # 현재 구현 기능
 
-기준일: 2026-07-27
+기준일: 2026-08-21
 
 이 문서는 현재 코드에 실제로 구현된 기능만 정리합니다.
 
@@ -41,6 +41,8 @@
 - app/category tabs에 키보드 방향키 이동과 ARIA tab 상태를 제공
 - dialog에 focus trap, 초기 focus, 닫은 후 focus 복귀, 배경 inert, scroll lock을 적용
 - `prefers-reduced-motion`에서 캐릭터와 배경 애니메이션을 중지
+- 스윙 화면은 기본 기준과 확장 탐색 프로필을 별도 탭으로 나누지 않고, 두 엔진의 중복 제거 결과를 하나의 목록과 버킷 카운트로 표시
+- 스윙 카드의 `기본 기준`/`확장 탐색` 배지로 내부 포착 경로를 확인할 수 있으며, 검색 버튼 한 번으로 두 프로필을 함께 실행
 
 차트는 공휴일/비거래일을 임의 whitespace candle로 채우지 않고, 실제 거래 데이터 중심으로 렌더링합니다.
 
@@ -71,7 +73,7 @@
 - `GET /analysis/server-dividend-picks`
 - `POST /analysis/server-dividend-picks`
 
-스윙 후보는 일반 스윙과 소형주 프로필을 분리할 수 있고, 저장 payload는 `executionItems`, `watchItems`, `items`를 함께 제공합니다.
+스윙 후보는 내부적으로 기본 프로필과 확장 탐색 프로필을 분리 저장합니다. 확장 탐색 결과에서는 기본 결과와 겹치는 종목을 제외하며, UI는 두 결과를 하나로 합칩니다. 저장 payload는 `executionItems`, `watchItems`, `items`를 함께 제공합니다.
 
 ## 5. Portfolio
 
@@ -91,7 +93,12 @@ API:
 - 보유종목 요약, 행동 우선순위, 실행 계획과 종목별 상세 제공
 - 규칙 기반 판단을 AI 생성 결과처럼 보이지 않도록 `오늘 우선 대응`, `규칙 기반 코멘트`로 표시
 - 로컬 OCR과 AI 판독 결과를 저장 전 초안으로 검토하고 병합 또는 교체 저장
+- 로컬 OCR parser 검증 명령 `npm run verify:portfolio-ocr`을 제공하며, 종목 행·계좌 요약·금액 단위 보정 회귀 사례를 확인
 - 최신 조회 시세 snapshot 기준 `PortfolioRecoveryPlan`으로 현재 투입금, 평가금, 손실금, 손익분기 가격과 필요 반등률을 계산
+- 중장기 보유종목은 최근 6개월 일봉에서 20일선 기울기·이격, 20일 박스 폭, 최근 저점 방어를 계산해 `READY`, `FORMING`, `WAIT`, `UNAVAILABLE` 기술 상태를 제공
+- 기술 상태가 `READY`인 손실 중장기 종목은 복구 검토 경로로 연결하고, `FORMING`은 추가 확인 대상으로 유지하며 기술 무효가를 실행 계획에 반영
+- 수익 종목은 현재가와 평단을 기준으로 3단계 분할매도 목표·수량과 수익보호 가격을 계산
+- 현재 작업 트리에서는 과거 손실 종료 이력이 있어도 실제 보유 손익이 수익으로 전환된 스윙 종목을 `SWING_RECOVERED`로 분리해 추가매수 대신 수익 보호 관찰로 표시
 - `RECOVERY_READY`에서만 예시 추가금과 안전 상한, 새 평단, 1차 추가금 회수, 최종 플러스 목표를 활성 표시
 - `WAIT_SIGNAL`은 지금 추가금 0원으로 고정하고 추가매수 시뮬레이션 없이 신호 후 재계산 또는 안전 상한을 넘는 필요 금액만 안내
 - `REDUCE_ONLY`는 추가매수를 차단하고 반등 축소 구간을 우선 표시
@@ -101,7 +108,7 @@ API:
 - 상단 추가 카운터와 카드 행동 문구는 원 규칙의 후보 상태가 아니라 실제 `RECOVERY_READY` 여부를 기준으로 표시
 - 모든 보유종목 카드에 관리 엔진 무효가, 현재가 대비 거리, 기준 유효/이탈 상태와 산정 근거를 항상 표시
 
-Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을 추가, 수정, 삭제하는 UI는 아직 없습니다.
+Portfolio CRUD API는 구현되어 있지만 화면에서 직접 보유종목을 추가, 수정, 삭제하는 UI는 아직 없습니다. 기술 상태 계산은 아직 중장기 보유종목에만 적용되며, quote-only provider와 계좌 `capturedAt/uploadedAt` 분리는 미완료입니다.
 
 Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후속 범위는 [2026-07-27 고도화 실행 계획](./project-enhancement-execution-plan-2026-07-27.md#4-phase-0--portfolio-execution-safety)을 따릅니다.
 

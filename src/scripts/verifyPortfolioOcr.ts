@@ -90,9 +90,17 @@ assert.equal(result.draftHoldings[3]?.quantity, 2_434);
 assert.equal(result.cashBalance, 12_898_979);
 assert.equal(result.totalEvaluationAmount, 37_926_060);
 assert.equal(result.totalProfitRate, -23.7);
+assert.equal(result.validation?.safeToReplace, false);
+
+const inconsistentTotalResult = parsePortfolioOcrText(`총평가금액\n40,000,000\n${fixture}`, knownHoldings);
+assert.equal(inconsistentTotalResult.validation?.safeToReplace, false);
+assert.ok((inconsistentTotalResult.validation?.evaluationAmountDifference ?? 0) > 2_000_000);
 
 const accountOnlyResult = parsePortfolioOcrText(`계좌 잔고\n예수금\n12,898,979\n총평가금액\n37,926,060`);
 assert.equal(accountOnlyResult.cashBalance, 12_898_979);
 assert.equal(accountOnlyResult.totalEvaluationAmount, 37_926_060);
+
+const accountNumberTrapResult = parsePortfolioOcrText(`예수금\n종합위탁 256-270-209 01\n마2예수금\n21,124,176`);
+assert.equal(accountNumberTrapResult.cashBalance, 21_124_176);
 
 console.log(JSON.stringify({ ok: true, holdingCount: result.draftHoldings.length, totalEvaluationAmount: result.totalEvaluationAmount }));

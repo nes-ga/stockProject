@@ -1062,6 +1062,16 @@ function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: Swi
     return true;
   }
 
+  // A relaxed-close lead-in is only created after a later surge session
+  // confirms both continuation and full liquidity. Preserve that validated
+  // setup in watchItems even when quality penalties keep matched=false.
+  if (
+    analysis.pattern.stage === 'setup' &&
+    analysis.pattern.classificationReasons?.includes('seed_anchor_confirmed')
+  ) {
+    return true;
+  }
+
   const riskRewardRatio = analysis.pattern.tradePlan?.riskRewardRatio ?? analysis.pattern.riskRewardRatio ?? 0;
   return (
     (analysis.pattern.matched && analysis.pattern.status !== "pullback_early") ||

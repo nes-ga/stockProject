@@ -1201,6 +1201,8 @@ function resolveQualifiedLeadIn(params: {
   const leadInReferenceOpen = leadInPoint.open ?? leadInPrevious?.close;
   const leadInBullishBody = leadInReferenceOpen != null && leadInPoint.close > leadInReferenceOpen;
   const leadInClosedStrong = leadInPoint.close >= getPointHigh(leadInPoint) * 0.94;
+  const leadInClosedForConfirmedContinuation =
+    leadInPoint.close >= getPointHigh(leadInPoint) * 0.91;
   const priceAndCandleAccepted =
     leadInPriceChangePercent != null &&
     leadInPriceChangePercent >= filters.minLeadInPriceChangePercent &&
@@ -1215,8 +1217,17 @@ function resolveQualifiedLeadIn(params: {
     };
   }
 
+  // Keep the normal 94%-of-high close gate unchanged. A 91%-94% close can only
+  // become a seed anchor when a later surge point confirms both another full
+  // setup-sized advance and the normal liquidity thresholds. This captures
+  // multi-session impulses without admitting one-day upper-wick spikes.
+  const seedPriceAndCandleAccepted =
+    leadInPriceChangePercent != null &&
+    leadInPriceChangePercent >= filters.minLeadInPriceChangePercent &&
+    leadInBullishBody &&
+    leadInClosedForConfirmedContinuation;
   const seedAnchor =
-    priceAndCandleAccepted &&
+    seedPriceAndCandleAccepted &&
     (leadInVolume.volumeRatio20d ?? 0) >= filters.minLeadInVolumeRatio &&
     (leadInVolume.turnoverValue ?? 0) >= filters.minTurnoverValue &&
     (leadInVolume.absoluteVolume ?? 0) >= filters.minLeadInVolumeShares * 0.1;

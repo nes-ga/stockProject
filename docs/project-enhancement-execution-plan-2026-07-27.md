@@ -1,11 +1,27 @@
 # StockMon 고도화 실행 계획
 
 - 기준일: 2026-07-27
-- 상태: Ready for implementation
+- 상태: In progress (2026-08-21 갱신)
 - 목적: 집 또는 다른 작업 세션에서 이 문서만 읽고도 순서대로 구현을 시작할 수 있는 실행 기준 제공
 - 우선순위 기준: 데이터 신뢰성 → 판단 안전성 → 다음 행동 연결 → 성과 검증 → 운영 편의
 
 > 이 문서는 [2026-07-13 프로젝트 개선 제안서](./project-improvement-proposal-2026-07-13.md)의 감사 근거를 유지하면서, 2026-07-27 현재 구현 상태에 맞춰 **다음 작업 순서와 완료 조건을 재정의한 실행용 기준 문서**다. 우선순위가 충돌하면 이 문서를 따르며, 이후 실행 상태 checkbox는 이 문서에서만 관리한다.
+
+## 0. 2026-08-21 진행 메모
+
+Phase 0의 일부 기반이 2026-08-19 커밋과 현재 작업 트리에 반영됐다.
+
+- 완료: 중장기 보유종목용 `PortfolioTechnicalSetup` 계산. 최근 일봉으로 SMA20 기울기·이격, 20일 박스 폭, 저점 방어와 기술 무효가를 산출한다.
+- 완료: 기술 상태를 Portfolio 규칙과 Recovery Plan에 전달하고 화면에 근거를 표시한다.
+- 완료: 수익 종목용 3단계 분할매도 수량·목표가와 수익보호 가격을 제공한다.
+- 완료: 로컬 OCR 파서 보강과 `npm run verify:portfolio-ocr` 회귀 검증을 추가했다.
+- 작업 트리 반영: 과거 손실 이력보다 현재 실제 보유 손익을 우선해 수익 전환 스윙을 `SWING_RECOVERED`로 분리한다.
+- 미완료: P0-A의 독립 `PortfolioExecutionSignal` DTO, history freshness/policy gate, Swing·Unknown 승인 정책.
+- 미완료: P0-B의 실제 캡처 시각과 업로드 시각 분리. 현재 저장 route는 계좌 저장 시각을 `capturedAt`으로 기록한다.
+- 미완료: P0-C quote-only provider, snapshot ID, view-aware polling, 공통 timeout/cache/concurrency.
+- 미완료: P0-D 정책 객체·버전, 비용·세금·슬리피지 반영.
+
+따라서 현재 기술 상태 `READY`는 Phase 0-A 전체 완료를 뜻하지 않는다. 최신 추천 이력, 독립 실행 신호, 시세와 계좌 근거가 모두 갖춰진 최종 execution safety gate는 계속 미완료로 본다.
 
 ## 1. 한 줄 결론
 

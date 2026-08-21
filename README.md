@@ -16,6 +16,8 @@ npm run dev
 ```bash
 npm run check
 npm run build
+npm run verify:portfolio-recovery
+npm run verify:portfolio-ocr
 npm run start
 npm run refresh:swing-picks
 npm run scan:swing-universe
@@ -28,6 +30,8 @@ npm run scan:long-term-universe
 
 - `npm run check`: TypeScript 타입 검사
 - `npm run build`: TypeScript 빌드 + 뉴스 시그널 production/minified 번들
+- `npm run verify:portfolio-recovery`: Portfolio 상태·복구 금액·기술적 박스권·매도 계획 회귀 검증
+- `npm run verify:portfolio-ocr`: 증권사 잔고 스크린샷 OCR 파싱 fixture 검증
 - `npx tsx src/scripts/verifyVolumeProfile.ts`: 매물대 분석 샘플 시나리오 검증
 - `npx tsx src/scripts/checkVolumeProfileImpact.ts`: 저장된 후보에 대한 매물대 영향 샘플 점검
 
@@ -37,7 +41,7 @@ npm run scan:long-term-universe
 - 중장기 엔진: 리더십, 조정률, 추세, 유동성, 안정화, 재무, 장기 매물대 구조 평가
 - 매물대 분석: ATR 동적 bin, 시간감쇠, 몸통 중심 배분, 거리감쇠, 리테스트, POC/Value Area, profile 신뢰도
 - 배당 엔진: 배당 수익률, 안정성, 성장성, 재무 리스크, 배당 ETF 추천
-- Portfolio: 보유종목 요약, 오늘 우선 대응, 금액 기준 Recovery Plan, 규칙 기반 코멘트, OCR 초안 병합/교체
+- Portfolio: 보유종목 요약, 오늘 우선 대응, 금액 기준 Recovery Plan, 규칙 기반 코멘트, 로컬 OCR 초안 병합/교체, 중장기 20일선 박스권 판독, 수익 종목 분할매도 계획
 - 시장 감시: KOSPI, KOSDAQ, NASDAQ100, SOX, VIX, USDKRW, GOLD, WTI, BTC
 - 시장 흐름: 글로벌/국내 위험 선호, 테마 로테이션, 히스토리 차트
 - 뉴스 시그널: Naver Search API 기반 종목/이벤트/섹터 요약
@@ -50,6 +54,9 @@ npm run scan:long-term-universe
 - 상단 탭별 캐릭터와 배경 parade를 유지한 반응형 화면
 - tabs/dialog 키보드 이동, focus trap/복귀, 상태·오류 ARIA 처리
 - Portfolio의 `오늘 우선 대응` 우선 배치와 현재 투입금·추가금·새 평단·회수 목표 중심 Recovery Plan
+- 중장기 보유종목의 20일선·박스권·저점 방어 상태와 무효가 표시
+- 수익 종목의 3단계 분할매도 수량·목표가와 수익보호 가격 표시
+- 스윙은 기본 기준과 확장 탐색 엔진을 내부적으로 함께 실행하되 화면에서는 중복 제거된 단일 목록으로 표시하고, 카드 배지로 포착 기준을 구분
 - 뉴스 초기 실패 재시도, 기존 데이터 stale 유지, 뉴스 탭 최초 진입 lazy loading
 - 뉴스 번들: `1,103,322` bytes에서 `205,571` bytes로 축소(약 `81.4%`)
 
@@ -74,6 +81,10 @@ npm run scan:long-term-universe
 - `POST /analysis/realtime-stocks`
 - `POST /analysis/realtime-stock-detail`
 - `GET /analysis/news-signals`
+- `GET /analysis/recommendation-history/swing`
+- `GET /analysis/recommendation-history/long-term`
+- `GET /analysis/online-presence`
+- `POST /analysis/online-presence/heartbeat`
 - `GET /portfolio/holdings`
 - `POST /portfolio/holdings`
 - `PUT /portfolio/holdings/:id`
@@ -107,6 +118,7 @@ npm run scan:long-term-universe
 
 - [문서 인덱스](./docs/README.md)
 - [현재 구현 기능](./docs/current-implemented-features.md)
+- [2026-08-21 현재 구현 체크포인트](./docs/work-summary-2026-08-21-current-state.md)
 - [Portfolio 데이터 원본 경계](./docs/portfolio-data-boundary.md)
 - [프로젝트 개요](./docs/project-overview-2026-04-27.md)
 - [프로젝트 개선 제안서](./docs/project-improvement-proposal-2026-07-13.md)

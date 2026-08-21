@@ -266,7 +266,14 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     risks.push("회복 시나리오 없이 추가매수하면 자금이 장기간 묶일 수 있습니다.");
   } else if (holding.originalIntent === "SWING") {
     suggestedIntent = "SWING";
-    if (isLossOutcome(context.swingCase) || profitRate <= -15) {
+    if (profitRate > 0 && isLossOutcome(context.swingCase)) {
+      currentMode = "SWING_RECOVERED";
+      suggestedIntent = "EXIT_MANAGEMENT";
+      aiAction = "WATCH";
+      reasons.push("과거 스윙 훼손 이력은 있지만 현재 보유 손익이 수익으로 전환됐습니다.");
+      reasons.push("추가매수보다 급등 지속 여부와 수익보호 가격을 관찰합니다.");
+      risks.push("급등 직후 변동성이 커질 수 있어 수익 전환만으로 신규 매수 신호로 보지 않습니다.");
+    } else if (profitRate <= -15) {
       currentMode = "SWING_BROKEN";
       suggestedIntent = "RECOVERY";
       aiAction = profitRate <= -35 ? "REDUCE_ON_REBOUND" : "ADD_WAIT";
@@ -282,7 +289,7 @@ export function evaluatePortfolioHolding(holding: PortfolioHolding, context: Por
     } else {
       currentMode = "SWING_VALID";
       aiAction = "HOLD";
-      reasons.push("손실률이 제한적이고 스윙 보유 맥락이 유지됩니다.");
+      reasons.push(profitRate > 0 ? "현재 보유 손익이 수익 구간이고 스윙 보유 맥락이 유지됩니다." : "손실률이 제한적이고 스윙 보유 맥락이 유지됩니다.");
     }
   } else if (holding.originalIntent === "LONG_TERM") {
     suggestedIntent = "LONG_TERM";

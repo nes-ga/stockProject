@@ -319,6 +319,25 @@ function extractLabeledNumberNear(lines: string[], labels: string[], options: { 
   return undefined;
 }
 
+function extractCashBalance(lines: string[]): number | undefined {
+  const settlementLabels = ["D+2예수금", "0+2예수금", "2+2예수금", "마2예수금", "+2예수금"];
+  const settlementCash = extractLabeledNumberNear(lines, settlementLabels, { lookahead: 3 });
+  if (typeof settlementCash === "number") return settlementCash;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!includesAnyCompact(lines[index], ["예수금", "출금가능"])) continue;
+    for (let offset = 0; offset <= 3 && index + offset < lines.length; offset += 1) {
+      const candidateLine = lines[index + offset];
+      if (/종합위탁|계좌|\d{2,4}-\d{2,4}-\d{2,4}/u.test(candidateLine)) continue;
+      const token = numberTokens(candidateLine).find(
+        (item) => !item.isPercent && (item.raw.includes(",") || Math.abs(item.value) >= 10_000)
+      );
+      if (token) return token.value;
+    }
+  }
+  return undefined;
+}
+
 function extractLikelyTotalInvestedAmount(lines: string[]): number | undefined {
   const direct = extractLabeledNumberNear(lines, ["총매입금액", "총매입", "매입금액합계"], { lookahead: 3 });
   if (typeof direct === "number") {
@@ -900,7 +919,7 @@ function dedupeDrafts(drafts: PortfolioScreenshotDraftHolding[]): PortfolioScree
 
 function extractKoreanAccountFields(lines: string[]): Partial<PortfolioScreenshotParseResult> {
   return {
-    cashBalance: extractLabeledNumberNear(lines, ["D+2예수금", "0+2예수금", "2+2예수금", "예수금", "출금가능"], { lookahead: 3 }),
+    cashBalance: extractCashBalance(lines),
     totalEvaluationAmount: extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }),
     totalProfitRate: normalizeLikelyOcrPercent(
       extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
@@ -941,9 +960,40 @@ export function parsePortfolioOcrText(
   }
 
   const resultDrafts = dedupeDrafts(drafts);
+  const derivedInvestedAmount = resultDrafts.length
+    ? roundNumber(resultDrafts.reduce((sum, draft) => sum + (Number(draft.investedAmount) || 0), 0))
+    : undefined;
   const derivedEvaluationAmount = resultDrafts.length
     ? roundNumber(resultDrafts.reduce((sum, draft) => sum + (Number(draft.evaluationAmount) || 0), 0))
     : undefined;
+  const accountFields = extractKoreanAccountFields(lines);
+  const reportedInvestedAmount = extractLikelyTotalInvestedAmount(lines);
+  const estimatedTotalAsset = extractLabeledNumberNear(lines, ["추정자산"], { lookahead: 2 });
+  const evaluationAmountFromAsset =
+    typeof estimatedTotalAsset === "number" && typeof accountFields.cashBalance === "number" && estimatedTotalAsset >= accountFields.cashBalance
+      ? roundNumber(estimatedTotalAsset - accountFields.cashBalance)
+      : undefined;
+  const reportedEvaluationAmount =
+    extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }) ??
+    accountFields.totalEvaluationAmount ??
+    evaluationAmountFromAsset;
+  const investedAmountDifference =
+    typeof reportedInvestedAmount === "number" && typeof derivedInvestedAmount === "number"
+      ? Math.abs(reportedInvestedAmount - derivedInvestedAmount)
+      : undefined;
+  const evaluationAmountDifference =
+    typeof reportedEvaluationAmount === "number" && typeof derivedEvaluationAmount === "number"
+      ? Math.abs(reportedEvaluationAmount - derivedEvaluationAmount)
+      : undefined;
+  const validationIssues: string[] = [];
+  if (typeof evaluationAmountDifference !== "number") {
+    validationIssues.push("총평가금액과 종목별 평가금액 합계를 대조하지 못했습니다.");
+  } else if (evaluationAmountDifference > Math.max(10_000, Math.abs(reportedEvaluationAmount ?? 0) * 0.02)) {
+    validationIssues.push(`총평가금액이 종목별 합계와 ${evaluationAmountDifference.toLocaleString("ko-KR")}원 차이 납니다.`);
+  }
+  if (typeof investedAmountDifference === "number" && investedAmountDifference > Math.max(10_000, Math.abs(reportedInvestedAmount ?? 0) * 0.02)) {
+    validationIssues.push(`총매입금액이 종목별 합계와 ${investedAmountDifference.toLocaleString("ko-KR")}원 차이 납니다.`);
+  }
   const warnings: string[] = [];
   if (!resultDrafts.length) {
     warnings.push("로컬 OCR이 보유 종목 행을 확정하지 못했습니다. 표가 잘 보이도록 확대하거나 GPT 판독을 보조로 사용해 주세요.");
@@ -954,17 +1004,25 @@ export function parsePortfolioOcrText(
   if (tableDrafts.length >= 2) {
     warnings.push("잔고 표 위치 기반 파서를 적용했습니다. 일부 종목명은 기존 보유 데이터와 가격/수량으로 보정될 수 있습니다.");
   }
+  warnings.push(...validationIssues);
 
   return {
-    ...extractKoreanAccountFields(lines),
-    totalInvestedAmount: extractLikelyTotalInvestedAmount(lines),
-    totalEvaluationAmount:
-      extractLabeledNumberNear(lines, ["총평가금액", "평가금액합계", "평가합계"], { lookahead: 3 }) ?? derivedEvaluationAmount,
+    ...accountFields,
+    totalInvestedAmount: reportedInvestedAmount,
+    totalEvaluationAmount: reportedEvaluationAmount ?? derivedEvaluationAmount,
     totalProfitRate: normalizeLikelyOcrPercent(
       extractLabeledNumberNear(lines, ["추정자산", "총수익률", "총손익률"], { percent: true, lookahead: 2 })
     ),
     draftHoldings: resultDrafts,
     warnings,
+    validation: {
+      safeToReplace: resultDrafts.length > 0 && validationIssues.length === 0,
+      issues: validationIssues,
+      derivedInvestedAmount,
+      derivedEvaluationAmount,
+      investedAmountDifference,
+      evaluationAmountDifference
+    },
     rawText
   };
 }

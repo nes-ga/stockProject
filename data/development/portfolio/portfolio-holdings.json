@@ -39,28 +39,15 @@
     "memo": "기존 보유종목 매칭"
   },
   {
-    "id": "095700:screenshot",
-    "symbol": "095700",
-    "name": "제넥신",
-    "avgPrice": 3291,
-    "currentPrice": 2410,
-    "quantity": 2434,
-    "investedAmount": 8010294,
-    "evaluationAmount": 5865940,
-    "profitRate": -26.769978729869344,
-    "originalIntent": "SWING",
-    "memo": "기존 보유종목 매칭"
-  },
-  {
     "id": "302440:screenshot",
     "symbol": "302440",
     "name": "SK바이오사이언스",
     "avgPrice": 44036,
-    "currentPrice": 38550,
+    "currentPrice": 35900,
     "quantity": 69,
     "investedAmount": 3038484,
-    "evaluationAmount": 2659950,
-    "profitRate": -12.457988918157872,
+    "evaluationAmount": 2477100,
+    "profitRate": -18.475792533381778,
     "originalIntent": "LONG_TERM",
     "memo": "기존 보유종목 매칭"
   },

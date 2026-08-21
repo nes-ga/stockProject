@@ -544,6 +544,7 @@ let portfolioError = "";
 let portfolioScreenshotParsing = false;
 let portfolioDraftRows = [];
 let portfolioDraftAccount = null;
+let portfolioDraftValidation = null;
 let portfolioQuoteRefreshTimer = null;
 let portfolioQuoteLoading = false;
 let activeHistoryChartItem = null;
@@ -2064,14 +2065,12 @@ async function syncServerRecommendations(options = {}) {
       const smallcapSwingItems = recommendationCatalog.filter(
         (item) => (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === "smallcap"
       );
-      const executionCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "execution").length;
-      const managedCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "managed").length;
-      const watchCount = defaultSwingItems.filter((item) => resolveSwingBucket(item) === "watch").length;
-      const smallcapExecutionCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "execution").length;
-      const smallcapManagedCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "managed").length;
-      const smallcapWatchCount = smallcapSwingItems.filter((item) => resolveSwingBucket(item) === "watch").length;
+      const allSwingItems = [...defaultSwingItems, ...smallcapSwingItems];
+      const executionCount = allSwingItems.filter((item) => resolveSwingBucket(item) === "execution").length;
+      const managedCount = allSwingItems.filter((item) => resolveSwingBucket(item) === "managed").length;
+      const watchCount = allSwingItems.filter((item) => resolveSwingBucket(item) === "watch").length;
       showSummary(
-        `서버 추천 종목을 다시 반영했습니다. 기본 스윙 진입 가능 ${executionCount}개·관리 중 ${managedCount}개·관찰 ${watchCount}개 / 소형 스윙 진입 가능 ${smallcapExecutionCount}개·관리 중 ${smallcapManagedCount}개·관찰 ${smallcapWatchCount}개입니다.`
+        `서버 추천 종목을 다시 반영했습니다. 스윙 진입 가능 ${executionCount}개·관리 중 ${managedCount}개·관찰 ${watchCount}개입니다. (기본 기준 ${defaultSwingItems.length}개·확장 탐색 ${smallcapSwingItems.length}개)`
       );
     }
   } catch (error) {
@@ -2208,6 +2207,7 @@ function getPortfolioIntentLabel(value) {
 function getPortfolioModeLabel(value) {
   const labels = {
     SWING_VALID: "스윙 유효",
+    SWING_RECOVERED: "수익 전환 관찰",
     SWING_DAMAGED: "스윙 약화",
     SWING_BROKEN: "스윙 훼손",
     LONG_TERM_VALID: "중장기 유효",
@@ -2331,6 +2331,7 @@ function getPortfolioItemActionTone(item) {
 }
 
 function getPortfolioStatusLabel(item) {
+  if (item.currentMode === "SWING_RECOVERED") return "수익 보호 관찰";
   if (item.currentMode === "SWING_BROKEN") return "조건 훼손";
   if (item.currentMode === "SWING_DAMAGED" || item.currentMode === "LONG_TERM_WEAKENED") return "조건 약화";
   if (item.currentMode === "HOLDING_RECOVERY_CANDIDATE" || item.suggestedIntent === "RECOVERY") return "복구 대기";
@@ -2493,7 +2494,7 @@ function getPortfolioSections(items) {
       urgent.push(item);
       continue;
     }
-    if (getPortfolioEffectiveAction(item) === "ADD_WAIT" || item.aiAction === "WATCH" || item.suggestedIntent === "RECOVERY" || item.currentMode === "HOLDING_RECOVERY_CANDIDATE") {
+    if (getPortfolioEffectiveAction(item) === "ADD_WAIT" || (item.aiAction === "WATCH" && item.currentMode !== "SWING_RECOVERED") || item.suggestedIntent === "RECOVERY" || item.currentMode === "HOLDING_RECOVERY_CANDIDATE") {
       recovery.push(item);
       continue;
     }
@@ -2779,9 +2780,11 @@ async function normalizeScreenshotDataUrl(file) {
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   const maxSide = 2600;
-  const minimumOcrWidth = 1200;
-  const upscale = sourceWidth < minimumOcrWidth ? minimumOcrWidth / sourceWidth : 1;
-  const scale = Math.min(upscale, maxSide / Math.max(sourceWidth, sourceHeight));
+  const largestSide = Math.max(sourceWidth, sourceHeight);
+  if (largestSide <= maxSide) {
+    return sourceDataUrl;
+  }
+  const scale = maxSide / largestSide;
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement("canvas");
@@ -2816,7 +2819,7 @@ function renderPortfolioDraftPreview() {
   portfolioDraftPreview.classList.remove("hidden");
   const hasSelectedRows = portfolioDraftRows.some((row) => row.selected);
   savePortfolioDraftsBtn.disabled = !hasSelectedRows;
-  replacePortfolioDraftsBtn.disabled = !hasSelectedRows;
+  replacePortfolioDraftsBtn.disabled = !hasSelectedRows || portfolioDraftValidation?.safeToReplace === false;
   portfolioDraftPreview.innerHTML = `
     <div class="portfolio-draft-table-wrap">
       <table class="portfolio-draft-table">
@@ -2933,14 +2936,21 @@ async function parseSelectedPortfolioScreenshot(mode = "local") {
       totalProfitRate: payload.totalProfitRate
     };
     portfolioDraftAccount = hasPortfolioAccountValue(nextAccount) ? nextAccount : null;
+    portfolioDraftValidation = payload.validation ?? null;
     renderPortfolioDraftPreview();
     const cashText = Number.isFinite(payload.cashBalance) ? ` 예수금 ${formatNumber(payload.cashBalance)}원.` : "";
     const warningText = Array.isArray(payload.warnings) && payload.warnings.length ? ` 경고 ${payload.warnings.length}건.` : "";
+    const validationIssues = Array.isArray(payload.validation?.issues) ? payload.validation.issues : [];
+    const validationText = validationIssues.length ? ` 교체 저장 차단: ${validationIssues.join(" ")}` : "";
     const parserVersionText = payload.parserVersion ? ` (${payload.parserVersion})` : "";
-    setPortfolioScreenshotStatus(`${parserConfig.label}${parserVersionText} 완료: ${portfolioDraftRows.length}개 후보.${cashText}${warningText} 저장 전 값을 확인해 주세요.`, "positive");
+    setPortfolioScreenshotStatus(
+      `${parserConfig.label}${parserVersionText} 완료: ${portfolioDraftRows.length}개 후보.${cashText}${warningText}${validationText} 저장 전 값을 확인해 주세요.`,
+      validationIssues.length ? "negative" : "positive"
+    );
   } catch (error) {
     portfolioDraftRows = [];
     portfolioDraftAccount = null;
+    portfolioDraftValidation = null;
     renderPortfolioDraftPreview();
     setPortfolioScreenshotStatus(error instanceof Error ? error.message : "스크린샷 판독에 실패했습니다.", "negative");
   } finally {
@@ -2985,6 +2995,11 @@ async function savePortfolioDraftRows(options = {}) {
   const selected = portfolioDraftRows.filter((row) => row.selected);
 
   try {
+    if (replaceAll && portfolioDraftValidation?.safeToReplace === false) {
+      const issues = Array.isArray(portfolioDraftValidation.issues) ? portfolioDraftValidation.issues.join(" ") : "총액 검증 실패";
+      setPortfolioScreenshotStatus(`전체 교체를 차단했습니다. ${issues} 병합 저장을 사용하거나 이미지를 다시 판독해 주세요.`, "negative");
+      return;
+    }
     const existingResponse = await fetch("/portfolio/holdings");
     const existingPayload = await existingResponse.json();
     const existingItems = Array.isArray(existingPayload.items) ? existingPayload.items : [];
@@ -2996,6 +3011,20 @@ async function savePortfolioDraftRows(options = {}) {
     }
 
     let itemsToSave = holdings;
+    if (replaceAll) {
+      const nextSymbols = new Set(holdings.map((holding) => holding.symbol));
+      const missingExisting = existingItems.filter((item) => !nextSymbols.has(item.symbol));
+      if (missingExisting.length) {
+        const missingNames = missingExisting.map((item) => item.name || item.symbol).join(", ");
+        const confirmed = window.confirm(
+          `OCR 후보에서 기존 보유종목 ${missingExisting.length}개가 빠졌습니다: ${missingNames}\n\n정말 이 종목들을 삭제하고 전체 교체할까요?`
+        );
+        if (!confirmed) {
+          setPortfolioScreenshotStatus(`전체 교체를 취소했습니다. OCR 누락 가능 종목: ${missingNames}`, "negative");
+          return;
+        }
+      }
+    }
     if (!replaceAll) {
       const bySymbol = new Map(existingItems.map((item) => [item.symbol, item]));
       for (const holding of holdings) {
@@ -8891,6 +8920,12 @@ function renderSelector() {
       const dividendInfoLine = buildDividendInfoLine(item);
       const longTermBucketLabel = item.category === "swing" ? "" : getNonSwingBucketLabel(item.category, item.longTermBucket);
       const swingBucketLabel = item.category === "swing" ? getSwingBucketLabel(effectiveSwingBucket) : "";
+      const swingProfilePillHtml =
+        item.category === "swing"
+          ? `<span class="stock-card-profile-pill ${escapeHtml(resolveSwingProfile(item.swingProfile))}">${escapeHtml(
+              resolveSwingProfile(item.swingProfile) === "smallcap" ? "확장 탐색" : "기본 기준"
+            )}</span>`
+          : "";
       const groupPillHtml = longTermBucketLabel
         ? `<span class="stock-card-group-pill ${escapeHtml(item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET)}">${escapeHtml(longTermBucketLabel)}</span>`
         : swingBucketLabel
@@ -8998,7 +9033,10 @@ function renderSelector() {
               ${realtimeLine}
               ${swingStatusHtml}
             </button>
-            ${groupPillHtml}
+            <span class="stock-card-pill-group">
+              ${swingProfilePillHtml}
+              ${groupPillHtml}
+            </span>
             <button class="stock-card-delete" type="button" data-delete-key="${escapeHtml(item.key)}" aria-label="${escapeHtml(item.name)} 삭제">×</button>
           </span>
           ${
@@ -9526,14 +9564,16 @@ function updateUniverseRecommendationButton() {
     return;
   }
 
-  const isCurrentCategoryLoading =
-    recommendationUniverseScanLoadingByCategory[getRecommendationScanLoadingKey(currentCategory, currentSwingProfile)] === true;
+  const isCurrentCategoryLoading = isSwingCategory(currentCategory)
+    ? recommendationUniverseScanLoadingByCategory.swing === true ||
+      recommendationUniverseScanLoadingByCategory["swing:smallcap"] === true
+    : recommendationUniverseScanLoadingByCategory[getRecommendationScanLoadingKey(currentCategory, currentSwingProfile)] === true;
   runUniverseRecommendationBtn.disabled = isCurrentCategoryLoading;
   if (!isCurrentCategoryLoading) {
     runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
       ? "배당 추천 검색"
       : isSwingCategory(currentCategory)
-        ? `${getSwingProfileLabel(currentSwingProfile)} 추천 검색`
+        ? "스윙 추천 검색"
         : "중장기 추천 검색";
     return;
   }
@@ -9541,7 +9581,7 @@ function updateUniverseRecommendationButton() {
   runUniverseRecommendationBtn.textContent = isDividendCategory(currentCategory)
     ? "배당 추천 검색 중..."
     : isSwingCategory(currentCategory)
-      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 검색 중...`
+      ? "스윙 추천 검색 중..."
       : "중장기 추천 검색 중...";
 }
 
@@ -9553,15 +9593,13 @@ function renderRecommendationScopePanel() {
 
   if (recommendationScopeTitle) {
     recommendationScopeTitle.textContent = isSwingCategory(currentCategory)
-      ? `${categoryLabel} 추천 / ${getSwingProfileLabel(currentSwingProfile)} / ${activeBucketLabel}`
+      ? `${categoryLabel} 추천 / ${activeBucketLabel}`
       : `${categoryLabel} 추천 / ${activeBucketLabel}`;
   }
 
   if (recommendationScopeHelp) {
     recommendationScopeHelp.textContent = isSwingCategory(currentCategory)
-      ? currentSwingProfile === "smallcap"
-        ? "상단 스윙 탭 아래에서 소형 스윙 엔진을 고르고, 진입 가능·관리 중·관찰 종목을 같은 화면에서 넘겨보며 관리합니다."
-        : "상단에서 스윙 흐름을 고르고, 진입 가능·관리 중·관찰 종목을 같은 화면에서 넘겨보며 직접 종목을 추가하거나 추천 검색 결과를 붙여서 관리합니다."
+      ? "기본 기준과 확장 탐색 결과를 한 목록에서 합쳐 보고, 진입 가능·관리 중·관찰 종목을 같은 화면에서 관리합니다."
       : isDividendCategory(currentCategory)
         ? "배당 탭은 배당 추천 종목과 별도 배당 상장지수펀드 섹션을 함께 보여 주되, 상장지수펀드는 점수 엔진이 아닌 전용 필터 목록으로 분리해 관리합니다."
         : "상단에서 중장기 흐름을 유지한 채 본격매수, 분할매수, 관찰을 나눠 보고, 필요한 종목은 바로 추가하거나 추천 검색으로 채워 넣을 수 있습니다.";
@@ -9569,7 +9607,7 @@ function renderRecommendationScopePanel() {
 
   if (openAddStockBtn) {
     openAddStockBtn.textContent = isSwingCategory(currentCategory)
-      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 추가`
+      ? "스윙 추천 추가"
       : isDividendCategory(currentCategory)
         ? "배당 종목 추가"
         : "중장기 추천 추가";
@@ -9599,22 +9637,8 @@ function renderSwingProfileTabs() {
     return;
   }
 
-  const isVisible = currentCategory === "swing";
-  swingProfileTabs.classList.toggle("hidden", !isVisible);
-  swingProfileTabs.setAttribute("aria-hidden", String(!isVisible));
-
-  const counts = getSwingProfileCounts();
-  for (const tab of swingProfileTabs.querySelectorAll("[data-swing-profile]")) {
-    const profile = tab.dataset.swingProfile;
-    if (!isValidSwingProfile(profile)) {
-      continue;
-    }
-
-    const isSelected = isVisible && profile === currentSwingProfile;
-    tab.classList.toggle("active", isSelected);
-    setTabSelection(tab, isSelected);
-    tab.textContent = `${getSwingProfileLabel(profile)} ${counts[profile]}개`;
-  }
+  swingProfileTabs.classList.add("hidden");
+  swingProfileTabs.setAttribute("aria-hidden", "true");
 }
 
 function renderLongTermBucketTabs() {
@@ -9692,7 +9716,81 @@ function renderSwingBucketTabs() {
   renderRecommendationScopePanel();
 }
 
+async function runCombinedSwingUniverseScan() {
+  const profiles = ["default", "smallcap"];
+  const pendingProfiles = profiles.filter(
+    (profile) => !recommendationUniverseScanLoadingByCategory[getRecommendationScanLoadingKey("swing", profile)]
+  );
+  if (!pendingProfiles.length) {
+    return;
+  }
+
+  showError("");
+  for (const profile of pendingProfiles) {
+    const scopeKey = getRecommendationScanLoadingKey("swing", profile);
+    recommendationUniverseScanLoadingByCategory[scopeKey] = true;
+    rememberRecommendationScanSession("swing", profile);
+    activeRecommendationScanRequestKeys.add(scopeKey);
+  }
+  startRecommendationUniverseScanPolling();
+  updateUniverseRecommendationButton();
+  showSummary("기본 기준과 확장 탐색 스윙 검색을 함께 시작했습니다. 완료되면 한 목록으로 갱신합니다.");
+  showAppToast({
+    title: "스윙 추천 검색",
+    message: "두 엔진을 함께 실행합니다. 결과는 하나의 스윙 목록에 합쳐집니다.",
+    tone: "neutral",
+    duration: 2600
+  });
+
+  try {
+    await Promise.all(
+      pendingProfiles.map(async (profile) => {
+        const scopeKey = getRecommendationScanLoadingKey("swing", profile);
+        const response = await fetch("/analysis/recommendation-universe-scan?async=true", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            category: "swing",
+            swingProfile: profile
+          })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error ?? `${getSwingProfileLabel(profile)} universe 검색을 실행하지 못했습니다.`);
+        }
+        activeRecommendationScanRequestKeys.delete(scopeKey);
+      })
+    );
+    await pollRecommendationUniverseScanSessions();
+    startRecommendationUniverseScanPolling();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "스윙 universe 검색 중 오류가 발생했습니다.";
+    for (const profile of pendingProfiles) {
+      const scopeKey = getRecommendationScanLoadingKey("swing", profile);
+      activeRecommendationScanRequestKeys.delete(scopeKey);
+      recommendationUniverseScanLoadingByCategory[scopeKey] = false;
+      forgetRecommendationScanSession(scopeKey);
+    }
+    updateUniverseRecommendationButton();
+    showError(message);
+    showSummary("");
+    showAppToast({
+      title: "스윙 추천 검색 실패",
+      message,
+      tone: "negative",
+      duration: 5200
+    });
+  }
+}
+
 async function runRecommendationUniverseScan() {
+  if (isSwingCategory(currentCategory)) {
+    await runCombinedSwingUniverseScan();
+    return;
+  }
+
   const requestedCategory = isSwingCategory(currentCategory)
     ? "swing"
     : isDividendCategory(currentCategory)
@@ -10018,7 +10116,7 @@ function isValidSwingProfile(value) {
 }
 
 function getSwingProfileLabel(profile) {
-  return profile === "smallcap" ? "소형 스윙" : "기본 스윙";
+  return profile === "smallcap" ? "확장 탐색" : "기본 기준";
 }
 
 function isSwingCategory(category) {
@@ -10605,10 +10703,7 @@ function getFilteredCatalog() {
     }
 
     if (isSwingCategory(currentCategory)) {
-      return (
-        resolveSwingProfile(item.swingProfile) === currentSwingProfile &&
-        resolveSwingBucket(item) === currentSwingBucket
-      );
+      return resolveSwingBucket(item) === currentSwingBucket;
     }
 
     return (item.longTermBucket ?? DEFAULT_LONG_TERM_BUCKET) === currentLongTermBucket;
@@ -10695,7 +10790,7 @@ function openStockModal() {
   stockForm.reset();
   if (stockModalTitle) {
     stockModalTitle.textContent = isSwingCategory(currentCategory)
-      ? `${getSwingProfileLabel(currentSwingProfile)} 추천 추가`
+      ? "스윙 추천 추가"
       : isDividendCategory(currentCategory)
         ? "배당 종목 추가"
         : "중장기 추천 추가";
@@ -10730,7 +10825,7 @@ function buildStockFromForm() {
   const symbol = stockSymbolInput.value.trim();
   const anchorDate = stockDateInput.value;
   const category = resolveRecommendationCategory(stockCategorySelect?.value);
-  const swingProfile = category === "swing" ? currentSwingProfile : undefined;
+  const swingProfile = category === "swing" ? DEFAULT_SWING_PROFILE : undefined;
   const longTermBucket = category === "swing" ? undefined : isValidLongTermBucket(longTermBucketSelect?.value) ? longTermBucketSelect.value : DEFAULT_LONG_TERM_BUCKET;
   const swingBucket = category === "swing" ? (currentSwingBucket === "managed" ? "watch" : currentSwingBucket) : undefined;
   const recommendedPrice = Number(stockPriceInput.value);
@@ -10852,10 +10947,7 @@ function getSwingProfileCounts() {
 
 function getSwingBucketCounts() {
   return recommendationCatalog
-    .filter(
-      (item) =>
-        (item.category ?? DEFAULT_CATEGORY) === "swing" && resolveSwingProfile(item.swingProfile) === currentSwingProfile
-    )
+    .filter((item) => (item.category ?? DEFAULT_CATEGORY) === "swing")
     .reduce(
       (counts, item) => {
         const bucket = resolveSwingBucket(item);
@@ -10869,11 +10961,11 @@ function getSwingBucketCounts() {
 function getCurrentFilterEmptyMessage() {
   if (isSwingCategory(currentCategory)) {
     if (currentSwingBucket === "managed") {
-      return `${getSwingProfileLabel(currentSwingProfile)} 관리 중 탭에는 아직 종목이 없습니다. 매수 후보였다가 관찰로 내려간 체결 케이스가 생기면 여기에 표시됩니다.`;
+      return "스윙 관리 중 탭에는 아직 종목이 없습니다. 매수 후보였다가 관찰로 내려간 체결 케이스가 생기면 여기에 표시됩니다.";
     }
     return currentSwingBucket === "watch"
-      ? `${getSwingProfileLabel(currentSwingProfile)} 관찰 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`
-      : `${getSwingProfileLabel(currentSwingProfile)} 진입 가능 탭에는 아직 종목이 없습니다. 엔진 스캔 결과가 들어오면 여기에 표시됩니다.`;
+      ? "스윙 관찰 탭에는 아직 종목이 없습니다. 두 엔진의 스캔 결과가 들어오면 여기에 표시됩니다."
+      : "스윙 진입 가능 탭에는 아직 종목이 없습니다. 두 엔진의 스캔 결과가 들어오면 여기에 표시됩니다.";
   }
 
   return `${getNonSwingBucketLabel(currentCategory, currentLongTermBucket)}에는 아직 등록된 종목이 없습니다. 종목 추가로 시작해보세요.`;

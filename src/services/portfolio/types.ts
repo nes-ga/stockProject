@@ -4,6 +4,7 @@ export type SuggestedIntent = "SWING" | "LONG_TERM" | "RECOVERY" | "EXIT_MANAGEM
 
 export type CurrentMode =
   | "SWING_VALID"
+  | "SWING_RECOVERED"
   | "SWING_DAMAGED"
   | "SWING_BROKEN"
   | "LONG_TERM_VALID"
@@ -302,5 +303,13 @@ export type PortfolioScreenshotParseResult = {
   totalProfitRate?: number;
   draftHoldings: PortfolioScreenshotDraftHolding[];
   warnings: string[];
+  validation?: {
+    safeToReplace: boolean;
+    issues: string[];
+    derivedInvestedAmount?: number;
+    derivedEvaluationAmount?: number;
+    investedAmountDifference?: number;
+    evaluationAmountDifference?: number;
+  };
   rawText?: string;
 };

@@ -195,6 +195,35 @@ assert.equal(profitableLongTermAdvice.priorityLabel, "LOW");
 assert.equal(profitableLongTermAdvice.sellPlan?.stages.length, 3);
 assert.equal(profitableLongTermAdvice.sellPlan?.stages.reduce((sum, stage) => sum + stage.quantity, 0), 100);
 assert.ok((profitableLongTermAdvice.sellPlan?.profitProtectionPrice ?? 0) > 10_000);
+
+const recoveredSwingAdvice = evaluatePortfolioHolding(
+  createHolding({ originalIntent: "SWING", currentPrice: 10_500, evaluationAmount: 1_050_000, profitRate: 5 }),
+  {
+    swingCase: {
+      id: "OLD-LOSS-CASE",
+      status: "closed",
+      historyOutcome: { outcome: "stop_broken", category: "loss" }
+    }
+  }
+);
+assert.equal(recoveredSwingAdvice.currentMode, "SWING_RECOVERED");
+assert.equal(recoveredSwingAdvice.suggestedIntent, "EXIT_MANAGEMENT");
+assert.equal(recoveredSwingAdvice.aiAction, "WATCH");
+assert.equal(recoveredSwingAdvice.recoveryPlan?.status, "NOT_ELIGIBLE");
+assert.ok(recoveredSwingAdvice.sellPlan);
+
+const currentSwingStateOverridesOldLoss = evaluatePortfolioHolding(
+  createHolding({ originalIntent: "SWING", currentPrice: 9_500, evaluationAmount: 950_000, profitRate: -5 }),
+  {
+    swingCase: {
+      id: "OLD-LOSS-CASE",
+      status: "closed",
+      historyOutcome: { outcome: "stop_broken", category: "loss" }
+    }
+  }
+);
+assert.equal(currentSwingStateOverridesOldLoss.currentMode, "SWING_VALID");
+assert.equal(currentSwingStateOverridesOldLoss.aiAction, "HOLD");
 const fixedInvalidAtFirstQuote = evaluatePortfolioHolding(createHolding(), {
   longTermPick
 }).executionPlan?.invalidPrice;

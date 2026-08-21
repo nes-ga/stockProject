@@ -1,4 +1,152 @@
 {
   "executionItems": [],
-  "watchItems": []
+  "watchItems": [
+    {
+      "key": "셀바스AI-108860",
+      "name": "셀바스AI",
+      "symbol": "108860",
+      "anchorDate": "2026-04-24",
+      "latestMentionDate": "2026-08-21",
+      "note": "관찰 | 눌림 확인 대기 | 구간 9370~9140 | 손절 6100",
+      "bucket": "watch",
+      "tags": [
+        "tag_sma20_primary",
+        "tag_seed_anchor_confirmed",
+        "tag_volume_turnover_strong",
+        "tag_candle_rejection",
+        "tag_candle_weak",
+        "tag_support_unstable",
+        "watch_pullback_pending",
+        "watch_low_quality"
+      ],
+      "reasons": [
+        "setup_watch_only",
+        "seed_anchor_confirmed",
+        "entry_zone_pending",
+        "volume_contraction_ok",
+        "weak_candle_structure",
+        "sma20_slope_ok",
+        "unstable_support",
+        "envelope_in_band",
+        "risk_reward_ok",
+        "pullback_pending",
+        "probe_demoted_low_score_unstable_support",
+        "quality_not_ready"
+      ],
+      "penaltyFactors": [
+        {
+          "code": "upper_wick_rejection",
+          "label": "Upper wick rejection",
+          "impact": 18,
+          "reason": "Upper wick consumed 71% of the candle range."
+        },
+        {
+          "code": "unstable_support",
+          "label": "Unstable support",
+          "impact": 16,
+          "reason": "Support stability score dropped to 36."
+        },
+        {
+          "code": "weak_close_position",
+          "label": "Weak close location",
+          "impact": 10,
+          "reason": "Close finished only 29% up the candle range."
+        },
+        {
+          "code": "small_body",
+          "label": "Small real body",
+          "impact": 8,
+          "reason": "Real body was only 1% of the full range."
+        }
+      ],
+      "envelope": {
+        "basisPeriod": 20,
+        "bandPercent": 10,
+        "basis": 9490,
+        "upper": 10439,
+        "lower": 8541,
+        "position": "basis_zone",
+        "distanceFromBasisPercent": -0.53,
+        "distanceFromLowerPercent": 10.53,
+        "distanceFromUpperPercent": -9.57,
+        "lowerBreakSessions": 0,
+        "lowerReclaimed": false,
+        "inBand": true
+      },
+      "category": "swing",
+      "swingProfile": "default",
+      "source": "server-universe"
+    },
+    {
+      "key": "한국화장품제조-003350",
+      "name": "한국화장품제조",
+      "symbol": "003350",
+      "anchorDate": "2026-08-21",
+      "latestMentionDate": "2026-08-21",
+      "note": "관찰 | 눌림 확인 대기 | 구간 10710~10450 | 손절 6750",
+      "bucket": "watch",
+      "tags": [
+        "tag_sma20_primary",
+        "tag_seed_anchor_confirmed",
+        "tag_volume_turnover_strong",
+        "tag_candle_rejection",
+        "tag_candle_weak",
+        "tag_support_unstable",
+        "tag_envelope_upper_extension",
+        "watch_pullback_pending",
+        "watch_low_quality"
+      ],
+      "reasons": [
+        "setup_watch_only",
+        "seed_anchor_confirmed",
+        "entry_zone_pending",
+        "volume_contraction_ok",
+        "weak_candle_structure",
+        "sma20_slope_ok",
+        "unstable_support",
+        "envelope_upper_extension",
+        "risk_reward_ok",
+        "pullback_pending",
+        "probe_demoted_low_score_unstable_support",
+        "quality_not_ready"
+      ],
+      "penaltyFactors": [
+        {
+          "code": "upper_wick_rejection",
+          "label": "Upper wick rejection",
+          "impact": 18,
+          "reason": "Upper wick consumed 40% of the candle range."
+        },
+        {
+          "code": "unstable_support",
+          "label": "Unstable support",
+          "impact": 16,
+          "reason": "Support stability score dropped to 44."
+        },
+        {
+          "code": "weak_close_position",
+          "label": "Weak close location",
+          "impact": 10,
+          "reason": "Close finished only 60% up the candle range."
+        }
+      ],
+      "envelope": {
+        "basisPeriod": 20,
+        "bandPercent": 10,
+        "basis": 9308.5,
+        "upper": 10239.35,
+        "lower": 8377.65,
+        "position": "above_upper",
+        "distanceFromBasisPercent": 16.24,
+        "distanceFromLowerPercent": 29.15,
+        "distanceFromUpperPercent": 5.67,
+        "lowerBreakSessions": 0,
+        "lowerReclaimed": false,
+        "inBand": false
+      },
+      "category": "swing",
+      "swingProfile": "default",
+      "source": "server-universe"
+    }
+  ]
 }
