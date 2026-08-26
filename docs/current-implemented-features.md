@@ -43,6 +43,8 @@
 - `prefers-reduced-motion`에서 캐릭터와 배경 애니메이션을 중지
 - 스윙 화면은 기본 기준과 확장 탐색 프로필을 별도 탭으로 나누지 않고, 두 엔진의 중복 제거 결과를 하나의 목록과 버킷 카운트로 표시
 - 스윙 카드의 `기본 기준`/`확장 탐색` 배지로 내부 포착 경로를 확인할 수 있으며, 검색 버튼 한 번으로 두 프로필을 함께 실행
+- 2026-08-26 스윙 관찰 카드 UI를 정리해 `관찰` 헤더 배지와 삭제 버튼은 우측 상단에 고정하고, 본문은 카드 전체 폭을 사용하도록 분리
+- 2026-08-26 스윙 관찰 카드의 긴 설명은 숨기고, 눌림·수급·지지·추격 조건을 짧은 체크 태그로 표시하며 긴 종목명은 별도 축소 스타일을 적용
 
 차트는 공휴일/비거래일을 임의 whitespace candle로 채우지 않고, 실제 거래 데이터 중심으로 렌더링합니다.
 
@@ -158,6 +160,7 @@ Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후�
 - `src/services/smartMoney/config.ts`
 - `src/services/smartMoney/marketContext.ts`
 - `src/services/recommendationUniverse.ts`
+- `src/services/postSurgePullbackEngine.ts`
 
 주요 기능:
 
@@ -169,6 +172,11 @@ Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후�
 - 체결된 기존 스윙 케이스는 새 스캔에서 패턴이 사라져도 손절/목표 또는 명시적 종료 전까지 `watchItems`로 보존
 - SMA20 기반 눌림 진입 구간
 - breakout 추격 금지 상태
+- 2026-08-26 임시 적용: 기존 압축형과 분리한 postSurgePullback 급등 후 눌림형 후보
+  - 최근 급등 앵커, 눌림 기간·낙폭, 거래량 감소, 저점 회복, SMA20, 유동성, ATR 변동성 확인
+  - 품질 조건을 통과해도 execution_probe로만 편입하며 자동 매수 확정으로 승격하지 않음
+  - 설정은 src/services/postSurgePullbackEngine.ts의 POST_SURGE_PULLBACK_* 상수로 격리
+- 2026-08-26 관찰 후보 분류 보강: postSurgePullback 구조가 맞더라도 품질 조건 미충족 후보는 실행·관찰 목록에서 제외해 과도한 관심후보 유입을 차단
 - staged buy plan, stop-loss reference, risk/reward 계산
 - 시장 국면 기반 threshold 조정
 - 거래정지 사유별 처리:
@@ -205,6 +213,11 @@ Recovery v1 이후 실제 신호, 계좌 기준시각, quote-only 시세의 후�
 - `swingVolumeProfile.baseTerm`: 120일
 - 추격 위험, 돌파 신뢰도, 눌림 지지 품질 중심
 - 양수 가산은 BUY 승격에 직접 쓰지 않고, 감점은 더 강하게 반영
+
+추천 히스토리:
+
+- 2026-08-26 `src/services/recommendationHistory.ts`에서 종료된 과거 케이스의 매수 이력이 새 관찰 후보로 되살아나지 않도록 열린 케이스와 최초 체결 여부를 확인
+- 검색으로 새 관찰종목이 편입될 때 과거 종료 케이스와 현재 관찰 상태를 혼합하지 않도록 분리
 
 중장기 해석:
 

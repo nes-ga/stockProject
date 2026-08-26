@@ -257,7 +257,9 @@ function buildSwingNote(
 ) {
   const isExecutionCandidate = classification != null && classification.bucket !== "watch";
   const stageLabel =
-    pattern.status === "breakout_extended"
+    pattern.tags?.includes("tag_post_surge_pullback")
+      ? "급등 후 눌림"
+      : pattern.status === "breakout_extended"
       ? "추격 금지"
       : pattern.stage === "breakout"
         ? "돌파 대기"
@@ -323,6 +325,7 @@ function toServerSwingPick(item: UniverseItem, analysis: SmartMoneyAnalysis, cla
     penaltyFactors: classification.penaltyFactors,
     buyPlan: analysis.pattern.buyPlan,
     postEntryOutcome: analysis.pattern.postEntryOutcome,
+    postSurgePullback: analysis.postSurgePullback?.matched ? analysis.postSurgePullback : undefined,
     envelope: analysis.pattern.envelope,
     haltCategory: analysis.haltCategory,
     haltAction: analysis.haltAction,
@@ -768,6 +771,27 @@ export function classifySwingCandidate(
   guardModel?: SwingHistoryWinRateGuardModel
 ): SwingCandidateClassification {
   const pattern = analysis.pattern;
+  // 2026-08-26: 급등 후 눌림형은 기존 압축형 분류와 분리한다. 원복 시 이 블록만 제거한다.
+  if (analysis.postSurgePullback?.matched) {
+    const postSurgePullback = analysis.postSurgePullback;
+    return {
+      bucket: postSurgePullback.executionEligible ? "execution_probe" : "watch",
+      reasons: dedupeStrings([
+        ...(pattern.classificationReasons ?? []),
+        "post_surge_pullback_candidate",
+        ...(postSurgePullback.executionEligible
+          ? ["post_surge_pullback_quality_passed"]
+          : postSurgePullback.rejectionReasons)
+      ]),
+      tags: dedupeStrings([
+        ...(pattern.tags ?? []),
+        "tag_post_surge_pullback" as const,
+        "tag_post_surge_volume_contracted" as const,
+        ...(postSurgePullback.executionEligible ? ["tag_post_surge_support_recovery" as const] : [])
+      ]),
+      penaltyFactors: summarizePenaltyFactors(pattern.penaltyFactors)
+    };
+  }
   const riskRewardRatio = pattern.tradePlan?.riskRewardRatio ?? pattern.riskRewardRatio ?? 0;
   const failedPostSpikePullbackShape = isFailedPostSpikePullbackShape(pattern);
   const withinEntryZone = isWithinSwingEntryZone(pattern);
@@ -1036,6 +1060,10 @@ export function isSwingExecutionEligible(pattern: SmartMoneyAnalysis["pattern"],
 }
 
 function isSwingWatchEligible(analysis: SmartMoneyAnalysis, classification?: SwingCandidateClassification) {
+  // 2026-08-26: 급등 후 눌림형은 품질 게이트 미통과 시 watch에도 남기지 않는다.
+  if (analysis.postSurgePullback?.matched && !analysis.postSurgePullback.executionEligible) {
+    return false;
+  }
   if (isPennyStockRisk(analysis.pattern)) {
     return false;
   }

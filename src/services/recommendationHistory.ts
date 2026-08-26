@@ -2188,6 +2188,15 @@ function hasFirstBuyAfterRecommendationStart(historyCase: SwingHistoryCase | und
   );
 }
 
+function isOpenHistoryCase(historyCase: SwingHistoryCase | undefined) {
+  return Boolean(
+    historyCase &&
+    historyCase.status !== "closed" &&
+    historyCase.lifecycleStatus !== "closed" &&
+    !historyCase.closedDate
+  );
+}
+
 function isActionableWatchHistoryCase(historyCase: SwingHistoryCase | undefined) {
   if (!historyCase || historyCase.entryBucket !== "watch" || !historyCase.buyPlan) {
     return false;
@@ -2424,8 +2433,8 @@ function shouldUpsertCurrentHistoryCase(
 
   // watchItems are monitoring candidates by default. They only remain current
   // when this is an already-entered history case that has not hit a real close
-  // condition yet.
-  return hasFirstBuyAfterRecommendationStart(existingCase);
+  // condition yet. A later watch scan must not revive a closed case's old buys.
+  return isOpenHistoryCase(existingCase) && hasFirstBuyAfterRecommendationStart(existingCase);
 }
 
 function getHistoryCaseKind(historyCase: SwingHistoryCase): SwingHistoryCase["caseKind"] {

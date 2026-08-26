@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { SmartMoneyEnvelopeAnalysis, SmartMoneyPostEntryOutcome } from "../types.js";
+import type { PostSurgePullbackAnalysis, SmartMoneyEnvelopeAnalysis, SmartMoneyPostEntryOutcome } from "../types.js";
 import { resolveSwingEngineProfile, type SwingEngineProfile } from "./swingProfiles.js";
 
 export type ServerSwingBuyPlan = {
@@ -42,6 +42,7 @@ export type ServerSwingPick = {
   }>;
   buyPlan?: ServerSwingBuyPlan;
   postEntryOutcome?: SmartMoneyPostEntryOutcome;
+  postSurgePullback?: PostSurgePullbackAnalysis;
   envelope?: SmartMoneyEnvelopeAnalysis;
   haltCategory?: string;
   haltAction?: string;
@@ -134,6 +135,10 @@ function normalizeServerSwingPick(
     postEntryOutcome:
       candidate.postEntryOutcome && typeof candidate.postEntryOutcome === "object"
         ? (candidate.postEntryOutcome as SmartMoneyPostEntryOutcome)
+        : undefined,
+    postSurgePullback:
+      candidate.postSurgePullback && typeof candidate.postSurgePullback === "object"
+        ? (candidate.postSurgePullback as PostSurgePullbackAnalysis)
         : undefined,
     envelope:
       candidate.envelope && typeof candidate.envelope === "object"

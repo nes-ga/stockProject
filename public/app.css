@@ -4834,8 +4834,36 @@ body {
   min-width: 0;
 }
 
+.stock-card-head-watch {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stock-card-head-watch > .stock-card-select {
+  grid-column: 1;
+  width: 100%;
+  padding-top: 3px;
+  padding-bottom: 4px;
+}
+
+.stock-card-head-watch > .stock-card-pill-group {
+  position: absolute;
+  top: 0;
+  right: 28px;
+  z-index: 1;
+}
+
+.stock-card-head-watch > .stock-card-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+}
+
 .stock-card-select {
   flex: 1;
+  display: block;
+  width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
@@ -4875,6 +4903,15 @@ body {
   line-height: 1.25;
   word-break: keep-all;
   overflow-wrap: anywhere;
+}
+
+.stock-card-name.long {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.stock-card-head-watch .stock-card-name.long {
+  padding-right: 72px;
 }
 
 .stock-card-meta {
@@ -6415,6 +6452,28 @@ body {
   margin-top: 8px;
 }
 
+.stock-card-swing-summary.watch {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
+  column-gap: 12px;
+}
+
+.stock-card-swing-summary.watch > .stock-pattern-pill {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.stock-card-swing-summary.watch > .stock-card-swing-reasons {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.stock-card-swing-summary.watch > .stock-card-guard-pill {
+  grid-column: 1 / -1;
+}
+
 .stock-card-swing-summary.managed {
   gap: 7px;
 }
@@ -6441,6 +6500,28 @@ body {
   display: block;
   word-break: keep-all;
   overflow-wrap: anywhere;
+}
+
+.stock-card-swing-reasons.watch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 5px;
+}
+
+.stock-card-swing-reasons.watch .stock-card-swing-reason {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 4px 7px;
+  border: 1px solid rgba(15, 109, 122, 0.14);
+  border-radius: 999px;
+  background: rgba(15, 109, 122, 0.07);
+  color: var(--accent-strong);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .stock-card-managed-metrics {

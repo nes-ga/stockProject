@@ -26,19 +26,6 @@
     "memo": "기존 보유종목 매칭"
   },
   {
-    "id": "090430:screenshot",
-    "symbol": "090430",
-    "name": "아모레퍼시픽",
-    "avgPrice": 123929,
-    "currentPrice": 125900,
-    "quantity": 25,
-    "investedAmount": 3098225,
-    "evaluationAmount": 3147500,
-    "profitRate": 1.5904267766220983,
-    "originalIntent": "LONG_TERM",
-    "memo": "기존 보유종목 매칭"
-  },
-  {
     "id": "302440:screenshot",
     "symbol": "302440",
     "name": "SK바이오사이언스",

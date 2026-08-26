@@ -381,7 +381,10 @@ export type SmartMoneyClassificationTag =
   | "watch_pullback_pending"
   | "watch_low_quality"
   | "watch_halt_event"
-  | "watch_halt_structural";
+  | "watch_halt_structural"
+  | "tag_post_surge_pullback"
+  | "tag_post_surge_volume_contracted"
+  | "tag_post_surge_support_recovery";
 
 export type SmartMoneyPenaltyFactor = {
   code: string;
@@ -590,6 +593,7 @@ export type SmartMoneyPatternAnalysis = {
   haltAction?: TradingHaltAction;
   note?: string;
   pattern: SmartMoneyPatternMatch;
+  postSurgePullback?: PostSurgePullbackAnalysis;
   volumeProfileAnalysis?: VolumeProfileAnalysis;
 };
 
@@ -615,6 +619,35 @@ export type ChartPoint = {
   low?: number;
   close: number;
   volume?: number;
+};
+
+// 2026-08-26: 급등 후 눌림형 스윙 후보는 기존 압축형 패턴과 분리해 임시 적용한다.
+export type PostSurgePullbackAnalysis = {
+  matched: boolean;
+  executionEligible: boolean;
+  surgeDate: string;
+  pullbackStartDate: string;
+  pullbackEndDate: string;
+  surgeClose: number;
+  referenceClose: number;
+  pullbackLow: number;
+  pullbackHigh: number;
+  surgeChangePercent: number;
+  surgeVolumeRatio: number;
+  pullbackSessions: number;
+  pullbackDrawdownPercent: number;
+  pullbackRangePercent: number;
+  pullbackVolumeRatio: number;
+  latestVolumeRatio: number;
+  downSessions: number;
+  supportRecoveryPercent: number;
+  sma20: number;
+  sma20SlopePercent: number;
+  closeVsSma20Percent: number;
+  atrPercent: number;
+  turnoverKrw: number;
+  score: number;
+  rejectionReasons: string[];
 };
 
 export type VolumeProfileCandle = {

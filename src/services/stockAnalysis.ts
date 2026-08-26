@@ -34,6 +34,7 @@ import { getAutoSmartMoneyMarketContext } from "./smartMoney/marketContext.js";
 import { resolveFinanceSymbol } from "./symbolExtractor.js";
 import { getTradingHaltInfoBySymbol } from "./tradingHalts.js";
 import { analyzeSwingVolumeProfile } from "./volumeProfile.js";
+import { evaluatePostSurgePullback } from "./postSurgePullbackEngine.js";
 
 const logger = createLogger("stockAnalysis");
 const DEFAULT_NAVER_CHART_SESSIONS = 500;
@@ -1593,6 +1594,7 @@ async function analyzeSmartMoneyPatternWithContext(
       name: input.name
     }
   });
+  const postSurgePullback = evaluatePostSurgePullback(points, referenceIndex);
   const backtestResult = calculateSmartMoneyBacktestResult(points, referenceIndex, pattern);
   const haltTags: SmartMoneyClassificationTag[] =
     tradingHaltInfo?.haltCategory === "event"
@@ -1625,8 +1627,75 @@ async function analyzeSmartMoneyPatternWithContext(
       ])
     ]
   };
+  const finalPattern = postSurgePullback.matched
+    ? {
+        ...enrichedPattern,
+        matched: true,
+        actionable: false,
+        stage: "setup" as const,
+        status: "pullback_ready" as const,
+        entryStrategy: "pullback_buy" as const,
+        executionBucket: postSurgePullback.executionEligible ? "execution_probe" as const : "watch" as const,
+        patternScore: Math.max(enrichedPattern.patternScore, postSurgePullback.score),
+        finalRankScore: Math.max(enrichedPattern.finalRankScore ?? 0, postSurgePullback.score),
+        executionReadinessScore: postSurgePullback.executionEligible ? 55 : enrichedPattern.executionReadinessScore,
+        leadInDate: postSurgePullback.surgeDate,
+        surgePeakDate: postSurgePullback.surgeDate,
+        leadInPriceChangePercent: postSurgePullback.surgeChangePercent,
+        leadInVolumeRatio20d: postSurgePullback.surgeVolumeRatio,
+        surgePeakClose: postSurgePullback.surgeClose,
+        pullbackStartDate: postSurgePullback.pullbackStartDate,
+        pullbackEndDate: postSurgePullback.pullbackEndDate,
+        pullbackSessions: postSurgePullback.pullbackSessions,
+        pullbackMaxDrawdownPercent: postSurgePullback.pullbackDrawdownPercent,
+        pullbackRangePercent: postSurgePullback.pullbackRangePercent,
+        pullbackVolumeRatioToLeadIn: postSurgePullback.pullbackVolumeRatio,
+        referenceClose: postSurgePullback.referenceClose,
+        referenceSma20: postSurgePullback.sma20,
+        sma20SlopePercent: postSurgePullback.sma20SlopePercent,
+        entryZoneLow: postSurgePullback.pullbackLow * 1.03,
+        entryZoneHigh: postSurgePullback.referenceClose,
+        invalidationPrice: postSurgePullback.pullbackLow * 0.97,
+        tradePlan: {
+          strategy: "setup_watch" as const,
+          idealBuyZone: {
+            low: postSurgePullback.pullbackLow * 1.03,
+            high: postSurgePullback.referenceClose
+          },
+          stopLoss: postSurgePullback.pullbackLow * 0.97,
+          invalidationPrice: postSurgePullback.pullbackLow * 0.97,
+          targetPrice: postSurgePullback.surgeClose,
+          notes: [
+            "post_surge_pullback_candidate",
+            ...(postSurgePullback.executionEligible ? ["post_surge_pullback_quality_passed"] : postSurgePullback.rejectionReasons)
+          ]
+        },
+        tags: [
+          ...new Set([
+            ...enrichedPattern.tags,
+            "tag_post_surge_pullback" as const,
+            "tag_post_surge_volume_contracted" as const,
+            ...(postSurgePullback.executionEligible ? ["tag_post_surge_support_recovery" as const] : [])
+          ])
+        ],
+        classificationReasons: [
+          ...new Set([
+            ...enrichedPattern.classificationReasons.filter((reason) => reason !== "no_pattern"),
+            "post_surge_pullback_candidate",
+            ...(postSurgePullback.executionEligible ? ["post_surge_pullback_quality_passed"] : postSurgePullback.rejectionReasons)
+          ])
+        ],
+        reasons: [
+          ...new Set([
+            ...enrichedPattern.reasons.filter((reason) => !reason.startsWith("No smart-money entry pattern")),
+            "급등 후 거래량이 줄어든 눌림 구간을 확인했습니다.",
+            postSurgePullback.executionEligible ? "가격·유동성·20일선·변동성 조건을 통과했습니다." : "추가 지지 확인이 필요합니다."
+          ])
+        ]
+      }
+    : enrichedPattern;
   const tradingHalted = Boolean(tradingHaltInfo) || isNonTradingPoint(referencePoint);
-  const swingVolumeProfileSummary = summarizeSwingVolumeProfile(enrichedPattern.swingVolumeProfile);
+  const swingVolumeProfileSummary = summarizeSwingVolumeProfile(finalPattern.swingVolumeProfile);
 
   const analysis = {
     name: input.name,
@@ -1640,7 +1709,8 @@ async function analyzeSmartMoneyPatternWithContext(
     haltCategory: tradingHaltInfo?.haltCategory,
     haltAction: tradingHaltInfo?.haltAction,
     note: input.note,
-    pattern: enrichedPattern,
+    pattern: finalPattern,
+    postSurgePullback,
     volumeProfileAnalysis: swingVolumeProfileSummary
       ? {
           swing: swingVolumeProfileSummary,
@@ -1659,11 +1729,11 @@ async function analyzeSmartMoneyPatternWithContext(
     tradingHaltReasonCategory: analysis.tradingHaltReasonCategory,
     haltCategory: analysis.haltCategory,
     haltAction: analysis.haltAction,
-    stage: enrichedPattern.stage,
-    matched: enrichedPattern.matched,
-    actionable: enrichedPattern.actionable,
-    patternScore: enrichedPattern.patternScore,
-    signal: enrichedPattern.signal
+    stage: finalPattern.stage,
+    matched: finalPattern.matched,
+    actionable: finalPattern.actionable,
+    patternScore: finalPattern.patternScore,
+    signal: finalPattern.signal
   });
 
   return analysis;

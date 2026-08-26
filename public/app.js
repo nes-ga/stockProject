@@ -8900,6 +8900,23 @@ function buildLongTermBuyEnteredLabel(item) {
   return enteredDate ? `본격매수 편입 ${enteredDate}` : "";
 }
 
+function getCompactSwingCardReason(reason) {
+  if (typeof reason !== "string") {
+    return "조건 확인";
+  }
+
+  if (reason.includes("눌림")) return "눌림 확인";
+  if (reason.includes("선행 수급")) return "수급 확인";
+  if (reason.includes("지지 매물")) return "지지 확인";
+  if (reason.includes("진입 구간")) return "진입 구간";
+  if (reason.includes("추격")) return "추격 부담";
+  if (reason.includes("손익비")) return "손익비 확인";
+  if (reason.includes("돌파")) return "돌파 확인";
+  if (reason.includes("지지선")) return "지지 이탈";
+
+  return reason.replace(/^아직 /, "").replace(/ 확인 필요$/, "").slice(0, 10);
+}
+
 function renderSelector() {
   const pagedItems = getPagedItems();
   const stockCards = pagedItems
@@ -8915,6 +8932,7 @@ function renderSelector() {
           : null;
       const swingTradePlan = item.category === "swing" ? swingDecision?.tradePlan ?? getSwingCardTradePlan(item.note, swingPattern, effectiveSwingBucket) : null;
       const titleText = item.category === "swing" ? `${item.name} (${item.symbol})` : item.name;
+      const stockCardNameClass = titleText.length >= 16 ? "long" : "";
       const metaText = item.category === "swing" ? "" : `${item.symbol} / ${item.anchorDate}`;
       const longTermBuyEnteredLabel = buildLongTermBuyEnteredLabel(item);
       const dividendInfoLine = buildDividendInfoLine(item);
@@ -8995,17 +9013,17 @@ function renderSelector() {
         managedStatusHtml ||
         (item.category === "swing" && effectiveSwingBucket !== "managed" && (swingDecision || swingAssessment || swingGuardHtml)
           ? `
-            <span class="stock-card-swing-summary">
+            <span class="stock-card-swing-summary ${effectiveSwingBucket === "watch" ? "watch" : ""}">
               ${
                 swingDecision
                   ? `
                     <span class="stock-pattern-pill ${escapeHtml(swingAssessment.className)}">${escapeHtml(swingDecision.stageLabel)}</span>
-                    <span class="stock-card-swing-line">${escapeHtml(swingDecision.summary)}</span>
+                    ${effectiveSwingBucket === "watch" ? "" : `<span class="stock-card-swing-line">${escapeHtml(swingDecision.summary)}</span>`}
                     ${
                       swingDecision.cardReasons.length
-                        ? `<span class="stock-card-swing-reasons">
+                        ? `<span class="stock-card-swing-reasons ${effectiveSwingBucket === "watch" ? "watch" : ""}">
                             ${swingDecision.cardReasons
-                              .map((reason) => `<span class="stock-card-swing-reason">✓ ${escapeHtml(reason)}</span>`)
+                              .map((reason) => `<span class="stock-card-swing-reason">✓ ${escapeHtml(getCompactSwingCardReason(reason))}</span>`)
                               .join("")}
                           </span>`
                         : ""
@@ -9024,9 +9042,9 @@ function renderSelector() {
           : "");
       return `
         <article class="stock-card ${selected ? "selected" : ""}">
-          <span class="stock-card-head">
+          <span class="stock-card-head ${item.category === "swing" && effectiveSwingBucket === "watch" ? "stock-card-head-watch" : ""}">
             <button class="stock-card-select" type="button" data-stock-key="${escapeHtml(item.key)}">
-              <span class="stock-card-name">${escapeHtml(titleText)}</span>
+              <span class="stock-card-name ${stockCardNameClass}">${escapeHtml(titleText)}</span>
               ${metaText ? `<span class="stock-card-meta">${escapeHtml(metaText)}</span>` : ""}
               ${longTermBuyEnteredLabel ? `<span class="stock-card-meta stock-card-meta-buy-entry">${escapeHtml(longTermBuyEnteredLabel)}</span>` : ""}
               ${dividendInfoLine ? `<span class="stock-card-meta">${escapeHtml(dividendInfoLine)}</span>` : ""}
